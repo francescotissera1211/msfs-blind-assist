@@ -193,12 +193,12 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_ELEC_MASTER_BATTERY", controls);
         Assert.Contains("DA40_ELEC_AVIONICS_MASTER", controls);
-        Assert.Contains("DA40_ELEC_ENGINE_MASTER", controls);
-        Assert.Contains("DA40_ELEC_ENGINE_MASTER_COVER", controls);
         Assert.Contains("DA40_ELEC_ESS_BUS", controls);
         Assert.Contains("DA40_ELEC_EMER_BATT", controls);
         Assert.Contains("DA40_ELEC_EMER_BATT_COVER", controls);
-        Assert.Equal(7, controls.Count);
+        // Engine Master is NOT here — it belongs to Engine Start.
+        Assert.DoesNotContain("DA40_START_ENGINE_MASTER", controls);
+        Assert.Equal(5, controls.Count);
     }
 
     [Fact]
@@ -273,9 +273,10 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_START_STARTER_ENGAGE", controls);
         Assert.Contains("DA40_START_STARTER_RELEASE", controls);
-        // AFM start item 2 is ENGINE MASTER — deliberately reachable from this panel too.
-        Assert.Contains("DA40_ELEC_ENGINE_MASTER", controls);
-        Assert.Contains("DA40_ELEC_ENGINE_MASTER_COVER", controls);
+        // The AFM legend groups the Engine Master with the engine controls, so it lives
+        // here — and ONLY here.
+        Assert.Contains("DA40_START_ENGINE_MASTER", controls);
+        Assert.Contains("DA40_START_ENGINE_MASTER_COVER", controls);
     }
 
     [Fact]
@@ -330,5 +331,22 @@ public class CowsDA40PanelStructureTests
 
         Assert.DoesNotContain("DA40_START_GLOW_ON", vars.Keys);
         Assert.DoesNotContain("DA40_START_STARTER_ENGAGE", vars.Keys);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void NoControlAppearsInTwoPanels(DA40Variant variant)
+    {
+        // One control, one home. A variable reachable from two panels is disorienting
+        // with a screen reader and makes "where is that switch" ambiguous.
+        var dupes = new CowsDA40Definition(variant).GetPanelControls()
+            .SelectMany(p => p.Value.Select(k => new { p.Key, Var = k }))
+            .GroupBy(x => x.Var)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"{g.Key} in {string.Join(" + ", g.Select(x => x.Key))}")
+            .ToList();
+
+        Assert.True(dupes.Count == 0, $"{variant}: duplicated controls — {string.Join("; ", dupes)}");
     }
 }

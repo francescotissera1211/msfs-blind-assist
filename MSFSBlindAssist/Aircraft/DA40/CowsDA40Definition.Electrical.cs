@@ -26,8 +26,9 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///     AVIONICS_BUS_ID 2. K:AVIONICS_MASTER_2_SET does nothing at all;
 ///     K:TOGGLE_AVIONICS_MASTER moves A:AVIONICS MASTER SWITCH:1.
 ///
-///  4. The engine master reads back on A:GENERAL ENG MASTER ALTERNATOR:1 (the
-///     ASOBO_ENGINE_Switch_Master_Template mapping), not on any L:var.
+///  4. The Engine Master is NOT here — it lives on Engine Start, where the AFM's
+///     instrument-panel legend groups it (items 7 ECU Test, 8 ECU Voter, 9 Engine
+///     Master). It is an engine control that happens to be a master switch.
 ///
 /// Writes use a CONDITIONAL TOGGLE for the two switches that only expose a toggle
 /// event: comparing the current state first makes a combo idempotent, so picking
@@ -71,30 +72,6 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        };
-
-        // Red-guarded. The guard is a separate animation variable; opening it is a
-        // real action the pilot performs, so it gets its own control rather than being
-        // silently automated away.
-        v["DA40_ELEC_ENGINE_MASTER"] = new SimVarDefinition
-        {
-            Name = "GENERAL ENG MASTER ALTERNATOR:1",
-            DisplayName = "Engine Master",
-            Type = SimVarType.SimVar,
-            Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-        };
-
-        v["DA40_ELEC_ENGINE_MASTER_COVER"] = new SimVarDefinition
-        {
-            Name = "MASTER_COVER:1",
-            DisplayName = "Engine Master Guard",
-            Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         };
 
         // Measured: setting this to 1 drops ELEC_BUS_MAIN_VOLT to 0 while the ESS and
@@ -191,8 +168,6 @@ public partial class CowsDA40Definition
     {
         "DA40_ELEC_MASTER_BATTERY",
         "DA40_ELEC_AVIONICS_MASTER",
-        "DA40_ELEC_ENGINE_MASTER_COVER",
-        "DA40_ELEC_ENGINE_MASTER",
         "DA40_ELEC_ESS_BUS",
         "DA40_ELEC_EMER_BATT_COVER",
         "DA40_ELEC_EMER_BATT"
@@ -257,15 +232,6 @@ public partial class CowsDA40Definition
                 simConnect.ExecuteCalculatorCode(
                     $"(A:AVIONICS MASTER SWITCH:1, Bool) {(on ? 0 : 1)} == " +
                     "if{ 1 (>K:TOGGLE_AVIONICS_MASTER) }");
-                return true;
-
-            case "DA40_ELEC_ENGINE_MASTER":
-                // This one has a real SET event, so no conditional dance is needed.
-                simConnect.ExecuteCalculatorCode($"{(on ? 1 : 0)} (>K:ENGINE_MASTER_1_SET)");
-                return true;
-
-            case "DA40_ELEC_ENGINE_MASTER_COVER":
-                simConnect.SetLVar("MASTER_COVER:1", on ? 1 : 0);
                 return true;
 
             case "DA40_ELEC_ESS_BUS":

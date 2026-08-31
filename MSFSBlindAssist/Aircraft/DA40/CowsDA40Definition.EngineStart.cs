@@ -35,9 +35,22 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// Both live in HelpText and in the status display's elapsed-crank readout. Nothing
 /// here stops the pilot cranking for as long as they like.
 ///
-/// The Engine Master appears BOTH here and on the Electrical panel. That is deliberate:
-/// AFM start item 2 is ENGINE MASTER, and a pilot running the start should not have to
-/// leave the panel to reach it. MSFSBA allows one variable key in several panels.
+/// The Engine Master lives HERE and nowhere else. The AFM's instrument-panel legend
+/// groups it with the engine controls (7 ECU Test, 8 ECU Voter, 9 Engine Master), and
+/// AFM start item 2 is ENGINE MASTER — it is an engine control that happens to be a
+/// master switch. No control is duplicated across panels.
+///
+/// GUARDS ARE STATE, NOT INTERLOCKS — measured. With MASTER_COVER:1 forced to 0,
+/// K:ENGINE_MASTER_1_SET still moved the switch and shut the engine down, and the model
+/// then AUTO-OPENED the cover. The emergency-battery guard does not even do that. So the
+/// guard is exposed as its own control (the pilot can work it exactly as in the real
+/// cockpit) but MSFSBA must not pretend it gates anything, and must not invent a gate of
+/// its own — report, do not decide.
+///
+/// NO SOUND ON PROGRAMMATIC WRITES. The cockpit WWISE events
+/// (deice_cover_alternate_switch_on, starter_push_button_on, ...) are attached to the
+/// model's CLICKSPOT templates, so an L:var or K: event write bypasses them. Silence
+/// from a panel control is expected and is not a failed write — verify by readback.
 /// </summary>
 public partial class CowsDA40Definition
 {
@@ -48,6 +61,33 @@ public partial class CowsDA40Definition
         var v = new Dictionary<string, SimVarDefinition>();
 
         // ---------- Controls ----------
+
+        // Red-guarded on the real aircraft. AFM: "Lift the guard prior to actuating the
+        // toggle. After switching, lower the Engine Master switch guard with the toggle
+        // in the desired position."
+        v["DA40_START_ENGINE_MASTER"] = new SimVarDefinition
+        {
+            Name = "GENERAL ENG MASTER ALTERNATOR:1",
+            DisplayName = "Engine Master",
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+            HelpText = "Guarded switch. Turning it off shuts the engine down."
+        };
+
+        v["DA40_START_ENGINE_MASTER_COVER"] = new SimVarDefinition
+        {
+            Name = "MASTER_COVER:1",
+            DisplayName = "Engine Master Guard",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
+            HelpText = "The guard does not block the switch in the simulator, and the " +
+                       "model opens it by itself when the master is operated."
+        };
 
         v["DA40_START_STARTER_ENGAGE"] = new SimVarDefinition
         {
@@ -162,9 +202,8 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> EngineStartControls = new()
     {
-        // Duplicated from Electrical on purpose — AFM start item 2 (see class doc).
-        "DA40_ELEC_ENGINE_MASTER_COVER",
-        "DA40_ELEC_ENGINE_MASTER",
+        "DA40_START_ENGINE_MASTER_COVER",
+        "DA40_START_ENGINE_MASTER",
         "DA40_START_STARTER_ENGAGE",
         "DA40_START_STARTER_RELEASE"
     };
@@ -198,6 +237,14 @@ public partial class CowsDA40Definition
     {
         switch (varKey)
         {
+            case "DA40_START_ENGINE_MASTER":
+                simConnect.ExecuteCalculatorCode($"{(value >= 0.5 ? 1 : 0)} (>K:ENGINE_MASTER_1_SET)");
+                return true;
+
+            case "DA40_START_ENGINE_MASTER_COVER":
+                simConnect.SetLVar("MASTER_COVER:1", value >= 0.5 ? 1 : 0);
+                return true;
+
             case "DA40_START_STARTER_ENGAGE":
                 simConnect.ExecuteCalculatorCode("1 (>K:SET_STARTER1_HELD)");
                 return true;
