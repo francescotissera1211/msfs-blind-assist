@@ -212,6 +212,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildAnnunciatorVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         if (IsNG)
         {
             foreach (var kv in BuildEngineStartVariables())
@@ -242,7 +247,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             [ElectricalPanel] = new List<string>(ElectricalDisplay),
             [LightingPanel] = new List<string>(LightingDisplay),
             [IcePitotPanel] = new List<string>(IcePitotDisplay),
-            [StandbyPanel] = new List<string>(StandbyDisplay)
+            [StandbyPanel] = new List<string>(StandbyDisplay),
+            [AnnunciatorsPanel] = new List<string>(AnnunciatorsDisplay)
         };
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);

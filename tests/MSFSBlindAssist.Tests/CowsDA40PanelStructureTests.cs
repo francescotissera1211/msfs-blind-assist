@@ -663,8 +663,9 @@ public class CowsDA40PanelStructureTests
         var v = Ng().GetVariables()["DA40_STBY_ALTIMETER_SET"];
 
         Assert.Equal("KOHLSMAN SETTING HG:2", v.Name);
-        Assert.Equal(28.00, v.SliderMin);
-        Assert.Equal(31.50, v.SliderMax);
+        // Typed entry, not a slider — see StandbyAltimeterIsTypedNotASlider. The 28.00 to
+        // 31.50 travel is enforced on the write instead, where it belongs.
+        Assert.False(v.RenderAsSlider);
     }
 
     [Fact]
@@ -710,5 +711,60 @@ public class CowsDA40PanelStructureTests
         // DISP_PROP_RPM is rounded to 10 by the airframe (measured 710 against a true
         // 705.12). The needle moves smoothly, so the sensed value is what matches it.
         Assert.Equal("PROP_RPM_SENS:1", Ng().GetVariables()["DA40_START_RPM"].Name);
+    }
+
+    // ==============================================================================
+    // Annunciators panel
+    // ==============================================================================
+
+    [Fact]
+    public void AnnunciatorsAreReadOnly_BecauseALampIsAnOutput()
+    {
+        var def = Ng();
+
+        Assert.Empty(def.GetPanelControls()["Annunciators"]);
+        Assert.NotEmpty(def.GetPanelDisplayVariables()["Annunciators"]);
+    }
+
+    [Fact]
+    public void AnnunciatorsCoverThePhysicalLampsAndWhatCanExtinguishThem()
+    {
+        // Three flap lights and the essential-bus lamp are the only real lamps on the
+        // G1000 variant. A flap light can be dark for three different reasons, so the
+        // breakers and the actual flap travel sit beside them.
+        var display = Ng().GetPanelDisplayVariables()["Annunciators"];
+
+        Assert.Contains("DA40_ANN_FLAP_UP", display);
+        Assert.Contains("DA40_ANN_FLAP_TO", display);
+        Assert.Contains("DA40_ANN_FLAP_LDG", display);
+        Assert.Contains("DA40_ANN_ESS_BUS_VOLTS", display);
+        Assert.Contains("DA40_ANN_CB_FLAP", display);
+        Assert.Contains("DA40_ANN_FLAP_TRAVEL", display);
+    }
+
+    [Fact]
+    public void StandbyAltimeterIsTypedNotASlider()
+    {
+        // MainForm's TrackBar is hardcoded 0-100 and maps the value as a percentage of the
+        // slider range, so a subscale rendered as one reported "0 to 100" instead of
+        // 28 to 31.5. The key ends in _SET, which gives a typed entry instead.
+        var v = Ng().GetVariables()["DA40_STBY_ALTIMETER_SET"];
+
+        Assert.False(v.RenderAsSlider);
+        Assert.False(v.PreventTextInput);
+        Assert.Contains("_SET", "DA40_STBY_ALTIMETER_SET");
+    }
+
+    [Fact]
+    public void StandbyScanShowsIndicatedAndActualAttitude()
+    {
+        // The standby horizon drifts. Measured 2.2 degrees indicated against a true -3.0,
+        // and the only way to notice is to compare the two.
+        var display = Ng().GetPanelDisplayVariables()["Standby Instruments"];
+
+        Assert.Contains("DA40_STBY_GYRO_PITCH", display);
+        Assert.Contains("DA40_STBY_TRUE_PITCH", display);
+        Assert.Contains("DA40_STBY_GYRO_BANK", display);
+        Assert.Contains("DA40_STBY_TRUE_BANK", display);
     }
 }

@@ -35,8 +35,12 @@ public partial class CowsDA40Definition
 {
     private const string StandbyPanel = "Standby Instruments";
 
-    /// <summary>POH/AFM: the cage knob is pulled and held briefly, not clicked.</summary>
-    private const int GyroCageHoldMs = 2500;
+    /// <summary>
+    /// Kept SHORT. The held writer re-writes at 40 ms and the airframe plays the knob
+    /// click on every write, so a long hold is audible as a burst of clicking.
+    /// ATT_GYRO_CAGE_SET was observed set within about 400 ms, so this is enough.
+    /// </summary>
+    private const int GyroCageHoldMs = 700;
 
     private static Dictionary<string, SimVarDefinition> BuildStandbyVariables()
     {
@@ -52,13 +56,14 @@ public partial class CowsDA40Definition
             Units = "inHg",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            RenderAsSlider = true,
-            SliderMin = 28.00,
-            SliderMax = 31.50,
+            // A TEXT FIELD, not a slider. MainForm's TrackBar is hardcoded 0-100 and maps
+            // the value as a PERCENTAGE of the slider range — right for a lighting knob,
+            // but it reported this subscale as "0 to 100" instead of 28 to 31.5. The key
+            // ends in _SET, so dropping RenderAsSlider gives a typed entry instead.
             Format = "F2",
             HelpText = "The backup altimeter has its own subscale, separate from the G1000's. " +
                        "The AFM descent checklist item reads \"Altimeters (2) SET\" — both " +
-                       "need setting. Range 28.00 to 31.50 inches of mercury."
+                       "need setting. Type hectopascals (1013) or inches (29.92) - above 100 is read as hectopascals."
         };
 
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
@@ -98,14 +103,38 @@ public partial class CowsDA40Definition
         AddFlag(v, "DA40_STBY_GYRO_CAGED", "ATT_GYRO_CAGE_SET", "Gyro Caged", "No", "Yes");
 
         // The standby horizon's own attitude, which is the whole point of having it.
+        // What the standby horizon is SHOWING - the instrument's own indication, not the
+        // aeroplane's attitude. They drift apart: measured 2.2 degrees indicated against a
+        // true -3.0, a five-degree error, on a gyro that had been running a while.
         AddReadout(v, "DA40_STBY_GYRO_PITCH", "ATT_GYRO_REL_PITCH", "Standby Horizon Pitch", "degrees", "F1");
         AddReadout(v, "DA40_STBY_GYRO_BANK", "ATT_GYRO_REL_BANK", "Standby Horizon Bank", "degrees", "F1");
 
         // Spin-up and topple. A toppled gyro reads a plausible lie; without these there is
         // no way to know the instrument has stopped being trustworthy.
-        AddReadout(v, "DA40_STBY_GYRO_SPEED", "ATT_GYRO_SPEED", "Gyro Spin", "of 1", "F2");
-        AddReadout(v, "DA40_STBY_GYRO_TOPPLE", "ATT_GYRO_TOPPLE", "Gyro Topple", "", "F2");
-        AddReadout(v, "DA40_STBY_GYRO_RIGID", "ATT_GYRO_RIGID", "Gyro Rigidity", "", "F2");
+        // The TRUE attitude, so the drift above is visible rather than implied. A sighted
+        // pilot spots a leaning standby horizon by comparing it against the PFD; this is
+        // that comparison, in numbers.
+        AddTrueAttitude(v, "DA40_STBY_TRUE_PITCH", "ATTITUDE INDICATOR PITCH DEGREES", "Actual Pitch");
+        AddTrueAttitude(v, "DA40_STBY_TRUE_BANK", "ATTITUDE INDICATOR BANK DEGREES", "Actual Bank");
+
+        // Rotor speed as a percentage. The model spins it 0 to 1 from the EMERGENCY bus
+        // (ELEC_BUS_EMER_VOLT / 30), which is why the standby horizon keeps working when
+        // the main bus is dead. Below about 10 percent it is not usable.
+        v["DA40_STBY_GYRO_SPEED"] = new SimVarDefinition
+        {
+            Name = "ATT_GYRO_SPEED",
+            DisplayName = "Gyro Spin",
+            Type = SimVarType.LVar,
+            Units = "percent",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            Scale = 100.0,
+            Format = "F0"
+        };
+
+        // Toppled means the instrument has tumbled and is showing a plausible lie.
+        AddFlag(v, "DA40_STBY_GYRO_TOPPLE", "ATT_GYRO_TOPPLE", "Gyro Toppled", "No", "Yes, toppled");
 
         // The remaining standby instruments, which have no controls of their own.
         v["DA40_STBY_AIRSPEED"] = new SimVarDefinition
@@ -147,6 +176,22 @@ public partial class CowsDA40Definition
         return v;
     }
 
+    private static void AddTrueAttitude(Dictionary<string, SimVarDefinition> v, string key,
+        string simvar, string display)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = simvar,
+            DisplayName = display,
+            Type = SimVarType.SimVar,
+            Units = "degrees",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            Format = "F1"
+        };
+    }
+
     private static readonly List<string> StandbyControls = new()
     {
         "DA40_STBY_ALTIMETER_SET",
@@ -162,9 +207,10 @@ public partial class CowsDA40Definition
         "DA40_STBY_COMPASS",
         "DA40_STBY_GYRO_PITCH",
         "DA40_STBY_GYRO_BANK",
+        "DA40_STBY_TRUE_PITCH",
+        "DA40_STBY_TRUE_BANK",
         "DA40_STBY_GYRO_CAGED",
         "DA40_STBY_GYRO_SPEED",
-        "DA40_STBY_GYRO_RIGID",
         "DA40_STBY_GYRO_TOPPLE"
     };
 
@@ -177,8 +223,13 @@ public partial class CowsDA40Definition
         switch (varKey)
         {
             case "DA40_STBY_ALTIMETER_SET":
-                simConnect.SetLVar("KOHLSMAN SETTING HG:2", Math.Clamp(value, 28.00, 31.50));
+            {
+                // Accept hectopascals or inches. The ranges cannot overlap - inHg runs
+                // 28.00 to 31.50 and hPa 948 to 1066 - so magnitude disambiguates.
+                double inHg = value > 100 ? value / 33.8639 : value;
+                simConnect.SetLVar("KOHLSMAN SETTING HG:2", Math.Clamp(inHg, 28.00, 31.50));
                 return true;
+            }
 
             case "DA40_STBY_GYRO_CAGE":
                 HoldLVar("ATT_CAGE", GyroCageHoldMs, simConnect);
