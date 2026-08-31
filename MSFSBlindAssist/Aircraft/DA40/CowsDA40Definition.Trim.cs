@@ -1,0 +1,266 @@
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Aircraft.DA40;
+
+/// <summary>
+/// Center Console → Elevator Trim. Both variants — the XLS model uses the same
+/// INPUT_TRIM_AXIS, INPUT_TRIM_UP/DN, INPUT_AP_DISC and circuit 37.
+///
+/// PITCH ONLY. The DA40 has no cockpit rudder or aileron trim: AFM 7.3.4 describes a
+/// rudder trim TAB adjusted on the ground with a screwdriver, and the pre-flight
+/// walkaround item is "Trim - tab ... visual inspection". Offering a rudder trim control
+/// would be inventing one, and the panel says so rather than leaving a pilot hunting for
+/// it.
+///
+/// TWO WAYS TO MOVE IT, and they are different things. The AFM calls the black wheel in
+/// the centre console the trim CONTROL — it is mechanical, works with everything off, and
+/// turning it forward is nose down. The electric trim on the stick is a separate path
+/// that runs through circuit 37 and the autopilot. Both drive the same
+/// L:INPUT_TRIM_AXIS, which spans -100 (fully nose down) to +100 (fully nose up) and maps
+/// 1:1 onto ELEVATOR TRIM PCT — measured live, writing 25 gave exactly 25 % and 1.75
+/// degrees, against the airframe's 7-degree limit.
+///
+/// So this panel offers the wheel as a typed setting and the stick switch as two held
+/// buttons, at the aeroplane's own rate: INPUT_TRIM_SPEED is 1.0, which the model turns
+/// into 10 units per second, so a full sweep takes about 20 seconds and a one-second
+/// press is 10 % of the range.
+///
+/// The stick switch is a held control like the rest of this airframe — measured live, a
+/// single write to INPUT_TRIM_UP moved the trim 0.99 % and stopped, and the variable read
+/// back 0 on the next request. That self-clearing is a SAFETY property worth keeping in
+/// mind rather than an obstacle: a hold interrupted by a crash, a disconnect or an
+/// aircraft switch cannot leave the trim running, because the airframe stops it within a
+/// frame of the last write.
+///
+/// THE AFM PUBLISHES NO NUMBER FOR THE TAKE-OFF POSITION. It is a MARK on the wheel
+/// ("A mark on the wheel shows the take-off (T/O) position"), and the checklist item is
+/// "Electric elevator trim ... CHECKED, T/O SET". There is no constant for it anywhere in
+/// the model or the manual, so this panel does NOT invent one — it gives the centre of
+/// travel, which is a real defined reference, and reports the position precisely enough
+/// to set the mark by. Making up a plausible number and calling it the T/O setting would
+/// be worse than admitting the aeroplane does not publish one.
+///
+/// RUNAWAY TRIM IS MODELLED. FAILURES_AFCS_TRIM_RUN drives the axis at 10 units per
+/// second regardless of what the pilot commands, and the AFM's remedy is the AP DISC
+/// button, which the model honours by blocking all trim input while it is held. Both are
+/// on the scan: a trim that is moving on its own is otherwise completely silent.
+/// </summary>
+public partial class CowsDA40Definition
+{
+    private const string TrimPanel = "Elevator Trim";
+
+    /// <summary>
+    /// One press step for the held buttons. The model moves the axis at
+    /// INPUT_TRIM_SPEED * 10 units per second and INPUT_TRIM_SPEED reads 1.0, so this is
+    /// about a tenth of full travel — small enough to place accurately, long enough to
+    /// hear as one action rather than a stutter.
+    /// </summary>
+    private const int TrimNudgeHoldMs = 1000;
+
+    /// <summary>The airframe's trim limit, from flight_model.cfg (elevator_trim_limit).</summary>
+    private const double TrimLimitDegrees = 7.0;
+
+    private static Dictionary<string, SimVarDefinition> BuildTrimVariables()
+    {
+        var v = new Dictionary<string, SimVarDefinition>();
+
+        // ---------- Controls ----------
+
+        // A TYPED entry, not a slider: the range is -100 to +100 and MainForm's TrackBar
+        // is hardcoded 0-100, mapping the value as a percentage of its own range. The
+        // standby altimeter learned this the hard way.
+        v["DA40_TRIM_SET"] = new SimVarDefinition
+        {
+            Name = "ELEVATOR TRIM PCT",
+            DisplayName = "Elevator Trim Setting",
+            Type = SimVarType.SimVar,
+            Units = "percent",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = false,
+            Format = "F0",
+            HelpText = "The trim wheel. Type a number from minus 100 for fully nose down to " +
+                       "plus 100 for fully nose up; zero is the centre of travel. Full " +
+                       "travel is 7 degrees of tab either way. The AFM marks a take-off " +
+                       "position on the wheel but publishes no number for it, so set it " +
+                       "against your own loading."
+        };
+
+        v["DA40_TRIM_NOSE_UP"] = new SimVarDefinition
+        {
+            Name = "DA40_TRIM_NOSE_UP",
+            DisplayName = "Trim Nose Up",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Holds the stick trim switch nose up for one second, about a tenth " +
+                       "of full travel. This is the electric trim, so it needs its circuit " +
+                       "and it is inhibited while the AP disconnect button is held."
+        };
+
+        v["DA40_TRIM_NOSE_DOWN"] = new SimVarDefinition
+        {
+            Name = "DA40_TRIM_NOSE_DOWN",
+            DisplayName = "Trim Nose Down",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Holds the stick trim switch nose down for one second, about a tenth " +
+                       "of full travel."
+        };
+
+        v["DA40_TRIM_CENTRE"] = new SimVarDefinition
+        {
+            Name = "DA40_TRIM_CENTRE",
+            DisplayName = "Centre Trim",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Returns the trim to the centre of travel. This is NOT the take-off " +
+                       "setting — the AFM marks that on the wheel and gives no number for " +
+                       "it — but it is a defined reference to set the mark from."
+        };
+
+        // ---------- Status ----------
+
+        // The position in the aeroplane's own terms as well as the model's. Degrees is
+        // what the tab is actually doing; percent is what the wheel reads.
+        v["DA40_TRIM_POSITION"] = new SimVarDefinition
+        {
+            Name = "ELEVATOR TRIM POSITION",
+            DisplayName = "Trim Position",
+            Type = SimVarType.SimVar,
+            Units = "degrees",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true
+        };
+
+        // Is anything driving it right now, and is it the pilot? A runaway trim moves
+        // with nobody touching it, which is otherwise completely silent.
+        AddFlag(v, "DA40_TRIM_RUNAWAY", "FAILURES_AFCS_TRIM_RUN",
+            "Trim Runaway", "No", "YES — trim running by itself");
+
+        AddFlag(v, "DA40_TRIM_AP_UP", "AUTOPILOT_TRIM_UP", "Autopilot Trimming Up", "No", "Yes");
+        AddFlag(v, "DA40_TRIM_AP_DOWN", "AUTOPILOT_TRIM_DN", "Autopilot Trimming Down", "No", "Yes");
+
+        // The AP DISC button blocks all trim input while held — the before-takeoff
+        // "DISCONN press, check electric trim not working" test. The button itself lives
+        // on the Autopilot panel, because disconnecting the autopilot is its main job and
+        // no control gets two homes; this row is how the test is read from here.
+        AddFlag(v, "DA40_TRIM_INHIBITED", "INPUT_AP_DISC",
+            "Trim Interrupt Held", "No, trim free", "Yes, trim inhibited");
+
+        // Electric trim's own circuit. With it out the wheel still works — the wheel is
+        // mechanical — so this distinguishes "the stick switch is dead" from "the trim is
+        // jammed", which are very different problems.
+        v["DA40_TRIM_CIRCUIT"] = new SimVarDefinition
+        {
+            Name = "CIRCUIT ON:37",
+            DisplayName = "Electric Trim Circuit",
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off — wheel still works, stick switch does not",
+                [1] = "Powered"
+            }
+        };
+
+        return v;
+    }
+
+    private static readonly List<string> TrimControls = new()
+    {
+        "DA40_TRIM_SET",
+        "DA40_TRIM_NOSE_UP",
+        "DA40_TRIM_NOSE_DOWN",
+        "DA40_TRIM_CENTRE"
+    };
+
+    private static readonly List<string> TrimDisplay = new()
+    {
+        "DA40_TRIM_POSITION",
+        "DA40_TRIM_RUNAWAY",
+        "DA40_TRIM_INHIBITED",
+        "DA40_TRIM_AP_UP",
+        "DA40_TRIM_AP_DOWN",
+        "DA40_TRIM_CIRCUIT"
+    };
+
+    private bool HandleTrimSet(string varKey, double value, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        switch (varKey)
+        {
+            case "DA40_TRIM_SET":
+            {
+                double pct = Math.Clamp(value, -100, 100);
+                simConnect.SetLVar("INPUT_TRIM_AXIS", pct);
+
+                // A typed numeric entry confirms. Say the DIRECTION as well as the number:
+                // a bare "minus 30" leaves the pilot to remember which way the sign goes,
+                // and the sign convention is the one thing about trim that is easy to get
+                // backwards.
+                announcer.AnnounceImmediate($"Trim {DescribeTrim(pct)}");
+                return true;
+            }
+
+            case "DA40_TRIM_NOSE_UP":
+                HoldLVar("INPUT_TRIM_UP", TrimNudgeHoldMs, simConnect,
+                    () => AnnounceTrimAfterNudge(simConnect, announcer));
+                return true;
+
+            case "DA40_TRIM_NOSE_DOWN":
+                HoldLVar("INPUT_TRIM_DN", TrimNudgeHoldMs, simConnect,
+                    () => AnnounceTrimAfterNudge(simConnect, announcer));
+                return true;
+
+            case "DA40_TRIM_CENTRE":
+                simConnect.SetLVar("INPUT_TRIM_AXIS", 0);
+                announcer.AnnounceImmediate("Trim centred");
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Says where the trim ended up after a held nudge. The button itself is silent while
+    /// it runs — a screen reader already announced the press — but where it ARRIVED is a
+    /// number the pilot cannot otherwise get without opening the status display, and the
+    /// whole point of the nudge is to place the trim.
+    /// </summary>
+    private static void AnnounceTrimAfterNudge(SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        double? pct = simConnect.GetCachedVariableValue("DA40_TRIM_SET");
+        if (pct is null) return;
+
+        announcer.AnnounceImmediate($"Trim {DescribeTrim(pct.Value)}");
+    }
+
+    /// <summary>
+    /// A trim setting in words and numbers. The sign alone is ambiguous to hear, so the
+    /// direction is spelled out, and the tab angle is given because that is what the
+    /// aeroplane is actually doing.
+    /// </summary>
+    private static string DescribeTrim(double pct)
+    {
+        double degrees = Math.Abs(pct) / 100.0 * TrimLimitDegrees;
+
+        if (Math.Abs(pct) < 0.5) return "centred";
+
+        string direction = pct > 0 ? "nose up" : "nose down";
+        return $"{Math.Abs(pct):0} percent {direction}, {degrees:0.0} degrees";
+    }
+}

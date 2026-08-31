@@ -547,6 +547,17 @@ public class CowsDA40PanelStructureTests
     // Auto-announce and the Monitor Manager
     // ==============================================================================
 
+    /// <summary>
+    /// Controls that are a continuously-swept analogue quantity rather than a switch.
+    /// Adding one here is a deliberate decision that its value is a NUMBER, to be read,
+    /// not an event to be announced.
+    /// </summary>
+    private static readonly string[] AnalogueAxes =
+    {
+        "DA40_POWER_LEVER_SET",
+        "DA40_TRIM_SET"
+    };
+
     [Theory]
     [InlineData(DA40Variant.NG)]
     [InlineData(DA40Variant.XLS)]
@@ -566,12 +577,13 @@ public class CowsDA40PanelStructureTests
             .Select(k => new { Key = k, Def = vars[k] })
             // Buttons are momentary and have no state to announce; sliders are numeric.
             .Where(x => !x.Def.RenderAsButton && !x.Def.RenderAsSlider)
-            // The power lever is an ANALOGUE quantity, not a switch. Under a hardware
-            // throttle it moves continuously, so announcing it would speak a new
-            // percentage several times a second over everything else. It is read from
-            // the scan, like every other number. (The standby altimeter subscale stays
-            // announced: it is dialled to discrete settings, not swept.)
-            .Where(x => x.Key != "DA40_POWER_LEVER_SET")
+            // ANALOGUE AXES are not switches. Both of these are swept continuously by
+            // real hardware - a throttle quadrant, a trim wheel or a stick switch - so
+            // announcing them would speak a new number several times a second over
+            // everything else. They are read from the scan, like every other number.
+            // (The standby altimeter subscale stays announced: it is DIALLED to discrete
+            // settings, not swept, so each change is one deliberate act.)
+            .Where(x => !AnalogueAxes.Contains(x.Key))
             .Where(x => !x.Def.IsAnnounced
                      || x.Def.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
             .Select(x => x.Key)
@@ -1050,7 +1062,7 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYet =
     {
         // Center Console
-        "Elevator Trim", "Brakes", "Cabin Heat and Vent", "Audio",
+        "Brakes", "Cabin Heat and Vent", "Audio",
         // Circuit Breakers
         "Engine and Fuel", "Flight Instruments", "Avionics", "Bus and Power",
         "Lighting", "Airframe Systems", "Copilot",
@@ -1181,5 +1193,63 @@ public class CowsDA40PanelStructureTests
             Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous,
                          vars[key].UpdateFrequency);
         }
+    }
+
+    // ==============================================================================
+    // Elevator Trim panel (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void TrimPanelOffersTheWheelAndTheStickSwitch(DA40Variant variant)
+    {
+        // Two genuinely different paths to the same axis: the mechanical wheel (a typed
+        // setting, works with everything off) and the electric stick switch (held, needs
+        // its circuit). Plus a centring reference.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Elevator Trim"];
+
+        Assert.Equal(new[]
+        {
+            "DA40_TRIM_SET",
+            "DA40_TRIM_NOSE_UP",
+            "DA40_TRIM_NOSE_DOWN",
+            "DA40_TRIM_CENTRE"
+        }, controls.ToArray());
+    }
+
+    [Fact]
+    public void TrimSettingIsATypedEntryNotASlider()
+    {
+        // The range is -100 to +100 and MainForm's TrackBar is hardcoded 0-100, mapping
+        // the value as a percentage of its own range. The standby altimeter shipped that
+        // bug once already.
+        var v = Ng().GetVariables()["DA40_TRIM_SET"];
+
+        Assert.False(v.RenderAsSlider);
+        Assert.False(v.RenderAsButton);
+    }
+
+    [Fact]
+    public void TrimScanCarriesRunawayAndTheInterrupt()
+    {
+        // A runaway trim moves with nobody touching it and is otherwise silent, and the
+        // AFM's remedy is the AP disconnect button, whose effect is read from here.
+        var display = Ng().GetPanelDisplayVariables()["Elevator Trim"];
+
+        Assert.Contains("DA40_TRIM_RUNAWAY", display);
+        Assert.Contains("DA40_TRIM_INHIBITED", display);
+        Assert.Contains("DA40_TRIM_CIRCUIT", display);
+    }
+
+    [Fact]
+    public void TrimPanelOffersNoRudderOrAileronTrim()
+    {
+        // The DA40 has neither in the cockpit - the rudder trim is a ground-adjustable
+        // tab. Offering one would be inventing a control.
+        var vars = Ng().GetVariables().Keys;
+
+        Assert.DoesNotContain("DA40_TRIM_RUDDER", vars);
+        Assert.DoesNotContain("DA40_TRIM_AILERON", vars);
     }
 }
