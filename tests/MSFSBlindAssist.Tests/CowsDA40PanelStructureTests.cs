@@ -570,6 +570,10 @@ public class CowsDA40PanelStructureTests
         "DA40_PAYLOAD_REAR_LEFT_SET",
         "DA40_PAYLOAD_REAR_RIGHT_SET",
         "DA40_PAYLOAD_BAGGAGE_SET",
+        // Radio frequencies and courses: numbers, typed once.
+        "DA40_RADIO_COM1_SET", "DA40_RADIO_COM2_SET",
+        "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV2_SET",
+        "DA40_RADIO_CRS1_SET", "DA40_RADIO_HDG_BUG_SET",
         // Failure SEVERITIES. Nothing outside MSFSBA sets these, so there is no background
         // change to miss, and a percentage is a number to be read like any other.
         "DA40_FAIL_COOLANT_LEAK",
@@ -1834,5 +1838,47 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("Engine Damage", xls);
         Assert.Contains("Light Failures", xls);
         Assert.Contains("Reset", xls);
+    }
+
+    // ==============================================================================
+    // Radios (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void RadiosPanelTunesBothComsAndBothNavs(DA40Variant variant)
+    {
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Radios"];
+
+        foreach (var key in new[]
+                 {
+                     "DA40_RADIO_COM1_SET", "DA40_RADIO_COM1_SWAP",
+                     "DA40_RADIO_COM2_SET", "DA40_RADIO_COM2_SWAP",
+                     "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV1_SWAP",
+                     "DA40_RADIO_NAV2_SET", "DA40_RADIO_NAV2_SWAP",
+                     "DA40_RADIO_CRS1_SET", "DA40_RADIO_HDG_BUG_SET"
+                 })
+        {
+            Assert.Contains(key, controls);
+        }
+    }
+
+    [Theory]
+    [InlineData(124.80, 0x2480)]
+    [InlineData(118.00, 0x1800)]
+    [InlineData(136.975, 0x3697)]   // the third decimal is LOST - see below
+    [InlineData(127.85, 0x2785)]
+    public void ComFrequenciesEncodeAsBcd16(double mhz, int expected)
+    {
+        // The COM radios take BCD16 and NOTHING else - COM1_STBY_RADIO_SET_HZ was measured
+        // doing nothing at all, while the BCD form moved the standby immediately. The NAV
+        // radios are the opposite, taking raw hertz. Two encodings, one aeroplane.
+        //
+        // BCD16 carries FOUR digits, so it holds 25 kHz spacing and no finer: 136.975
+        // encodes as 0x3697 and comes back 136.97. That is a real limit of the only event
+        // this radio accepts, not a rounding choice - and it is why the help text says
+        // 25 kHz rather than pretending 8.33 channels can be typed.
+        Assert.Equal(expected, CowsDA40Definition.ComBcd16(mhz));
     }
 }

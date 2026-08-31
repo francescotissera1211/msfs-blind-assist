@@ -70,6 +70,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Ice and Pitot",
                 "Standby Instruments",
                 "Annunciators",
+                "Radios",
                 "ELT"
             },
             ["Center Console"] = new List<string>
@@ -201,6 +202,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[DoorsPanel] = new List<string>(DoorControls);
         controls[EltPanel] = new List<string>(EltControls);
         controls[CabinAirPanel] = new List<string>(CabinAirControls);
+        controls[RadiosPanel] = new List<string>(RadioControls);
         controls[PayloadPanel] = new List<string>(PayloadControls);
 
         foreach (var kv in FailurePanels(IsNG))
@@ -292,6 +294,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildRadioVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         foreach (var kv in BuildPayloadVariables())
         {
             vars[kv.Key] = kv.Value;
@@ -364,6 +371,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
         d[DoorsPanel] = new List<string>(DoorDisplay);
         d[CabinAirPanel] = new List<string>(CabinAirDisplay);
+        d[RadiosPanel] = new List<string>(RadioDisplay);
         d[PayloadPanel] = new List<string>(PayloadDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
@@ -509,6 +517,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleDoorSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
         if (HandleCabinAirSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleRadioSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;

@@ -35,6 +35,9 @@ public partial class CowsDA40Definition
     private CoherentDisplayClient? _casClient;
     private ScreenReaderAnnouncer? _casAnnouncer;
 
+    private System.Windows.Forms.Timer? _casWatchdog;
+    private bool _casSawRows;
+
     private readonly HashSet<string> _knownCas = new(StringComparer.Ordinal);
     private string _lastFma = "";
     private bool _casBaselined;
@@ -57,8 +60,24 @@ public partial class CowsDA40Definition
         _casClient = new CoherentDisplayClient("AS1000_PFD", pollIntervalMs: 1500,
             agentFileName: "coherent-da40-g1000-agent.js");
         _casClient.RowsUpdated += OnCasRows;
-        _casClient.Error += msg => Log.Debug("DA40", $"CAS monitor: {msg}");
+        _casClient.Error += msg => Log.Debug("DA40", $"CAS monitor error: {msg}");
         _casClient.Start();
+        Log.Debug("DA40", "CAS monitor: started, waiting for AS1000_PFD");
+
+        // REPORT THE VERDICT. This monitor failed silently once already - it is the
+        // background half, so there is no window to show an error in, and "nothing was
+        // announced" is indistinguishable from "nothing happened". If no rows arrive it
+        // says so, once, with the two things that would explain it.
+        _casWatchdog = new System.Windows.Forms.Timer { Interval = 20000 };
+        _casWatchdog.Tick += (_, _) =>
+        {
+            _casWatchdog!.Stop();
+            if (_casSawRows) return;
+            Log.Warn("DA40", "CAS monitor: no rows after 20 s. Either the G1000 view was " +
+                             "not up yet, or something else holds the AS1000_PFD inspector " +
+                             "socket (only one per view is allowed).");
+        };
+        _casWatchdog.Start();
     }
 
     public void StopCasMonitor()
@@ -66,6 +85,8 @@ public partial class CowsDA40Definition
         if (_casClient == null) return;
 
         _casClient.RowsUpdated -= OnCasRows;
+        try { _casWatchdog?.Stop(); _casWatchdog?.Dispose(); } catch { }
+        _casWatchdog = null;
         try { _casClient.Stop(); _casClient.Dispose(); } catch { /* teardown must not throw */ }
         _casClient = null;
         _casAnnouncer = null;
@@ -87,6 +108,12 @@ public partial class CowsDA40Definition
     private void OnCasRows(List<string> rows)
     {
         if (_casAnnouncer == null) return;
+
+        if (!_casSawRows)
+        {
+            _casSawRows = true;
+            Log.Debug("DA40", $"CAS monitor: first rows in ({rows.Count} lines)");
+        }
 
         var cas = new List<string>();
         string fma = "";
