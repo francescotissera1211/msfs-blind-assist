@@ -109,12 +109,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "PFD Readout",
                 "CAS Messages"
             },
+            // Aircraft Options and the Electronic Checklist are NOT panels. Both are
+            // interactive pages inside the MFD, driven by its softkeys and FMS knobs, so
+            // they belong in the G1000 display window with the rest of the bezel. Anything
+            // that can be done outside a panel does not get a panel.
+            // What remains here is data a blind pilot cannot otherwise reach: the engine
+            // indication strip and the fuel calculator, both L:var backed and scannable.
             ["G1000 MFD"] = new List<string>
             {
                 "Engine Indication",
-                "Fuel Calculator",
-                "Aircraft Options",
-                "Electronic Checklist"
+                "Fuel Calculator"
             },
             ["Autopilot"] = new List<string>
             {
@@ -146,7 +150,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         {
             structure["Center Console"].Insert(1, "Mixture and Propeller");
             structure["Instrument Panel"].Insert(2, "Magnetos");
-            structure["G1000 MFD"].Insert(2, "Lean Assist");
+            structure["G1000 MFD"].Insert(1, "Lean Assist");
             structure["Center Console"].Insert(3, "Priming");
         }
 
