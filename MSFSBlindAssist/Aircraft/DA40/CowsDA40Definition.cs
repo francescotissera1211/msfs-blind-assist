@@ -394,6 +394,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         if (HandleDA40Readout(action, simConnect, announcer)) return true;
 
+        if (action == Hotkeys.HotkeyAction.ReadDisplayPFD)
+        {
+            hotkeyManager?.ExitOutputHotkeyMode();
+            ShowTrackedWindow(
+                () => new Forms.DA40.CowsDA40DisplayForm(
+                    "G1000 PFD", "AS1000_PFD", announcer),
+                w => w.Show());
+            return true;
+        }
+
         if (action == Hotkeys.HotkeyAction.SetNavRadios)
         {
             hotkeyManager?.ExitInputHotkeyMode();
