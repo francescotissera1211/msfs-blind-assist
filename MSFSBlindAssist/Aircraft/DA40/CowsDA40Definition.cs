@@ -182,6 +182,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[LightingPanel] = new List<string>(LightingControls);
         controls[IcePitotPanel] = new List<string>(IcePitotControls);
         controls[StandbyPanel] = new List<string>(StandbyControls);
+        if (IsNG) controls[PowerPanel] = new List<string>(PowerControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -224,6 +225,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         if (IsNG)
         {
+            foreach (var kv in BuildPowerVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+        }
+
+        if (IsNG)
+        {
             foreach (var kv in BuildEngineStartVariables())
             {
                 vars[kv.Key] = kv.Value;
@@ -255,6 +264,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             [StandbyPanel] = new List<string>(StandbyDisplay),
             [AnnunciatorsPanel] = new List<string>(AnnunciatorsDisplay)
         };
+
+        if (IsNG) d[PowerPanel] = new List<string>(PowerDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -322,6 +333,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleLightingSet(varKey, value, simConnect)) return true;
         if (HandleIcePitotSet(varKey, value, simConnect)) return true;
         if (HandleStandbySet(varKey, value, simConnect, announcer)) return true;
+        if (HandlePowerSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

@@ -738,6 +738,20 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set (same lesson as the A380 pax fix). → [a32nx.md](docs/a32nx.md)
 - The Fenix MCDU marks a selected option with cyan AND large font — never gate the accessible `*` marker on green alone (that left CONFIG > FAILURES with no indication of NONE/MINOR/ALL), and never "fix" it by broadening the colour test to cyan: cyan is used for entry fields, brackets and the leading `←` cycle arrow, so it asterisks nearly every line. Selection detection belongs in `FenixMcduFormat`'s size rule (large-among-small within a `/`-separated group), which must stay conservative — ≥2 options, each uniformly one size, exactly one large. The colour rule must run BEFORE the size rule and the size rule must skip a token the colour rule already marked — the shared `HashSet<int>` only collapses an identical index, and the two rules anchor differently (green-segment start vs first letter/digit), so a green option starting on `(`/`[`/`←` double-marks as `A/*(*B)` without the per-token overlap check. `currentLarge = true` is load-bearing, not a fallback (the live NONE-selected capture has no size code before NONE), and `SpecialChars` must keep its `\uXXXX` escapes — the Latin-1 keys mangle at runtime, with no compile error, if the BOM-less file is ever re-saved as CP1252. → [a32nx.md](docs/a32nx.md)
 
+### COWS Diamond DA40 (→ [da40.md](docs/da40.md))
+
+- `STATE_*` L:vars are READ-ONLY MIRRORS — a write sticks on read-back and drives nothing; write the K: event or input L:var and read the mirror to confirm. → [da40.md](docs/da40.md)
+- Momentary controls need a REPEATING write (`HoldLVar`, 40 ms) — the airframe zeroes them every frame, so one write is discarded; and every write replays the click sound, so keep holds short and SAY what the button did. → [da40.md](docs/da40.md)
+- The ECU voter is INVERTED: 0 = ECU B, 1 = AUTO, 2 = ECU A (from the model's ANIMTIPs). → [da40.md](docs/da40.md)
+- `FADEC_ECUTEST_TIMER:1` is a per-stage governor WATCHDOG that resets between stages (4 latches a fault), NOT the test's elapsed time — never present it as one. → [da40.md](docs/da40.md)
+- Take RPM from `PROP_RPM_SENS:1`, never `DISP_PROP_RPM` — the display var is quantised to 10 RPM. Generally: a `DISP_*` var is what the G1000 DRAWS, not what the sensor measured. → [da40.md](docs/da40.md)
+- `ABS_AMBIENT_TEMPERATURE` is KELVIN and the L:var's Units field is a LABEL, not a conversion — use the `AMBIENT TEMPERATURE` SimVar. → [da40.md](docs/da40.md)
+- A non-percentage numeric control must NOT set `RenderAsSlider` — MainForm's `TrackBar` is hardcoded 0-100 and maps the value as a percentage of that range; a key ending `_SET` renders as a typed entry instead. → [da40.md](docs/da40.md)
+- `IsAnnounced` governs BACKGROUND changes only — combo double-talk is handled globally by `_uiSetEcho`. Every settable switch is Continuous + announced; every numeric readout is silent (the power lever counts as a number, not a switch). → [da40.md](docs/da40.md)
+- `BaseAircraftDefinition` implements NO readout hotkeys — every aircraft answers its own, from the CACHE, immediately. → [da40.md](docs/da40.md)
+- The NG power lever commands LOAD and its commanded RPM is NON-MONOTONIC (2150 at idle, 1800 at 20 %, 2300 at full) — always report commanded RPM beside actual, or "disc mode" is invisible. → [da40.md](docs/da40.md)
+- Anything doable inside a G1000 display (MFD pages, the checklist, softkeys) does NOT get a panel — it belongs in a display window reached by a hotkey. → [da40.md](docs/da40.md)
+
 ### Gemini AI (→ [gemini.md](docs/gemini.md))
 
 - Never reinstate a silent multi-model fallback for Gemini calls — the model used must be exactly `UserSettings.GeminiModel`; a silent fallback hides which model produced a response (explicitly rejected by the user). → [gemini.md](docs/gemini.md)
@@ -850,6 +864,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on the PMDG or HS787 EFB (Coherent debugger scrape agent, shared `FbwEfbForm`)** → [PMDG EFB](docs/pmdg-efb.md)
 - **Working on the FlyByWire A380X (MFD/MCDU, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad specifics)** → [FlyByWire A380X](docs/a380x.md)
 - **Working on the FlyByWire A32NX or Fenix A320 (panel parity, MCDU, DCDU, cockpit controls, monitor manager)** → [FlyByWire A32NX / Fenix](docs/a32nx.md)
+- **Working on the COWS Diamond DA40 (NG/XLS panels, gauge arcs, FADEC power lever, G1000 readouts)** → [COWS DA40](docs/da40.md)
 - **Working on the shared flyPad EFB (A320 + A380 ground services, settings, dashboard reading order)** → [flyPad EFB](docs/flypad.md)
 - **Working on the HorizonSim 787-9 (CDU/IRS/EICAS over the Coherent debugger)** → [HorizonSim 787](docs/hs787.md)
 - **A control "doesn't work" and you're about to declare it broken, computed-output, or unsettable** → [Troubleshooting Playbook](docs/troubleshooting-playbook.md) (read this FIRST — most "broken" verdicts turn out wrong)
@@ -877,6 +892,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[PMDG EFB](docs/pmdg-efb.md)** - Coherent-debugger EFB scrape agent shared by the PMDG 737/777 (and HS787's CDU transport pattern)
 - **[FlyByWire A380X](docs/a380x.md)** - MCDU/MFD, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad-specific A380 notes, and all A380X invariants
 - **[FlyByWire A32NX / Fenix](docs/a32nx.md)** - A32NX panel parity, MCDU, DCDU, Fenix cockpit controls, Fenix monitor manager, momentary-button press-release fix
+- **[COWS DA40](docs/da40.md)** - NG/XLS panel coverage, the three airframe rules (read-only STATE_* mirrors, repeating momentary writes, wire-interlocked fuel valve), AFM gauge arcs, the non-monotonic FADEC power curve
 - **[flyPad EFB](docs/flypad.md)** - Shared FlyByWire A320/A380 flyPad accessibility architecture (WebView2 shell, ground services, settings, dashboard)
 - **[HorizonSim 787](docs/hs787.md)** - 787-9 CDU/IRS/EICAS over the Coherent debugger, community-folder-bridge retirement
 - **[Troubleshooting Playbook](docs/troubleshooting-playbook.md)** - Universal variable/control troubleshooting method — read before declaring any control "broken"

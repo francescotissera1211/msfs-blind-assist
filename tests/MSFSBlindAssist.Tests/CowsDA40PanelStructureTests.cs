@@ -563,6 +563,12 @@ public class CowsDA40PanelStructureTests
             .Select(k => new { Key = k, Def = vars[k] })
             // Buttons are momentary and have no state to announce; sliders are numeric.
             .Where(x => !x.Def.RenderAsButton && !x.Def.RenderAsSlider)
+            // The power lever is an ANALOGUE quantity, not a switch. Under a hardware
+            // throttle it moves continuously, so announcing it would speak a new
+            // percentage several times a second over everything else. It is read from
+            // the scan, like every other number. (The standby altimeter subscale stays
+            // announced: it is dialled to discrete settings, not swept.)
+            .Where(x => x.Key != "DA40_POWER_LEVER_SET")
             .Where(x => !x.Def.IsAnnounced
                      || x.Def.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
             .Select(x => x.Key)
@@ -800,5 +806,49 @@ public class CowsDA40PanelStructureTests
         Assert.True(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
         Assert.True(vars["DA40_FLAPS_POSITION"].ExcludeFromMonitorManager);
         Assert.False(vars["DA40_G1000_BARO"].IsAnnounced);
+    }
+
+    // ==============================================================================
+    // Power and Levers panel (NG)
+    // ==============================================================================
+
+    [Fact]
+    public void NgPowerPanelHasExactlyOneLever()
+    {
+        // The FADEC sets propeller and mixture from the power lever, so the NG pedestal
+        // is a single quadrant. A prop or mixture control here would be inventing one.
+        var controls = Ng().GetPanelControls()["Power and Levers"];
+
+        Assert.Equal(new[] { "DA40_POWER_LEVER_SET" }, controls.ToArray());
+    }
+
+    [Fact]
+    public void PowerScanShowsCommandedRpmBesideActual()
+    {
+        // The lever commands LOAD, and commanded RPM is not proportional to it — it FALLS
+        // from 2150 at idle to 1800 at 20 percent before climbing. Without the commanded
+        // figure there is no way to tell the propeller is being used as an airbrake.
+        var display = Ng().GetPanelDisplayVariables()["Power and Levers"];
+
+        Assert.Contains("DA40_POWER_TARGET_RPM", display);
+        Assert.Contains("DA40_POWER_RPM", display);
+        Assert.Contains("DA40_POWER_LOAD", display);
+    }
+
+    [Fact]
+    public void BothFadecLeverChannelsAreReported()
+    {
+        // The FADEC reads the lever once per ECU and the model gives each channel its own
+        // failure modes. Two channels disagreeing IS the symptom of a lever-sensor fault.
+        var display = Ng().GetPanelDisplayVariables()["Power and Levers"];
+
+        Assert.Contains("DA40_POWER_LEVER_A", display);
+        Assert.Contains("DA40_POWER_LEVER_B", display);
+    }
+
+    [Fact]
+    public void XlsHasNoNgPowerPanelVariables()
+    {
+        Assert.DoesNotContain("DA40_POWER_LEVER_SET", Xls().GetVariables().Keys);
     }
 }

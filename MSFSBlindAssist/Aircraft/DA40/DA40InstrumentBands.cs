@@ -76,6 +76,7 @@ public static class DA40InstrumentBands
         // Propeller RPM. No lower arcs; max continuous 2100, take-off 2300.
         ["DA40_START_RPM"]            = new BandRange(null, null, 2100, 2300),
         ["DA40_ECU_PROP_SENSED"]      = new BandRange(null, null, 2100, 2300),
+        ["DA40_POWER_RPM"]            = new BandRange(null, null, 2100, 2300),
 
         // Oil pressure, bar.
         ["DA40_START_OIL_PRESSURE"]   = new BandRange(0.9, 2.5, 6.0, 6.5),
@@ -94,6 +95,7 @@ public static class DA40InstrumentBands
 
         // Engine load, percent. Max continuous 92, take-off 100. No upper red.
         ["DA40_START_LOAD"]           = new BandRange(null, null, 92, null),
+        ["DA40_POWER_LOAD"]           = new BandRange(null, null, 92, null),
 
         // Electrical. Ammeter has no lower arcs; voltmeter has the full set.
         ["DA40_ELEC_DISP_AMPS"]       = new BandRange(null, null, 60, 70),
