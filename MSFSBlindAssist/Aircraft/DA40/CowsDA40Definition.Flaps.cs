@@ -45,6 +45,13 @@ public partial class CowsDA40Definition
     private const double FlapArrivedTolerancePct = 3.0;
 
     /// <summary>
+    /// Below this the flap limit margin is not worth saying. Parked, "110 knots to spare
+    /// at 0" is arithmetic rather than information, and it was reported as confusing the
+    /// first time it was heard. Above it the limit is genuinely in play.
+    /// </summary>
+    private const double FlapLimitSpeakMarginAboveKts = 40.0;
+
+    /// <summary>
     /// Above this the two sides disagree enough to matter. A healthy pair tracks to well
     /// under a percent — measured 47.23598 against 47.23598, identical to five decimals.
     /// </summary>
@@ -259,31 +266,36 @@ public partial class CowsDA40Definition
             {
                 var speeds = DA40Speeds.For(_variant);
                 double travel = (_flapLeftPct + _flapRightPct) / 2.0;
+                double kias = value;
 
-                // Keyed on where the flaps ARE, not what is selected — the limit that
-                // binds is the one for the setting the aeroplane is actually carrying.
-                double limit;
-                string forWhat;
-                if (travel <= FlapArrivedTolerancePct)
+                // Which limit BINDS depends on where the flaps are, not on what is
+                // selected - the constraint is the setting the aeroplane is carrying.
+                // With the flaps up nothing binds at all, and the useful number is the
+                // limit for the next setting you would reach for.
+                bool up = travel <= FlapArrivedTolerancePct;
+                bool landing = travel >= FlapDetentPercent[2] - FlapArrivedTolerancePct;
+
+                double limit = landing ? speeds.VfeLanding : speeds.VfeTakeoff;
+
+                string lead = up
+                    ? $"Flaps up. {limit:0} knots to select T/O"
+                    : $"{limit:0} knots with {(landing ? "LDG" : "T/O")} flap";
+
+                // Standing still the margin is arithmetic, not information - "110 to
+                // spare at 0" was reported live and it is noise. Only say it once the
+                // aeroplane is going fast enough for the limit to be in play.
+                if (kias < FlapLimitSpeakMarginAboveKts)
                 {
-                    limit = speeds.VfeTakeoff;
-                    forWhat = "next setting, T/O";
-                }
-                else if (travel < FlapDetentPercent[2] - FlapArrivedTolerancePct)
-                {
-                    limit = speeds.VfeTakeoff;
-                    forWhat = "T/O";
+                    displayText = lead;
                 }
                 else
                 {
-                    limit = speeds.VfeLanding;
-                    forWhat = "LDG";
+                    double margin = limit - kias;
+                    displayText = margin < 0
+                        ? $"{lead}. OVER by {-margin:0}, at {kias:0}"
+                        : $"{lead}. {margin:0} to spare at {kias:0}";
                 }
 
-                double margin = limit - value;
-                displayText = margin < 0
-                    ? $"{limit:0} knots for {forWhat} — OVER by {-margin:0}, at {value:0}"
-                    : $"{limit:0} knots for {forWhat}, {margin:0} to spare at {value:0}";
                 return true;
             }
         }

@@ -40,10 +40,11 @@ public partial class CowsDA40Definition
             // ---------- B: both altimeters ----------
             case HotkeyAction.ReadAltimeter:
             {
-                double g1000 = simConnect.GetCachedVariableValue("DA40_G1000_BARO")
-                               ?? ReadNow(simConnect, "KOHLSMAN SETTING HG:1");
-                double standby = simConnect.GetCachedVariableValue("DA40_STBY_ALT_SETTING_STATE")
-                                 ?? ReadNow(simConnect, "KOHLSMAN SETTING HG:2");
+                // Both subscales, BY KEY. The standby one is the Standby panel's own
+                // setting control, which is Continuous - not STATE_BARO2, whose mirror is
+                // OnRequest and so reads nothing unless that panel happens to be open.
+                double? g1000 = ReadNow(simConnect, "DA40_G1000_BARO");
+                double? standby = ReadNow(simConnect, "DA40_STBY_ALTIMETER_SET");
 
                 announcer.AnnounceImmediate(
                     $"Altimeter {BaroPhrase(g1000)}. Standby {BaroPhrase(standby)}.");
@@ -53,9 +54,14 @@ public partial class CowsDA40Definition
             // ---------- L: flaps ----------
             case HotkeyAction.ReadFlaps:
             {
-                double? f = simConnect.GetCachedVariableValue("DA40_FLAPS_POSITION");
-                int i = (int)Math.Round(f ?? ReadNow(simConnect, "FLAPS HANDLE INDEX"));
+                double? f = ReadNow(simConnect, "DA40_FLAPS_POSITION");
+                if (f is null)
+                {
+                    announcer.AnnounceImmediate("Flap position not available yet");
+                    return true;
+                }
 
+                int i = (int)Math.Round(f.Value);
                 announcer.AnnounceImmediate(i >= 0 && i < FlapDetents.Length
                     ? $"Flaps {FlapDetents[i]}"
                     : $"Flaps {i}");
@@ -72,8 +78,16 @@ public partial class CowsDA40Definition
             case HotkeyAction.ReadFuelQuantity:
             case HotkeyAction.ReadFuelInfo:
             {
-                double left = ReadNow(simConnect, "FUEL TANK LEFT MAIN QUANTITY");
-                double right = ReadNow(simConnect, "FUEL TANK RIGHT MAIN QUANTITY");
+                double? leftOpt = ReadNow(simConnect, "DA40_FUEL_MAIN_ACTUAL");
+                double? rightOpt = ReadNow(simConnect, "DA40_FUEL_AUX_ACTUAL");
+                if (leftOpt is null || rightOpt is null)
+                {
+                    announcer.AnnounceImmediate("Fuel quantity not available yet");
+                    return true;
+                }
+
+                double left = leftOpt.Value;
+                double right = rightOpt.Value;
                 double total = left + right;
 
                 // The NG's tanks are Main and Auxiliary, not left and right — the AFM is
@@ -90,7 +104,14 @@ public partial class CowsDA40Definition
             // ---------- W: weight ----------
             case HotkeyAction.ReadGrossWeightKg:
             {
-                double lb = ReadNow(simConnect, "TOTAL WEIGHT");
+                double? lbOpt = ReadNow(simConnect, "DA40_GROSS_WEIGHT");
+                if (lbOpt is null)
+                {
+                    announcer.AnnounceImmediate("Gross weight not available yet");
+                    return true;
+                }
+
+                double lb = lbOpt.Value;
                 double maxLb = IsNG ? 2888 : 2646;
 
                 announcer.AnnounceImmediate(
@@ -116,7 +137,7 @@ public partial class CowsDA40Definition
 
             case HotkeyAction.ReadSpeedVFE:
             {
-                int flap = (int)Math.Round(ReadNow(simConnect, "FLAPS HANDLE INDEX"));
+                int flap = (int)Math.Round(ReadNow(simConnect, "DA40_FLAPS_POSITION") ?? 0);
                 string limit = flap switch
                 {
                     1 => $"Take-off flap limit {speeds.VfeTakeoff:0} knots",
@@ -150,14 +171,25 @@ public partial class CowsDA40Definition
     /// A barometric setting in BOTH units. ATIS gives one or the other depending where you
     /// are, and converting in your head while flying is not the pilot's job.
     /// </summary>
-    private static string BaroPhrase(double inHg)
-        => $"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches";
+    private static string BaroPhrase(double? inHg)
+        => inHg is null
+            ? "not available yet"
+            : $"{inHg.Value * 33.8639:0} hectopascals, {inHg.Value:0.00} inches";
 
     /// <summary>
-    /// Reads a variable straight from the cache, falling back to 0. Readout hotkeys must
-    /// answer immediately — a hotkey that silently queues a request and says nothing looks
-    /// exactly like a broken key, which is what flaps and baro did before this file.
+    /// Reads a variable straight from the cache. Readout hotkeys must answer immediately -
+    /// a hotkey that silently queues a request and says nothing looks exactly like a
+    /// broken key, which is what flaps and baro did before this file existed.
+    ///
+    /// The argument is an MSFSBA VARIABLE KEY, never a SimVar name. The cache is written
+    /// as lastVariableValues[varKey], so looking up "FUEL TANK LEFT MAIN QUANTITY" or
+    /// "KOHLSMAN SETTING HG:1" misses however correct the name is. Every readout here once
+    /// did exactly that, and the old "?? 0" then turned the miss into a reading: a full
+    /// aeroplane reported "0 hectopascals" and "0.0 gallons".
+    ///
+    /// It returns null rather than 0 for the same reason. A missing reading and a genuine
+    /// zero are different facts, and only the caller knows how to say which it has.
     /// </summary>
-    private static double ReadNow(SimConnectManager simConnect, string name)
-        => simConnect.GetCachedVariableValue(name) ?? 0;
+    private static double? ReadNow(SimConnectManager simConnect, string key)
+        => simConnect.GetCachedVariableValue(key);
 }

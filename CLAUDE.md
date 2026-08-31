@@ -752,6 +752,8 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A non-percentage numeric control must NOT set `RenderAsSlider` — MainForm's `TrackBar` is hardcoded 0-100 and maps the value as a percentage of that range; a key ending `_SET` renders as a typed entry instead. → [da40.md](docs/da40.md)
 - `IsAnnounced` governs BACKGROUND changes only — combo double-talk is handled globally by `_uiSetEcho`. Every settable switch is Continuous + announced; every numeric readout is silent (the power lever counts as a number, not a switch). → [da40.md](docs/da40.md)
 - `BaseAircraftDefinition` implements NO readout hotkeys — every aircraft answers its own, from the CACHE, immediately. → [da40.md](docs/da40.md)
+- `GetCachedVariableValue` is keyed by the MSFSBA VARIABLE KEY, never the SimVar name (`lastVariableValues[varKey]`), and holds ONLY Continuous variables — a readout passing a SimVar name, or depending on an OnRequest var, gets nothing; never turn that miss into a 0. → [da40.md](docs/da40.md)
+- A panel listed in `GetPanelStructure()` with no controls AND no display vars renders BLANK, which reads as broken — every panel must be built or on the explicit not-yet-built list. → [da40.md](docs/da40.md)
 - The NG power lever commands LOAD and its commanded RPM is NON-MONOTONIC (2150 at idle, 1800 at 20 %, 2300 at full) — always report commanded RPM beside actual, or "disc mode" is invisible. → [da40.md](docs/da40.md)
 - Anything doable inside a G1000 display (MFD pages, the checklist, softkeys) does NOT get a panel — it belongs in a display window reached by a hotkey. → [da40.md](docs/da40.md)
 

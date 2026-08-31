@@ -144,7 +144,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG)
         {
             structure["Instrument Panel"].Insert(2, "ECU");
-            structure["Center Console"].Insert(2, "Fuel Transfer");
+
+            // There is deliberately NO separate "Fuel Transfer" panel. The planning pass
+            // sketched one, and building the Fuel System panel folded the transfer pump
+            // into it where it belongs — the transfer switch, the fuel valve and the
+            // pumps are one system and splitting them would make the pilot hunt. The
+            // sketch was left in the structure with nothing behind it and rendered as an
+            // empty panel, which is indistinguishable from a broken one. Pinned by
+            // EveryPanelInTheStructureIsBuiltOrKnownUnbuilt.
         }
         else
         {

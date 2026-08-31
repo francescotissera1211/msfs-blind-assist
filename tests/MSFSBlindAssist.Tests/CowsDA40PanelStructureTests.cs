@@ -79,7 +79,11 @@ public class CowsDA40PanelStructureTests
         var ng = Ng().GetPanelStructure();
 
         Assert.Contains("ECU", ng["Instrument Panel"]);
-        Assert.Contains("Fuel Transfer", ng["Center Console"]);
+
+        // There is no separate "Fuel Transfer" panel: the transfer pump lives on the Fuel
+        // System panel with the valve and the pumps, because they are one system.
+        Assert.DoesNotContain("Fuel Transfer", ng["Center Console"]);
+        Assert.Contains("Fuel System", ng["Center Console"]);
 
         Assert.DoesNotContain("Magnetos", ng["Instrument Panel"]);
         Assert.DoesNotContain("Mixture and Propeller", ng["Center Console"]);
@@ -98,7 +102,6 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("Lean Assist", xls["G1000 MFD"]);
 
         Assert.DoesNotContain("ECU", xls["Instrument Panel"]);
-        Assert.DoesNotContain("Fuel Transfer", xls["Center Console"]);
     }
 
     [Fact]
@@ -1032,5 +1035,151 @@ public class CowsDA40PanelStructureTests
         Assert.Equal(98, DA40Speeds.For(DA40Variant.NG).VfeLanding);
         Assert.Equal(108, DA40Speeds.For(DA40Variant.XLS).VfeTakeoff);
         Assert.Equal(91, DA40Speeds.For(DA40Variant.XLS).VfeLanding);
+    }
+
+    // ==============================================================================
+    // No panel may be silently empty
+    // ==============================================================================
+
+    /// <summary>
+    /// Panels that are in the structure but not built yet, on EITHER variant. Every name
+    /// here renders as an empty panel today, which is the price of publishing the whole
+    /// roadmap up front - but it has to be a DELIBERATE price, listed, and it has to
+    /// shrink.
+    /// </summary>
+    private static readonly string[] NotBuiltYet =
+    {
+        // Center Console
+        "Elevator Trim", "Brakes", "Cabin Heat and Vent", "Audio",
+        // Circuit Breakers
+        "Engine and Fuel", "Flight Instruments", "Avionics", "Bus and Power",
+        "Lighting", "Airframe Systems", "Copilot",
+        // G1000
+        "PFD Readout", "CAS Messages", "Engine Indication", "Fuel Calculator",
+        // Autopilot
+        "GFC 700", "Flight Director",
+        // Cabin
+        "Doors and Windows", "Seating and Payload",
+        // Simulation
+        "Failures", "Reset", "Engine Damage"
+    };
+
+    /// <summary>
+    /// Panels the XLS additionally has nothing behind yet. Three of them - Engine Start,
+    /// Power and Levers, Fuel System - are BUILT, but only for the NG: the Lycoming has a
+    /// magneto key rather than a FADEC start, three levers rather than one, and a
+    /// left/right tank selector rather than a transfer pump, so none of the NG code can
+    /// be reused as-is. The XLS comes after the NG is finished, by plan, and until then
+    /// this list is what stops those empty panels being mistaken for broken ones.
+    /// </summary>
+    private static readonly string[] NotBuiltYetOnXls =
+    {
+        "Engine Start", "Power and Levers", "Fuel System",
+        "Mixture and Propeller", "Magnetos", "Priming", "Lean Assist"
+    };
+
+    private static bool IsKnownUnbuilt(DA40Variant variant, string panel)
+        => NotBuiltYet.Contains(panel)
+           || (variant == DA40Variant.XLS && NotBuiltYetOnXls.Contains(panel));
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryPanelInTheStructureIsBuiltOrKnownUnbuilt(DA40Variant variant)
+    {
+        // A panel with no controls and no status rows renders BLANK, and a blank panel is
+        // indistinguishable from a broken one. This is how a "Fuel Transfer" panel from
+        // the planning sketch survived being folded into Fuel System and was reported
+        // live as empty.
+        var def = new CowsDA40Definition(variant);
+        var controls = def.GetPanelControls();
+        var display = def.GetPanelDisplayVariables();
+
+        var empty = def.GetPanelStructure()
+            .SelectMany(section => section.Value)
+            .Where(panel => !(controls.TryGetValue(panel, out var c) && c.Count > 0)
+                         && !(display.TryGetValue(panel, out var d) && d.Count > 0))
+            .Where(panel => !IsKnownUnbuilt(variant, panel))
+            .Distinct()
+            .ToList();
+
+        Assert.True(empty.Count == 0,
+            $"{variant}: these panels render empty and are not on the unbuilt list — " +
+            string.Join(", ", empty));
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void TheUnbuiltListDoesNotNameAPanelThatIsNowBuilt(DA40Variant variant)
+    {
+        // The other direction: building a panel must remove it from the list, or the list
+        // stops being a truthful record of what is still missing.
+        var def = new CowsDA40Definition(variant);
+        var controls = def.GetPanelControls();
+        var display = def.GetPanelDisplayVariables();
+
+        var stale = NotBuiltYet
+            .Concat(variant == DA40Variant.XLS ? NotBuiltYetOnXls : Array.Empty<string>())
+            .Where(panel => (controls.TryGetValue(panel, out var c) && c.Count > 0)
+                         || (display.TryGetValue(panel, out var d) && d.Count > 0))
+            .ToList();
+
+        Assert.True(stale.Count == 0,
+            $"{variant}: these are built and should come off the unbuilt list — " +
+            string.Join(", ", stale));
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void NoPanelHasVariablesWithoutAppearingInTheStructure(DA40Variant variant)
+    {
+        // The mirror of the empty-panel bug: a panel built but never listed is
+        // unreachable, and nothing else would notice.
+        var def = new CowsDA40Definition(variant);
+        var listed = def.GetPanelStructure().SelectMany(s => s.Value).ToHashSet();
+
+        var orphans = def.GetPanelControls().Keys
+            .Concat(def.GetPanelDisplayVariables().Keys)
+            .Where(panel => !listed.Contains(panel))
+            .Distinct()
+            .ToList();
+
+        Assert.True(orphans.Count == 0,
+            $"{variant}: panels with content but no place in the structure — " +
+            string.Join(", ", orphans));
+    }
+
+    // ==============================================================================
+    // Readout hotkeys answer from the cache, which is keyed by VARIABLE KEY
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryVariableAReadoutNeedsIsContinuousOnBothVariants(DA40Variant variant)
+    {
+        // The B, F, L and W keys read these. SimConnectManager caches by VARIABLE KEY, and
+        // only Continuous variables are in the cache at all — an OnRequest one is polled
+        // only while its own panel is open. Both halves of that bit MSFSBA live: the keys
+        // were passing SimVar NAMES to a key-keyed cache and reporting a full aeroplane as
+        // "0 hectopascals" and "0.0 gallons".
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (var key in new[]
+                 {
+                     "DA40_G1000_BARO",          // B
+                     "DA40_STBY_ALTIMETER_SET",  // B, the second altimeter
+                     "DA40_FUEL_MAIN_ACTUAL",    // F
+                     "DA40_FUEL_AUX_ACTUAL",     // F
+                     "DA40_FLAPS_POSITION",      // L, and the Vfe readout
+                     "DA40_GROSS_WEIGHT"         // W
+                 })
+        {
+            Assert.True(vars.ContainsKey(key), $"{variant}: {key} is not defined");
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous,
+                         vars[key].UpdateFrequency);
+        }
     }
 }

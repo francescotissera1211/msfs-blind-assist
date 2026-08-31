@@ -190,16 +190,20 @@ public partial class CowsDA40Definition
 
         // What the dipstick would say. The AFM REQUIRES this measurement whenever the
         // gauge is on its cap, so this is the pre-flight check, not extra information.
-        AddReadout(v, "DA40_FUEL_MAIN_ACTUAL", "FUEL_QUANT:1", "Main Tank Measured", "gallons", "F1");
-        AddReadout(v, "DA40_FUEL_AUX_ACTUAL", "FUEL_QUANT:2", "Auxiliary Tank Measured", "gallons", "F1");
+        //
+        // DA40_FUEL_MAIN_ACTUAL and DA40_FUEL_AUX_ACTUAL are NOT defined here - they live
+        // in Shared.cs as CONTINUOUS variables, because the F readout has to answer from
+        // the cache on both variants and an OnRequest copy is only polled while this panel
+        // happens to be open. This panel just lists those keys on its scan.
 
         // Computed. Bound to the main quantity only so it has a value to be rendered
         // with; the text is replaced entirely. MUST stay after both tanks in the list.
         v["DA40_FUEL_DIFFERENCE"] = new SimVarDefinition
         {
-            Name = "FUEL_QUANT:1",
+            Name = "FUEL TANK LEFT MAIN QUANTITY",
             DisplayName = "Tank Difference",
-            Type = SimVarType.LVar,
+            Type = SimVarType.SimVar,
+            Units = "gallons",
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true
