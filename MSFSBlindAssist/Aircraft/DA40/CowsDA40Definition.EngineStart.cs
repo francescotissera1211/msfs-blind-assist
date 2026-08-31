@@ -187,7 +187,13 @@ public partial class CowsDA40Definition
         AddReadout(v, "DA40_START_GLOW_TEMP", "START_GLOW_TEMP:1", "Glow Plug Temperature", "celsius", "F0");
 
         // Idle target from AFM start item 10: 710 +/- 30 RPM (higher above 7000 ft).
-        AddReadout(v, "DA40_START_RPM", "DISP_PROP_RPM", "Propeller RPM", "rpm", "F0");
+        //
+        // Read from PROP_RPM_SENS:1, not DISP_PROP_RPM. The EIS variable is QUANTISED TO
+        // 10 RPM — measured 710 while the true speed was 705.12 — because that is how the
+        // G1000 renders the digits. But the gauge's needle moves smoothly, so a sighted
+        // pilot sees continuous change, and rounding to 10 would hide it. The sensed value
+        // gives 1 RPM resolution, which is what the needle conveys.
+        AddReadout(v, "DA40_START_RPM", "PROP_RPM_SENS:1", "Propeller RPM", "rpm", "F0");
         // AFM warning: must leave the red range within 3 seconds of starting.
         AddReadout(v, "DA40_START_OIL_PRESSURE", "DISP_OP", "Oil Pressure", "bar", "F2");
         AddReadout(v, "DA40_START_OIL_TEMP", "DISP_OT", "Oil Temperature", "celsius", "F0");

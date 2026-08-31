@@ -650,4 +650,65 @@ public class CowsDA40PanelStructureTests
         Assert.True(repeated.Count == 0,
             $"{variant}: controls repeated on a scan — {string.Join(", ", repeated)}");
     }
+
+    // ==============================================================================
+    // Standby Instruments panel
+    // ==============================================================================
+
+    [Fact]
+    public void StandbyHasItsOwnAltimeterSubscale()
+    {
+        // KOHLSMAN SETTING HG:2 is a SEPARATE subscale from the G1000's, which is why the
+        // AFM descent check reads "Altimeters (2) SET".
+        var v = Ng().GetVariables()["DA40_STBY_ALTIMETER_SET"];
+
+        Assert.Equal("KOHLSMAN SETTING HG:2", v.Name);
+        Assert.Equal(28.00, v.SliderMin);
+        Assert.Equal(31.50, v.SliderMax);
+    }
+
+    [Fact]
+    public void GyroCageIsAHeldButton_NotAToggle()
+    {
+        // ATT_CAGE is zeroed every frame; a combo would write once and nothing would happen.
+        var v = Ng().GetVariables()["DA40_STBY_GYRO_CAGE"];
+
+        Assert.True(v.RenderAsButton);
+        Assert.True(v.SuppressRestingButtonState);
+        Assert.Empty(v.ValueDescriptions);
+    }
+
+    [Fact]
+    public void StandbyScanReportsGyroHealth_NotJustAttitude()
+    {
+        // A toppled gyro shows a plausible lie. Spin, rigidity and topple are the only way
+        // to know the instrument has stopped being trustworthy.
+        var display = Ng().GetPanelDisplayVariables()["Standby Instruments"];
+
+        Assert.Contains("DA40_STBY_GYRO_PITCH", display);
+        Assert.Contains("DA40_STBY_GYRO_BANK", display);
+        Assert.Contains("DA40_STBY_GYRO_SPEED", display);
+        Assert.Contains("DA40_STBY_GYRO_TOPPLE", display);
+        Assert.Contains("DA40_STBY_GYRO_CAGED", display);
+    }
+
+    [Fact]
+    public void StandbyCoversAllFourBackupInstruments()
+    {
+        // AFM legend 17-20: airspeed, artificial horizon, altimeter, compass.
+        var display = Ng().GetPanelDisplayVariables()["Standby Instruments"];
+
+        Assert.Contains("DA40_STBY_AIRSPEED", display);
+        Assert.Contains("DA40_STBY_ALTITUDE", display);
+        Assert.Contains("DA40_STBY_COMPASS", display);
+        Assert.Contains("DA40_STBY_GYRO_PITCH", display);
+    }
+
+    [Fact]
+    public void PropellerRpmUsesTheFineSource_NotTheQuantisedEisValue()
+    {
+        // DISP_PROP_RPM is rounded to 10 by the airframe (measured 710 against a true
+        // 705.12). The needle moves smoothly, so the sensed value is what matches it.
+        Assert.Equal("PROP_RPM_SENS:1", Ng().GetVariables()["DA40_START_RPM"].Name);
+    }
 }
