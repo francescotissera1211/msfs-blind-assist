@@ -34,7 +34,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// and the panel would otherwise render completely blank (the HS787 Flight Data trap,
 /// docs/hs787.md).
 /// </summary>
-public class CowsDA40Definition : BaseAircraftDefinition
+public partial class CowsDA40Definition : BaseAircraftDefinition
 {
     private readonly DA40Variant _variant;
 
@@ -81,27 +81,36 @@ public class CowsDA40Definition : BaseAircraftDefinition
                 "Cabin Heat and Vent",
                 "Audio"
             },
+            // The section already says "Circuit Breakers"; repeating "CB" on every panel
+            // just makes each one longer to hear. "Bus and Power" / "Airframe Systems"
+            // avoid colliding with the Instrument Panel's "Electrical" and the Center
+            // Console's panels — panel names key a FLAT dictionary, so a duplicate would
+            // silently collapse the two into one (covered by a test).
             ["Circuit Breakers"] = new List<string>
             {
-                "CB Engine and Fuel",
-                "CB Flight Instruments",
-                "CB Avionics",
-                "CB Electrical",
-                "CB Lighting",
-                "CB Systems",
-                "CB Copilot"
+                "Engine and Fuel",
+                "Flight Instruments",
+                "Avionics",
+                "Bus and Power",
+                "Lighting",
+                "Airframe Systems",
+                "Copilot"
             },
+            // The G1000 bezel — 12 softkeys, the FMS knobs, MENU/ENT/CLR/FPL/PROC/DIRECT-TO,
+            // baro and range — is NOT a panel. It belongs in a dedicated display window
+            // reached by an output-mode hotkey, the way the A380X E/WD (Alt+E), SD (Alt+S),
+            // ND (Alt+N), PFD (Alt+P) and ISIS (Alt+I) already work: the window carries the
+            // live display text AND the interactive keys together, and the softkey labels
+            // change per page (Check <-> Next Item, Caution <-> Alerts) so they have to be
+            // read live rather than laid out as a static control list.
+            // The panels below are the SCANNABLE READOUTS only.
             ["G1000 PFD"] = new List<string>
             {
-                "PFD Softkeys",
-                "PFD Bezel",
                 "PFD Readout",
                 "CAS Messages"
             },
             ["G1000 MFD"] = new List<string>
             {
-                "MFD Softkeys",
-                "MFD Bezel",
                 "Engine Indication",
                 "Fuel Calculator",
                 "Aircraft Options",
@@ -137,7 +146,7 @@ public class CowsDA40Definition : BaseAircraftDefinition
         {
             structure["Center Console"].Insert(1, "Mixture and Propeller");
             structure["Instrument Panel"].Insert(2, "Magnetos");
-            structure["G1000 MFD"].Insert(3, "Lean Assist");
+            structure["G1000 MFD"].Insert(2, "Lean Assist");
             structure["Center Console"].Insert(3, "Priming");
         }
 
@@ -164,21 +173,53 @@ public class CowsDA40Definition : BaseAircraftDefinition
             }
         }
 
+        // Populated panels override their empty placeholder.
+        controls[ElectricalPanel] = new List<string>(ElectricalControls);
+
         return controls;
     }
 
     protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        // Base variables only for now (position, speeds, the shared airframe set).
-        // Aircraft-specific variables arrive with their panels.
-        return GetBaseVariables();
+        var vars = GetBaseVariables();
+
+        foreach (var kv in BuildElectricalVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        return vars;
     }
 
+    /// <summary>
+    /// Status-display contents, reached with Ctrl+3 and refreshed in place with F5.
+    /// These are the PRIMARY readout for this aircraft: a sighted pilot flies the DA40
+    /// by scanning gauges when they choose to look, so MSFSBA reproduces that scan
+    /// rather than narrating values at the pilot. Announcements stay reserved for what
+    /// interrupts a sighted pilot too (CAS messages, a breaker popping).
+    /// </summary>
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
-        => new Dictionary<string, List<string>>();
+        => new Dictionary<string, List<string>>
+        {
+            [ElectricalPanel] = new List<string>(ElectricalDisplay)
+        };
 
     public override Dictionary<string, string> GetButtonStateMapping()
         => new Dictionary<string, string>();
+
+    /// <summary>
+    /// Panel writes that need more than a plain set — chiefly the switches that expose
+    /// only a toggle event and must be written conditionally so a combo is idempotent.
+    /// Each panel adds its own handler; anything unclaimed falls through to the generic path.
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value,
+        SimConnect.SimVarDefinition varDef, SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (HandleElectricalSet(varKey, value, simConnect)) return true;
+
+        return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
 
     // ==================================================================================
     // GFC 700 autopilot control types
