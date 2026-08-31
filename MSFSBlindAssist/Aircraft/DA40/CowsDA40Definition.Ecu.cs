@@ -196,14 +196,14 @@ public partial class CowsDA40Definition
 
         // The five AFM preconditions, each shown with its live value so the pilot can see
         // which one is short rather than being told "not ready".
-        // The stage machine gates on the SENSED propeller speed reaching 1890 rpm before
-        // it will advance out of the spin-up stages. If the engine cannot get there the
-        // test loops instead of progressing — observed live — so the pilot needs to see
-        // this number, not just the commanded RPM.
-        AddReadout(v, "DA40_ECU_PROP_SENSED", "PROP_RPM_SENS:1", "Sensed Propeller RPM", "rpm", "F0");
+        // ONE propeller reading, not two. PROP_RPM_SENS:1 is the sensed speed the stage
+        // machine actually gates on (it will not advance out of a spin-up stage until this
+        // reaches 1890 rpm, and the test loops if the engine cannot get there — seen live).
+        // DISP_PROP_RPM tracks it within about 10 rpm, so showing both was just two nearly
+        // identical numbers; the AFM's "below 1100 rpm" precondition is judged from this one.
+        AddReadout(v, "DA40_ECU_PROP_SENSED", "PROP_RPM_SENS:1", "Propeller RPM", "rpm", "F0");
 
         AddReadout(v, "DA40_ECU_PRE_GEARBOX", "DISP_GT", "Gearbox Temperature", "celsius", "F0");
-        AddReadout(v, "DA40_ECU_PRE_PROP_RPM", "DISP_PROP_RPM", "Propeller RPM", "rpm", "F0");
         AddReadout(v, "DA40_ECU_PRE_POWER_LEVER", "FADEC_POWER_LEVER:1", "Power Lever", "percent", "F0");
 
         v["DA40_ECU_PRE_ON_GROUND"] = new SimVarDefinition
@@ -249,7 +249,6 @@ public partial class CowsDA40Definition
         "DA40_ECU_TEST_STEP",
         "DA40_ECU_TEST_ELAPSED",
         "DA40_ECU_TEST_WATCHDOG",
-        "DA40_ECU_PROP_SENSED",
         "DA40_ECU_TEST_FAIL_A",
         "DA40_ECU_TEST_FAIL_B",
         "DA40_ECU_FAIL_A",
@@ -260,7 +259,7 @@ public partial class CowsDA40Definition
         "DA40_ECU_RUNTIME_B",
         // Preconditions last — the pilot reads down to them when the test will not run.
         "DA40_ECU_PRE_POWER_LEVER",
-        "DA40_ECU_PRE_PROP_RPM",
+        "DA40_ECU_PROP_SENSED",
         "DA40_ECU_PRE_GEARBOX",
         "DA40_ECU_PRE_ON_GROUND"
     };
@@ -271,6 +270,9 @@ public partial class CowsDA40Definition
 
     /// <summary>When the ECU test button was pressed, for the elapsed readout.</summary>
     private long _ecuTestStartedTicks;
+
+    /// <summary>When the press ended, so "finished" reports time since the END.</summary>
+    private long _ecuTestEndedTicks;
 
     private System.Windows.Forms.Timer? _holdTimer;
     private string _holdVar = "";
@@ -331,6 +333,8 @@ public partial class CowsDA40Definition
         _holdTimer.Dispose();
         _holdTimer = null;
 
+        if (_holdVar == "ECU_TEST:1") _ecuTestEndedTicks = Environment.TickCount64;
+
         if (!string.IsNullOrEmpty(_holdVar))
         {
             try { simConnect.SetLVar(_holdVar, 0); } catch { /* release must never throw */ }
@@ -351,7 +355,7 @@ public partial class CowsDA40Definition
         double Lv(string n) => simConnect.GetCachedVariableValue(n) ?? 0;
 
         double powerLever = Lv("DA40_ECU_PRE_POWER_LEVER");
-        double propRpm = Lv("DA40_ECU_PRE_PROP_RPM");
+        double propRpm = Lv("DA40_ECU_PROP_SENSED");
         double gearbox = Lv("DA40_ECU_PRE_GEARBOX");
         double voter = Lv("DA40_ECU_VOTER");
         double onGround = Lv("DA40_ECU_PRE_ON_GROUND");
@@ -383,6 +387,7 @@ public partial class CowsDA40Definition
                     : "ECU test running. " + string.Join(", ", blockers) + ".");
 
                 _ecuTestStartedTicks = Environment.TickCount64;
+                _ecuTestEndedTicks = 0;
                 HoldLVar("ECU_TEST:1", EcuTestHoldMs, simConnect);
                 return true;
             }
@@ -407,12 +412,21 @@ public partial class CowsDA40Definition
             return true;
         }
 
-        double seconds = (Environment.TickCount64 - _ecuTestStartedTicks) / 1000.0;
+        long now = Environment.TickCount64;
 
-        displayText = value >= 0.5
-            ? $"{seconds:0} s of about {EcuTestHoldMs / 1000} s"
-            : $"finished, {seconds:0} s ago";
+        if (value >= 0.5 || _ecuTestEndedTicks == 0)
+        {
+            // Still running: how far through the press we are.
+            displayText = $"{(now - _ecuTestStartedTicks) / 1000.0:0} s of about {EcuTestHoldMs / 1000} s";
+            return true;
+        }
 
+        // Finished. Time since the press ENDED, plus how long it ran — measuring "ago"
+        // from the press START made a just-finished test report half a minute ago.
+        double ranFor = (_ecuTestEndedTicks - _ecuTestStartedTicks) / 1000.0;
+        double sinceEnd = (now - _ecuTestEndedTicks) / 1000.0;
+
+        displayText = $"ran {ranFor:0} s, finished {sinceEnd:0} s ago";
         return true;
     }
 }

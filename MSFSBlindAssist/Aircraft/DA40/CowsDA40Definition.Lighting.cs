@@ -22,17 +22,25 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// a companion.
 ///
 /// The three cabin lights are individually switched overhead (right, left, baggage) as
-/// A:LIGHT CABIN:1/2/3. All three are exposed separately — a pilot can switch any one
-/// of them in the real aeroplane. The POH's convenience clickspot on the standby
-/// airspeed needle toggles all three at once, and that is offered as an extra control,
-/// never as a replacement for the individual switches.
+/// A:LIGHT CABIN:1/2/3, and that is exactly how they appear here. COWS also puts a
+/// convenience clickspot on the standby airspeed needle that toggles all three at once,
+/// but that is a MOUSE SHORTCUT, not a control on the aeroplane's panel — so it is not
+/// offered here. The three switches already do everything it does.
 ///
 /// The pilot's flood light is wired directly to the main battery and works with the
 /// electric master off (POH), which is why the Emergency-procedures checklist reaches
 /// for it after an electrical failure.
 ///
-/// There is no ice/wing-inspection light SWITCH on this airframe — L:STATE_LIGHT_ICE is
-/// a state only, so it appears on the scan and not among the controls.
+/// COMPLETENESS, checked against the model rather than assumed:
+///   - Every light switch here is TWO-POSITION. The only three-position switches in the
+///     cockpit are the ECU voter, the ignition key and the fuel selector — none of them
+///     lights.
+///   - There is NO beacon. The AFM abbreviation list defines STROBE as the
+///     anti-collision light, and the word "beacon" does not occur in the model at all.
+///   - L:STATE_LIGHT_ICE mirrors A:LIGHT WING, the wing/ice inspection light. The model
+///     provides NO cockpit switch for it, so it is reported on the scan and not offered
+///     as a control — inventing a switch the aeroplane does not have would be as wrong
+///     as omitting one it does.
 /// </summary>
 public partial class CowsDA40Definition
 {
@@ -58,19 +66,6 @@ public partial class CowsDA40Definition
         AddLightSwitch(v, "DA40_LIGHT_CABIN_RIGHT", "LIGHT CABIN:1", "Cabin Light Right");
         AddLightSwitch(v, "DA40_LIGHT_CABIN_LEFT", "LIGHT CABIN:2", "Cabin Light Left");
         AddLightSwitch(v, "DA40_LIGHT_CABIN_BAGGAGE", "LIGHT CABIN:3", "Cabin Light Baggage");
-
-        v["DA40_LIGHT_CABIN_ALL"] = new SimVarDefinition
-        {
-            Name = "DA40_LIGHT_CABIN_ALL",
-            DisplayName = "All Cabin Lights",
-            Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.Never,
-            RenderAsButton = true,
-            SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Toggles all three cabin lights together — the same shortcut the POH " +
-                       "puts on the standby airspeed indicator needle."
-        };
 
         // ---------- Status ----------
 
@@ -131,8 +126,7 @@ public partial class CowsDA40Definition
         "DA40_LIGHT_FLOOD",
         "DA40_LIGHT_CABIN_RIGHT",
         "DA40_LIGHT_CABIN_LEFT",
-        "DA40_LIGHT_CABIN_BAGGAGE",
-        "DA40_LIGHT_CABIN_ALL"
+        "DA40_LIGHT_CABIN_BAGGAGE"
     };
 
     private static readonly List<string> LightingDisplay = new()

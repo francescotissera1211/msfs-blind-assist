@@ -394,7 +394,7 @@ public class CowsDA40PanelStructureTests
         var display = Ng().GetPanelDisplayVariables()["ECU"];
 
         Assert.Contains("DA40_ECU_PRE_POWER_LEVER", display);
-        Assert.Contains("DA40_ECU_PRE_PROP_RPM", display);
+        Assert.Contains("DA40_ECU_PROP_SENSED", display);
         Assert.Contains("DA40_ECU_PRE_GEARBOX", display);
         Assert.Contains("DA40_ECU_PRE_ON_GROUND", display);
         // The fifth (voter in Auto) is the control itself, on the same panel.
@@ -449,7 +449,10 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_LIGHT_CABIN_RIGHT", controls);
         Assert.Contains("DA40_LIGHT_CABIN_LEFT", controls);
         Assert.Contains("DA40_LIGHT_CABIN_BAGGAGE", controls);
-        Assert.Contains("DA40_LIGHT_CABIN_ALL", controls);
+        // The COWS all-at-once clickspot is a mouse shortcut, not a panel control, and
+        // the three switches already do everything it does.
+        Assert.DoesNotContain("DA40_LIGHT_CABIN_ALL", controls);
+        Assert.Equal(9, controls.Count);
     }
 
     [Fact]
@@ -479,5 +482,31 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_LIGHT_ICE_STATE", def.GetPanelDisplayVariables()["Lighting Switches"]);
         Assert.DoesNotContain("DA40_LIGHT_ICE_STATE", def.GetPanelControls()["Lighting Switches"]);
+    }
+
+    [Fact]
+    public void EcuShowsOnePropellerReading_NotTwoNearIdenticalOnes()
+    {
+        var def = Ng();
+
+        Assert.Contains("DA40_ECU_PROP_SENSED", def.GetPanelDisplayVariables()["ECU"]);
+        Assert.DoesNotContain("DA40_ECU_PRE_PROP_RPM", def.GetVariables().Keys);
+        // The sensed speed is the one the stage machine gates on.
+        Assert.Equal("PROP_RPM_SENS:1", def.GetVariables()["DA40_ECU_PROP_SENSED"].Name);
+    }
+
+    [Fact]
+    public void EveryLightSwitchIsTwoPosition()
+    {
+        // No multi-position light switches exist on this airframe; the only three-position
+        // switches are the ECU voter, the ignition key and the fuel selector.
+        var vars = Ng().GetVariables();
+
+        foreach (var key in Ng().GetPanelControls()["Lighting Switches"])
+        {
+            var v = vars[key];
+            if (v.RenderAsSlider) continue;   // the two brightness knobs
+            Assert.Equal(2, v.ValueDescriptions.Count);
+        }
     }
 }
