@@ -261,4 +261,74 @@ public class CowsDA40PanelStructureTests
             Assert.False(v.IsAnnounced, $"{key} must not self-announce on UI set");
         }
     }
+
+    // ==============================================================================
+    // Engine Start panel (NG)
+    // ==============================================================================
+
+    [Fact]
+    public void EngineStartExposesTheKeyAndTheEngineMaster()
+    {
+        var controls = Ng().GetPanelControls()["Engine Start"];
+
+        Assert.Contains("DA40_START_STARTER_ENGAGE", controls);
+        Assert.Contains("DA40_START_STARTER_RELEASE", controls);
+        // AFM start item 2 is ENGINE MASTER — deliberately reachable from this panel too.
+        Assert.Contains("DA40_ELEC_ENGINE_MASTER", controls);
+        Assert.Contains("DA40_ELEC_ENGINE_MASTER_COVER", controls);
+    }
+
+    [Fact]
+    public void StartKeyPositionIsReadOnly_BecauseTheLvarIsADerivedMirror()
+    {
+        // Writing L:STARTER_SWITCH does nothing (measured: wrote 1, read back 0). It is
+        // computed from the battery master and the starter, so it can only be a readout.
+        var v = Ng().GetVariables()["DA40_START_KEY_POSITION"];
+
+        Assert.True(v.RenderAsReadOnlyStatus);
+        Assert.Equal("STARTER_SWITCH", v.Name);
+        Assert.Equal(3, v.ValueDescriptions.Count);
+        Assert.Equal("Start", v.ValueDescriptions[2]);
+    }
+
+    [Fact]
+    public void StarterButtonsAreMomentaryAndCarryTheAfmLimit()
+    {
+        var vars = Ng().GetVariables();
+
+        foreach (var key in new[] { "DA40_START_STARTER_ENGAGE", "DA40_START_STARTER_RELEASE" })
+        {
+            var v = vars[key];
+            Assert.True(v.RenderAsButton, $"{key} should be a button");
+            Assert.True(v.SuppressRestingButtonState, $"{key} has no meaningful resting value");
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Never, v.UpdateFrequency);
+        }
+
+        Assert.Contains("10", vars["DA40_START_STARTER_ENGAGE"].HelpText);
+    }
+
+    [Fact]
+    public void EngineStartScanCoversTheAfmStartChecks()
+    {
+        var display = Ng().GetPanelDisplayVariables()["Engine Start"];
+
+        // AFM 4A.5.3: glow, then crank, then oil pressure out of the red within 3 s,
+        // then idle RPM 710 +/- 30.
+        Assert.Contains("DA40_START_GLOW_ON", display);
+        Assert.Contains("DA40_START_STARTER_ENGAGED", display);
+        Assert.Contains("DA40_START_COMBUSTION", display);
+        Assert.Contains("DA40_START_OIL_PRESSURE", display);
+        Assert.Contains("DA40_START_RPM", display);
+        Assert.Contains("DA40_START_GEARBOX_TEMP", display);
+    }
+
+    [Fact]
+    public void XlsHasNoNgEngineStartVariables()
+    {
+        // The XLS starts on magnetos and a primer, not a FADEC glow-plug cycle.
+        var vars = Xls().GetVariables();
+
+        Assert.DoesNotContain("DA40_START_GLOW_ON", vars.Keys);
+        Assert.DoesNotContain("DA40_START_STARTER_ENGAGE", vars.Keys);
+    }
 }

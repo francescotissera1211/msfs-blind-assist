@@ -175,6 +175,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         // Populated panels override their empty placeholder.
         controls[ElectricalPanel] = new List<string>(ElectricalControls);
+        if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
 
         return controls;
     }
@@ -188,6 +189,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        if (IsNG)
+        {
+            foreach (var kv in BuildEngineStartVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+        }
+
         return vars;
     }
 
@@ -199,10 +208,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// interrupts a sighted pilot too (CAS messages, a breaker popping).
     /// </summary>
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
-        => new Dictionary<string, List<string>>
+    {
+        var d = new Dictionary<string, List<string>>
         {
             [ElectricalPanel] = new List<string>(ElectricalDisplay)
         };
+
+        if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
+
+        return d;
+    }
 
     public override Dictionary<string, string> GetButtonStateMapping()
         => new Dictionary<string, string>();
@@ -217,6 +232,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (HandleElectricalSet(varKey, value, simConnect)) return true;
+        if (HandleEngineStartSet(varKey, value, simConnect)) return true;
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
