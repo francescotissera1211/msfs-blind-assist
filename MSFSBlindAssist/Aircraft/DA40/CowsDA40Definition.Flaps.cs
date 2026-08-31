@@ -83,10 +83,7 @@ public partial class CowsDA40Definition
                 [1] = "T/O",
                 [2] = "LDG"
             },
-            HelpText = "Three positions: UP for cruise, T/O for take-off, LDG for landing. " +
-                       "The flaps travel on their own after the switch moves, so check the " +
-                       "status display for where they actually are. Limit speeds are 110 " +
-                       "knots to T/O and 98 to LDG on the NG, 108 and 91 on the XLS."
+            HelpText = "The flaps travel after the switch moves - the scan says where they are."
         };
 
         // ---------- Status ----------

@@ -61,9 +61,7 @@ public partial class CowsDA40Definition
             // but it reported this subscale as "0 to 100" instead of 28 to 31.5. The key
             // ends in _SET, so dropping RenderAsSlider gives a typed entry instead.
             Format = "F2",
-            HelpText = "The backup altimeter has its own subscale, separate from the G1000's. " +
-                       "The AFM descent checklist item reads \"Altimeters (2) SET\" — both " +
-                       "need setting. Type hectopascals (1013) or inches (29.92) - above 100 is read as hectopascals."
+            HelpText = "Separate from the G1000 subscale - set both. Takes hectopascals or inches."
         };
 
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
@@ -75,9 +73,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Pulls and holds the cage knob to re-erect the backup artificial " +
-                       "horizon. Cage it level — caging while pitched or banked sets the " +
-                       "error you cage in."
+            HelpText = "Re-erects the backup horizon. Cage it level."
         };
 
         v["DA40_STBY_DISPLAY_BACKUP"] = new SimVarDefinition
@@ -92,8 +88,7 @@ public partial class CowsDA40Definition
                 [0] = "Normal",
                 [1] = "Reversionary"
             },
-            HelpText = "Forces the G1000 into reversionary mode, putting the primary flight " +
-                       "display onto the remaining screen after a display failure."
+            HelpText = "Reversionary mode after a display failure."
         };
 
         // ---------- Status ----------

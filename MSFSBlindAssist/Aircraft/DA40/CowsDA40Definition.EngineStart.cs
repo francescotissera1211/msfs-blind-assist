@@ -73,8 +73,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = "Guarded switch. Turning it off shuts the engine down."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
         v["DA40_START_ENGINE_MASTER_COVER"] = new SimVarDefinition
@@ -85,8 +84,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "The guard does not block the switch in the simulator, and the " +
-                       "model opens it by itself when the master is operated."
+            HelpText = "The model opens the guard by itself."
         };
 
         v["DA40_START_STARTER_ENGAGE"] = new SimVarDefinition
@@ -98,14 +96,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Turns the key to START and holds it. The starter releases itself " +
-                       "once the engine catches. AFM limit: do not crank for more than 10 " +
-                       "seconds, and wait 60 seconds between attempts. On a cold engine " +
-                       "WAIT for the glow plugs to go off first — the checklist order is " +
-                       "engine master on, annunciations checked, glow indication off, then " +
-                       "start. There is nothing to switch on: the ECU preheats by itself, " +
-                       "and cranking before it finishes is why a cold engine turns and " +
-                       "turns without catching."
+            HelpText = "Wait for the glow plugs to go off first. Max 10 seconds cranking, 60 between tries."
         };
 
         v["DA40_START_STARTER_RELEASE"] = new SimVarDefinition
@@ -117,8 +108,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Releases the start key back to ON. Only needed if the engine did " +
-                       "not catch — the key releases itself on a successful start."
+            HelpText = "Only needed if the engine did not catch."
         };
 
         // ---------- Status ----------
@@ -168,8 +158,7 @@ public partial class CowsDA40Definition
                 [0] = "Off",
                 [1] = "On, wait"
             },
-            HelpText = "Glow plugs preheat a cold engine. Wait for this to go off before " +
-                       "cranking. A warm engine never shows it."
+            HelpText = "Cold engine only. Wait for it to go off before cranking."
         };
 
         v["DA40_START_COMBUSTION"] = new SimVarDefinition

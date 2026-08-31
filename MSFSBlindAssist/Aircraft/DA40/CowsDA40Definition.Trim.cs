@@ -79,11 +79,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false,
             Format = "F0",
-            HelpText = "The trim wheel. Type a number from minus 100 for fully nose down to " +
-                       "plus 100 for fully nose up; zero is the centre of travel. Full " +
-                       "travel is 7 degrees of tab either way. The AFM marks a take-off " +
-                       "position on the wheel but publishes no number for it, so set it " +
-                       "against your own loading."
+            HelpText = "Minus 100 nose down to plus 100 nose up. Full travel is 7 degrees."
         };
 
         v["DA40_TRIM_NOSE_UP"] = new SimVarDefinition
@@ -95,9 +91,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Holds the stick trim switch nose up for one second, about a tenth " +
-                       "of full travel. This is the electric trim, so it needs its circuit " +
-                       "and it is inhibited while the AP disconnect button is held."
+            HelpText = "One second, about a tenth of travel. Needs the electric trim circuit."
         };
 
         v["DA40_TRIM_NOSE_DOWN"] = new SimVarDefinition
@@ -109,8 +103,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Holds the stick trim switch nose down for one second, about a tenth " +
-                       "of full travel."
+            HelpText = "One second, about a tenth of travel."
         };
 
         v["DA40_TRIM_CENTRE"] = new SimVarDefinition
@@ -122,25 +115,17 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Returns the trim to the centre of travel. This is NOT the take-off " +
-                       "setting — the AFM marks that on the wheel and gives no number for " +
-                       "it — but it is a defined reference to set the mark from."
+            HelpText = "Centre of travel. Not the take-off mark - the AFM gives no number for that."
         };
 
         // ---------- Status ----------
 
-        // The position in the aeroplane's own terms as well as the model's. Degrees is
-        // what the tab is actually doing; percent is what the wheel reads.
-        v["DA40_TRIM_POSITION"] = new SimVarDefinition
-        {
-            Name = "ELEVATOR TRIM POSITION",
-            DisplayName = "Trim Position",
-            Type = SimVarType.SimVar,
-            Units = "degrees",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
-            RenderAsReadOnlyStatus = true
-        };
+        // The position row is the BASE's own MON_ElevatorTrim, not a second definition
+        // of the same SimVar. MSFSBA already reads ELEVATOR TRIM POSITION for every
+        // aircraft and announces it as "Trim up 1.74", so a DA40 copy would have been a
+        // second key on one quantity that could disagree with the announcement - which is
+        // exactly what happened: the copy left Format at its "F0" DEFAULT and the scan
+        // read whole degrees ("Trim 1", "Trim 2") beside an announcement saying 1.74.
 
         // Is anything driving it right now, and is it the pilot? A runaway trim moves
         // with nobody touching it, which is otherwise completely silent.
@@ -189,13 +174,30 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> TrimDisplay = new()
     {
-        "DA40_TRIM_POSITION",
+        "MON_ElevatorTrim",
         "DA40_TRIM_RUNAWAY",
         "DA40_TRIM_INHIBITED",
         "DA40_TRIM_AP_UP",
         "DA40_TRIM_AP_DOWN",
         "DA40_TRIM_CIRCUIT"
     };
+
+    /// <summary>
+    /// The trim position row. Rendered here rather than left to the generic formatter
+    /// because SimVarDefinition.Format DEFAULTS to "F0" - whole numbers - and trim is a
+    /// quantity where the fraction is the whole point: the scan read "1" where the
+    /// announcement said 1.74.
+    /// </summary>
+    private bool TryGetTrimDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        if (varKey != "MON_ElevatorTrim") return false;
+
+        displayText = Math.Abs(value) < 0.005
+            ? "centred"
+            : $"{Math.Abs(value):0.00} degrees {(value > 0 ? "nose up" : "nose down")}";
+        return true;
+    }
 
     private bool HandleTrimSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)

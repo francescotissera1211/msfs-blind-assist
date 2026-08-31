@@ -55,11 +55,7 @@ public partial class CowsDA40Definition
             // second, over everything else. Switches announce; values are read.
             IsAnnounced = false,
             Format = "F0",
-            HelpText = "Type a percentage from 0 to 100. This lever commands LOAD; the FADEC " +
-                       "picks the propeller RPM from it. Commanded RPM is not proportional — " +
-                       "2150 at idle, down to 1800 at 20 percent, then up to 2100 at 92 and " +
-                       "2300 at full. Below 20 percent is disc mode: little power, high RPM " +
-                       "and a lot of drag, used to bleed speed or descend."
+            HelpText = "0 to 100 percent. Commands load, not RPM. Below 20 is disc mode: high RPM, lots of drag."
         };
 
         // ---------- Status ----------

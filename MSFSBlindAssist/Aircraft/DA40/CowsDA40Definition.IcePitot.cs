@@ -51,9 +51,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = "With this off the G1000 shows PITOT HT OFF. Switched on while " +
-                       "stationary on the ground the aeroplane raises PITOT FAIL — that is " +
-                       "modelled behaviour, not a fault in the readout."
+            HelpText = "On the ground it raises PITOT FAIL - that is modelled, not a fault."
         };
 
         v["DA40_ICE_ALTERNATE_AIR"] = new SimVarDefinition
@@ -64,8 +62,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "Engine induction air. The AFM has it CLOSED for take-off, and OPEN " +
-                       "for unintentional flight into icing and for engine trouble."
+            HelpText = "Closed for take-off. Open for icing or engine trouble."
         };
 
         v["DA40_ICE_ALTERNATE_STATIC"] = new SimVarDefinition
@@ -77,8 +74,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "Opens the cabin static source if the external static port blocks. " +
-                       "Expect the altimeter and airspeed to shift when it is opened."
+            HelpText = "Cabin static source if the port blocks. Altimeter and airspeed will shift."
         };
 
         // ---------- Status ----------

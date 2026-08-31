@@ -193,6 +193,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) controls[FuelPanel] = new List<string>(FuelControls);
         controls[FlapsPanel] = new List<string>(FlapsControls);
         controls[TrimPanel] = new List<string>(TrimControls);
+        controls[BrakesPanel] = new List<string>(BrakeControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -239,6 +240,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildTrimVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildBrakeVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -294,6 +300,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) d[FuelPanel] = new List<string>(FuelDisplay);
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
+        d[BrakesPanel] = new List<string>(BrakeDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -334,6 +341,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFlapsDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetTrimDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetBrakeDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
@@ -367,6 +376,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleFuelSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFlapsSet(varKey, value, simConnect, announcer)) return true;
         if (HandleTrimSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleBrakeSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

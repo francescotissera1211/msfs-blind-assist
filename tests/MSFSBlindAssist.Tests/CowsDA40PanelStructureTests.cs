@@ -600,12 +600,18 @@ public class CowsDA40PanelStructureTests
     {
         // Volts, temperatures and RPM change constantly. Announcing them would bury the
         // changes that matter; they are read on demand from the status display instead.
+        //
+        // Scoped to the DA40's OWN readouts. A shared MON_* variable from the base is
+        // announced by MSFSBA's own debounced custom logic for every aircraft - the trim
+        // call-out is the live example - so its IsAnnounced is not this def's decision to
+        // make, and reusing one rather than defining a second key is the whole point.
         var def = new CowsDA40Definition(variant);
         var vars = def.GetVariables();
 
         var noisy = def.GetPanelDisplayVariables()
             .SelectMany(p => p.Value)
             .Distinct()
+            .Where(k => k.StartsWith("DA40_"))
             .Where(k => vars[k].IsAnnounced)
             .ToList();
 
@@ -1062,7 +1068,7 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYet =
     {
         // Center Console
-        "Brakes", "Cabin Heat and Vent", "Audio",
+        "Cabin Heat and Vent", "Audio",
         // Circuit Breakers
         "Engine and Fuel", "Flight Instruments", "Avionics", "Bus and Power",
         "Lighting", "Airframe Systems", "Copilot",
@@ -1251,5 +1257,86 @@ public class CowsDA40PanelStructureTests
 
         Assert.DoesNotContain("DA40_TRIM_RUDDER", vars);
         Assert.DoesNotContain("DA40_TRIM_AILERON", vars);
+    }
+
+    [Fact]
+    public void TrimPositionUsesTheSharedElevatorTrimVariable()
+    {
+        // MSFSBA already reads ELEVATOR TRIM POSITION for every aircraft and announces it
+        // as "Trim up 1.74". A DA40 copy of the same SimVar was a second key on one
+        // quantity, and it disagreed with the announcement because Format defaults to
+        // "F0": the scan read whole degrees.
+        var def = Ng();
+
+        Assert.Contains("MON_ElevatorTrim", def.GetPanelDisplayVariables()["Elevator Trim"]);
+        Assert.DoesNotContain("DA40_TRIM_POSITION", def.GetVariables().Keys);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryFractionalReadoutSetsItsOwnFormat(DA40Variant variant)
+    {
+        // SimVarDefinition.Format DEFAULTS to "F0". A readout that leaves it alone reads
+        // whole numbers, which for degrees, bar, inches or gallons is a silently wrong
+        // value rather than a rounded one - it is how the trim row came to say "1" while
+        // the announcement said 1.74.
+        var fractional = new[] { "degrees", "bar", "inHg", "gallons", "volts", "amperes" };
+
+        var wrong = new CowsDA40Definition(variant).GetVariables()
+            .Where(kv => kv.Key.StartsWith("DA40_"))
+            .Where(kv => kv.Value.RenderAsReadOnlyStatus)
+            .Where(kv => kv.Value.ValueDescriptions == null)
+            .Where(kv => fractional.Contains(kv.Value.Units))
+            .Where(kv => kv.Value.Format == "F0")
+            .Select(kv => $"{kv.Key} ({kv.Value.Units})")
+            .ToList();
+
+        Assert.True(wrong.Count == 0,
+            $"{variant}: fractional readouts left on the F0 default - {string.Join(", ", wrong)}");
+    }
+
+    // ==============================================================================
+    // Brakes panel (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void BrakesPanelOwnsTheParkingBrakeAndNothingElse(DA40Variant variant)
+    {
+        // The wheel brakes are toe pedals - a flight control, flown from the pilot's own
+        // hardware, no more a panel item than the stick is.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Brakes"];
+
+        Assert.Equal(new[] { "DA40_BRAKE_PARK" }, controls.ToArray());
+    }
+
+    [Fact]
+    public void BrakeScanReportsTemperatureAndFadePerWheel()
+    {
+        // The model really does fade: above 400 C braking authority drops, and by 760 C
+        // ninety percent of it is gone. The aeroplane has no brake temperature gauge, so
+        // a sighted pilot learns this from smell and feel - a blind pilot from nothing.
+        // The two wheels heat separately.
+        var display = Ng().GetPanelDisplayVariables()["Brakes"];
+
+        foreach (var key in new[]
+                 {
+                     "DA40_BRAKE_TEMP_L", "DA40_BRAKE_TEMP_R",
+                     "DA40_BRAKE_FADE_L", "DA40_BRAKE_FADE_R"
+                 })
+        {
+            Assert.Contains(key, display);
+        }
+    }
+
+    [Fact]
+    public void BrakeScanReportsBothParkPressures()
+    {
+        var display = Ng().GetPanelDisplayVariables()["Brakes"];
+
+        Assert.Contains("DA40_BRAKE_PRESS_L", display);
+        Assert.Contains("DA40_BRAKE_PRESS_R", display);
     }
 }

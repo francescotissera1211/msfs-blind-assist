@@ -89,9 +89,7 @@ public partial class CowsDA40Definition
                 [1] = "Auto",
                 [2] = "ECU A"
             },
-            HelpText = "Selects which ECU controls the engine. Auto for normal operation. " +
-                       "On an ECU failure the AFM has you select the failed ECU, then return " +
-                       "to Auto."
+            HelpText = "Auto normally. On an ECU failure select the failed ECU, then back to Auto."
         };
 
         v["DA40_ECU_TEST"] = new SimVarDefinition
@@ -103,11 +101,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Holds the ECU test button for the full test, about 26 seconds. " +
-                       "The propeller " +
-                       "cycles once per ECU and the engine returns to idle. Needs the power " +
-                       "lever at idle, the voter in Auto, the propeller below 1100 RPM, " +
-                       "weight on wheels and the gearbox above 38 degrees."
+            HelpText = "Runs the full 26-second test. Needs idle, Auto, on the ground, gearbox above 38."
         };
 
         // ---------- Status ----------
@@ -165,9 +159,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             Format = "F1",
-            HelpText = "Counts only while a governor stage is running, and resets between " +
-                       "stages. Zero for most of the test is normal. Reaching four is what " +
-                       "latches an ECU fault."
+            HelpText = "Per-stage watchdog, not elapsed time. Four latches a fault."
         };
 
         // MSFSBA's own elapsed timer for the press — the thing a pilot actually wants,

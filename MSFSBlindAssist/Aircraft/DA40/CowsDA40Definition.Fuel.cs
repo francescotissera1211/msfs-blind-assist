@@ -100,11 +100,7 @@ public partial class CowsDA40Definition
                 [1] = "Emergency",
                 [2] = "Off"
             },
-            HelpText = "Main for all normal operation. Emergency feeds the engine straight " +
-                       "from the auxiliary tank when the transfer pump cannot move fuel, and " +
-                       "must be returned to Main before the auxiliary tank empties or the " +
-                       "engine will stop. Off shuts the fuel off and is the engine fire " +
-                       "procedure. The valve will not move until the safety wire is broken."
+            HelpText = "Emergency feeds from the aux tank. Off is the engine fire drill. Locked until the wire is broken."
         };
 
         v["DA40_FUEL_WIRE"] = new SimVarDefinition
@@ -116,10 +112,7 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false,
-            HelpText = "Holds the safety latch until the wire breaks, which unlocks the fuel " +
-                       "valve. This cannot be undone, the same as on the aeroplane. The valve " +
-                       "is locked to Main until it is done, so it has to be done before the " +
-                       "Emergency or Off positions can be selected."
+            HelpText = "Unlocks the fuel valve. Cannot be undone."
         };
 
         v["DA40_FUEL_PUMPS"] = new SimVarDefinition
@@ -135,10 +128,7 @@ public partial class CowsDA40Definition
                 [0] = "Off",
                 [1] = "On"
             },
-            HelpText = "There are two low-pressure pumps, one per ECU, and the ECU runs one " +
-                       "of them by itself. This switch runs BOTH, which raises fuel pressure. " +
-                       "The AFM has it on for take-off and landing, and on if fuel pressure " +
-                       "is low."
+            HelpText = "Runs both pumps. On for take-off and landing, and for low fuel pressure."
         };
 
         v["DA40_FUEL_TRANSFER"] = new SimVarDefinition
@@ -153,10 +143,7 @@ public partial class CowsDA40Definition
                 [0] = "Off",
                 [1] = "On"
             },
-            HelpText = "Moves fuel from the auxiliary tank back to the main tank at about " +
-                       "60 gallons an hour, roughly a gallon a minute. It stops itself when " +
-                       "the main tank is full or the auxiliary tank is empty and the switch " +
-                       "stays on, so it will run again whenever the main tank drops."
+            HelpText = "Aux to main, about a gallon a minute. Stops itself when main is full or aux is empty."
         };
 
         // ---------- Status ----------
