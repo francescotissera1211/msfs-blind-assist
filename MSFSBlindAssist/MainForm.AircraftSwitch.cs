@@ -103,6 +103,8 @@ public partial class MainForm
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
+            "COWS_DA40NG" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG),
+            "COWS_DA40XLS" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };

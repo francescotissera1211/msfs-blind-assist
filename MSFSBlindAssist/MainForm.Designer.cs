@@ -20,6 +20,8 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cowsDA40NGMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cowsDA40XLSMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
@@ -54,6 +56,8 @@ namespace MSFSBlindAssist
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cowsDA40NGMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cowsDA40XLSMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
@@ -167,6 +171,8 @@ namespace MSFSBlindAssist
             this.flyByWireA320MenuItem,
             this.flyByWireA380MenuItem,
             this.headwindA330MenuItem,
+            this.cowsDA40NGMenuItem,
+            this.cowsDA40XLSMenuItem,
             this.fenixA320MenuItem,
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
@@ -245,6 +251,26 @@ namespace MSFSBlindAssist
             this.headwindA330MenuItem.Text = "&Headwind Airbus A330-900neo";
             this.headwindA330MenuItem.Checked = false;
             this.headwindA330MenuItem.Click += new System.EventHandler(this.HeadwindA330MenuItem_Click);
+            // 
+            // cowsDA40NGMenuItem
+            // 
+            this.cowsDA40NGMenuItem.AccessibleName = "COWS Diamond DA40-NG";
+            this.cowsDA40NGMenuItem.AccessibleDescription = "Switch to COWS Diamond DA40-NG";
+            this.cowsDA40NGMenuItem.Name = "cowsDA40NGMenuItem";
+            this.cowsDA40NGMenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cowsDA40NGMenuItem.Text = "COWS Diamond DA40-&NG";
+            this.cowsDA40NGMenuItem.Checked = false;
+            this.cowsDA40NGMenuItem.Click += new System.EventHandler(this.CowsDA40NGMenuItem_Click);
+            // 
+            // cowsDA40XLSMenuItem
+            // 
+            this.cowsDA40XLSMenuItem.AccessibleName = "COWS Diamond DA40-XLS";
+            this.cowsDA40XLSMenuItem.AccessibleDescription = "Switch to COWS Diamond DA40-XLS";
+            this.cowsDA40XLSMenuItem.Name = "cowsDA40XLSMenuItem";
+            this.cowsDA40XLSMenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cowsDA40XLSMenuItem.Text = "COWS Diamond DA40-&XLS";
+            this.cowsDA40XLSMenuItem.Checked = false;
+            this.cowsDA40XLSMenuItem.Click += new System.EventHandler(this.CowsDA40XLSMenuItem_Click);
             //
             // ifly737MaxMenuItem
             //
