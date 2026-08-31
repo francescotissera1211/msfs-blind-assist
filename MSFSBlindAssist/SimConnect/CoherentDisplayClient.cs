@@ -59,6 +59,9 @@ namespace MSFSBlindAssist.SimConnect
         private List<string> _lastRows = new();
         private bool _disposed;
 
+        /// <summary>One-shot latch so a bad agent is reported once, not every 2 s.</summary>
+        private bool _reportedAgentFailure;
+
         public bool IsConnected => _connected;
         public List<string> CurrentRows => _lastRows;
 
@@ -251,6 +254,25 @@ namespace MSFSBlindAssist.SimConnect
 
             string install = await EvalAsync(_agentJs, ct);
             _agentInstalled = install.IndexOf("MSFSBA_DISP_INSTALLED", StringComparison.Ordinal) >= 0;
+
+            // SAY SO when the agent does not answer with the token. Without this the loop
+            // retries for ever, silently: no error, no rows, nothing in the log, and a
+            // window stuck on "Connecting...". That is precisely how a DA40 agent
+            // returning its own version string instead of the token went undiagnosed.
+            // Reported ONCE per socket, not per retry, so a genuinely absent view does not
+            // fill the log.
+            if (!_agentInstalled && !_reportedAgentFailure)
+            {
+                _reportedAgentFailure = true;
+                RaiseError($"The display agent did not install ({_agentFileName}). " +
+                           "It must return a string containing MSFSBA_DISP_INSTALLED; " +
+                           $"it returned {(string.IsNullOrEmpty(install) ? "nothing" : "\"" + install + "\"")}.");
+            }
+            else if (_agentInstalled)
+            {
+                _reportedAgentFailure = false;
+            }
+
             _connected = _agentInstalled;
             return _agentInstalled;
             }

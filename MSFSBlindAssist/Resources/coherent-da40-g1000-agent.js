@@ -217,5 +217,12 @@
     };
 
     window.__MSFSBA_DA40G1000 = A;
-    return "DA40 G1000 agent v" + A.VERSION;
+
+    // MUST return a string containing MSFSBA_DISP_INSTALLED. CoherentDisplayClient tests
+    // for that exact token to decide the agent is in place; anything else leaves
+    // _agentInstalled false, so EnsureConnected returns false and the poll loop retries
+    // for ever WITHOUT raising an error - a window stuck on "Connecting..." with nothing
+    // in the log. This agent returned its own version string at first and did exactly
+    // that. The token is the contract; the version rides alongside it.
+    return "MSFSBA_DISP_INSTALLED da40-g1000 v" + A.VERSION;
 })();
