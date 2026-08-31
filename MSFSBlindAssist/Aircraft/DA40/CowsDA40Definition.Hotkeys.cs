@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.SimConnect;
+using System.Windows.Forms;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
 
@@ -29,6 +30,142 @@ public partial class CowsDA40Definition
 
     /// <summary>US gallons to litres, for the dual-unit fuel readouts.</summary>
     private const double LitresPerGallon = 3.785411784;
+
+    /// <summary>
+    /// Input mode + B: SET both altimeters.
+    ///
+    /// This aeroplane has two and the AFM descent check is "Altimeters (2) ... SET", so
+    /// one prompt sets both — asking twice for the same number would be a chore invented
+    /// by the software, not by the aircraft.
+    ///
+    /// The G1000 subscale is NOT an L:var: it is the stock SimVar, and the aeroplane's own
+    /// Logic.xml drives it with `(L:STATE_BARO1) 16 * (>K:KOHLSMAN_SET, Millibars)` — the
+    /// UNINDEXED event, in millibars times sixteen. Verified live, including the two ways
+    /// that do NOT work: writing `L:KOHLSMAN SETTING HG:1` (a name with a space and a
+    /// colon is a stock SimVar, so that just creates a stray L:var nothing reads) and the
+    /// indexed `K:2:KOHLSMAN_SET` both left the value untouched.
+    ///
+    /// The STANDBY one really is an L:var of that shape — `L:KOHLSMAN SETTING HG:2`,
+    /// which the model reads back into STATE_BARO2 — so it is written as one. The two
+    /// altimeters genuinely take different transports.
+    /// </summary>
+    private bool HandleDA40BaroSet(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        Form? parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return true;
+        }
+
+        var dialog = new Forms.ValueInputForm(
+            "Set Altimeters",
+            "Altimeter setting",
+            "948 to 1066 hectopascals, or 28.00 to 31.50 inches",
+            announcer,
+            ValidateBaroEntry);
+
+        if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) return true;
+        if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double entered))
+        {
+            return true;
+        }
+
+        // Same convention as the standby panel's own field: the ranges cannot overlap, so
+        // magnitude says which unit was meant.
+        double inHg = Math.Clamp(entered > 100 ? entered / 33.8639 : entered, 28.00, 31.50);
+        double millibars = inHg * 33.8639;
+
+        simConnect.ExecuteCalculatorCode(
+            $"{millibars * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+        simConnect.SetLVar("KOHLSMAN SETTING HG:2", inHg);
+
+        announcer.AnnounceImmediate(
+            $"Both altimeters set, {millibars:0} hectopascals, {inHg:0.00} inches");
+        return true;
+    }
+
+    private static (bool isValid, string message) ValidateBaroEntry(string text)
+    {
+        if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double value))
+        {
+            return (false, "Enter a number.");
+        }
+
+        if (value > 100)
+        {
+            return value is >= 948 and <= 1066
+                ? (true, "")
+                : (false, "Hectopascals must be between 948 and 1066.");
+        }
+
+        return value is >= 28.00 and <= 31.50
+            ? (true, "")
+            : (false, "Inches must be between 28.00 and 31.50.");
+    }
+
+    /// <summary>
+    /// Input mode + N: set the NAV standby frequencies.
+    ///
+    /// On the aeroplane these are tuned with the G1000's NAV knob, and that stays true —
+    /// this is the same convenience Ctrl+B is for the altimeters, not a replacement for
+    /// the bezel. Both radios are offered in one pass because a pilot tuning an approach
+    /// sets the ILS and the missed-approach aid together; either prompt can be cancelled.
+    ///
+    /// The event is NAV1_STBY_SET_HZ in RAW HERTZ. Verified live, including the two
+    /// spellings that do not work: NAV1_STBY_SET with a BCD-ish 11030 left the value at
+    /// its previous 113.90, and NAV1_STBY_SET_HZ with a "MHz" unit hint set it to ZERO.
+    /// </summary>
+    private bool HandleDA40NavRadios(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        Form? parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.AnnounceImmediate("Not connected to simulator.");
+            return true;
+        }
+
+        var set = new List<string>();
+
+        foreach (int radio in new[] { 1, 2 })
+        {
+            var dialog = new Forms.ValueInputForm(
+                $"Set NAV {radio} Standby",
+                $"NAV {radio} standby frequency",
+                "108.00 to 117.95 megahertz",
+                announcer,
+                ValidateNavFrequency);
+
+            if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) continue;
+            if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double mhz))
+            {
+                continue;
+            }
+
+            long hz = (long)Math.Round(mhz * 1_000_000.0);
+            simConnect.ExecuteCalculatorCode($"{hz} (>K:NAV{radio}_STBY_SET_HZ)");
+            set.Add($"NAV {radio} standby {mhz:0.00}");
+        }
+
+        announcer.AnnounceImmediate(set.Count == 0 ? "No frequency set" : string.Join(", ", set));
+        return true;
+    }
+
+    private static (bool isValid, string message) ValidateNavFrequency(string text)
+    {
+        if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double mhz))
+        {
+            return (false, "Enter a frequency in megahertz.");
+        }
+
+        return mhz is >= 108.00 and <= 117.95
+            ? (true, "")
+            : (false, "NAV frequencies run from 108.00 to 117.95.");
+    }
 
     private bool HandleDA40Readout(HotkeyAction action, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)

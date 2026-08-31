@@ -343,6 +343,18 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         if (HandleDA40Readout(action, simConnect, announcer)) return true;
 
+        if (action == Hotkeys.HotkeyAction.SetNavRadios)
+        {
+            hotkeyManager?.ExitInputHotkeyMode();
+            return HandleDA40NavRadios(simConnect, announcer, parentForm);
+        }
+
+        if (action == Hotkeys.HotkeyAction.FCUSetBaro)
+        {
+            hotkeyManager?.ExitInputHotkeyMode();
+            return HandleDA40BaroSet(simConnect, announcer, parentForm);
+        }
+
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
 
@@ -368,6 +380,29 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             string number = value.ToString(def.Format);
             string withUnits = string.IsNullOrWhiteSpace(def.Units) ? number : $"{number} {def.Units}";
             displayText = DA40InstrumentBands.Annotate(varKey, value, withUnits);
+            return true;
+        }
+
+        // EVERY OTHER DA40 READOUT, rendered here rather than by MainForm's generic
+        // formatter, because that formatter cannot do it. Its numeric branch is a
+        // hardcoded `switch (varDef.Units)` knowing only volts, millibars, inHg and kHz;
+        // everything else falls to `$"{value:F0}"` — whole numbers, no unit, and
+        // `def.Format` NEVER CONSULTED AT ALL.
+        //
+        // That is the true cause of two things reported live and is a correction to an
+        // earlier note in this file's history: "Fuel Flow: 9" with no unit, and COM
+        // frequencies reading "128" despite Format being set to F3. Format was not being
+        // defaulted to F0 — it was being ignored.
+        //
+        // Changing the shared formatter would silently re-render every other aircraft's
+        // status rows, so the DA40 renders its own instead.
+        if (varKey.StartsWith("DA40_")
+            && GetVariables().TryGetValue(varKey, out var readout)
+            && readout.RenderAsReadOnlyStatus
+            && readout.ValueDescriptions == null
+            && !string.IsNullOrWhiteSpace(readout.Units))
+        {
+            displayText = $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}";
             return true;
         }
 
@@ -440,4 +475,17 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     // Short wheelbase and a castoring nosewheel — the DA40 pivots far faster than any
     // airliner, so the rollout lead is well below the A320's 1.2 s default.
     public override double TaxiTurnLeadSeconds => 0.8;
+
+    /// <summary>
+    /// A unit as it should be HEARD. Most SimConnect unit names already read correctly,
+    /// but a few are abbreviations a screen reader spells out letter by letter.
+    /// </summary>
+    private static string SpokenUnit(string units) => units switch
+    {
+        "inHg" => "inches",
+        "celsius" => "degrees celsius",
+        "rpm" => "R P M",
+        "gallons per hour" => "gallons per hour",
+        _ => units
+    };
 }
