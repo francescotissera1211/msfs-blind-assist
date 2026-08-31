@@ -183,6 +183,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[IcePitotPanel] = new List<string>(IcePitotControls);
         controls[StandbyPanel] = new List<string>(StandbyControls);
         if (IsNG) controls[PowerPanel] = new List<string>(PowerControls);
+        if (IsNG) controls[FuelPanel] = new List<string>(FuelControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -229,6 +230,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             {
                 vars[kv.Key] = kv.Value;
             }
+
+            foreach (var kv in BuildFuelVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
         }
 
         if (IsNG)
@@ -266,6 +272,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         };
 
         if (IsNG) d[PowerPanel] = new List<string>(PowerDisplay);
+        if (IsNG) d[FuelPanel] = new List<string>(FuelDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -304,6 +311,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
@@ -334,6 +342,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleIcePitotSet(varKey, value, simConnect)) return true;
         if (HandleStandbySet(varKey, value, simConnect, announcer)) return true;
         if (HandlePowerSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleFuelSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

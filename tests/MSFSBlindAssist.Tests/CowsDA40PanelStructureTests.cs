@@ -851,4 +851,95 @@ public class CowsDA40PanelStructureTests
     {
         Assert.DoesNotContain("DA40_POWER_LEVER_SET", Xls().GetVariables().Keys);
     }
+
+    // ==============================================================================
+    // Fuel System panel (NG)
+    // ==============================================================================
+
+    [Fact]
+    public void FuelPanelCarriesTheWireBreakerBesideTheValve()
+    {
+        // The valve CANNOT leave Main until the safety wire is broken - verified live.
+        // Two AFM procedures need it moved (Emergency feed, and Off for an engine fire),
+        // so without a way to break the wire a blind pilot could not fly either one.
+        var controls = Ng().GetPanelControls()["Fuel System"];
+
+        Assert.Contains("DA40_FUEL_VALVE", controls);
+        Assert.Contains("DA40_FUEL_WIRE", controls);
+    }
+
+    [Fact]
+    public void FuelValveOffersAllThreePositionsInTheModelsOwnOrder()
+    {
+        // MAIN / EMERGENCY / OFF, from the model's ANIMTIPs - not an assumed ordering.
+        var v = Ng().GetVariables()["DA40_FUEL_VALVE"];
+
+        Assert.Equal("Main", v.ValueDescriptions![0]);
+        Assert.Equal("Emergency", v.ValueDescriptions[1]);
+        Assert.Equal("Off", v.ValueDescriptions[2]);
+    }
+
+    [Fact]
+    public void FuelScanReportsBothIndicatedAndMeasuredQuantities()
+    {
+        // The gauge saturates at 14 US gal: measured live, the tank held 18.78 while the
+        // gauge read exactly 14.0. Reporting only the indication would tell a blind pilot
+        // the tank holds 14 gallons, which is not what the instrument means.
+        var display = Ng().GetPanelDisplayVariables()["Fuel System"];
+
+        Assert.Contains("DA40_FUEL_MAIN_IND", display);
+        Assert.Contains("DA40_FUEL_MAIN_ACTUAL", display);
+        Assert.Contains("DA40_FUEL_AUX_IND", display);
+        Assert.Contains("DA40_FUEL_AUX_ACTUAL", display);
+    }
+
+    [Fact]
+    public void TankDifferenceIsListedAfterBothTanks()
+    {
+        // The difference is computed from the two quantities as they render, in list
+        // order. Moving it above either tank would silently compute it from a stale pair.
+        var display = Ng().GetPanelDisplayVariables()["Fuel System"];
+
+        int main = display.IndexOf("DA40_FUEL_MAIN_ACTUAL");
+        int aux = display.IndexOf("DA40_FUEL_AUX_ACTUAL");
+        int diff = display.IndexOf("DA40_FUEL_DIFFERENCE");
+
+        Assert.True(diff > main && diff > aux,
+            "the tank difference must render after both tank quantities");
+    }
+
+    [Fact]
+    public void TransferPumpReportsWhetherItIsActuallyRunning()
+    {
+        // The switch can be ON with the pump stopped for four different reasons - main
+        // tank full, auxiliary empty, breaker out, bus volts low - and the AFM says the
+        // switch deliberately stays put when the pump stops itself.
+        var display = Ng().GetPanelDisplayVariables()["Fuel System"];
+
+        Assert.Contains("DA40_FUEL_TRANSFER_RUNNING", display);
+        Assert.Contains("DA40_FUEL_CB_XFER", display);
+    }
+
+    [Fact]
+    public void FuelQuantityAndTemperatureCarryTheirAfmArcs()
+    {
+        Assert.NotNull(DA40InstrumentBands.For("DA40_FUEL_MAIN_IND"));
+        Assert.NotNull(DA40InstrumentBands.For("DA40_FUEL_MAIN_TEMP"));
+
+        // AFM 2.5: below 1 US gal is red, and there is no lower caution band at all.
+        var qty = DA40InstrumentBands.For("DA40_FUEL_MAIN_IND")!;
+        Assert.Equal(GaugeBand.LowerRed, qty.Classify(0.5));
+        Assert.Equal(GaugeBand.Normal, qty.Classify(7));
+
+        // Above 60 C costs high-pressure pump efficiency.
+        var temp = DA40InstrumentBands.For("DA40_FUEL_MAIN_TEMP")!;
+        Assert.Equal(GaugeBand.Normal, temp.Classify(41));
+        Assert.Equal(GaugeBand.UpperRed, temp.Classify(65));
+    }
+
+    [Fact]
+    public void XlsHasNoNgFuelSystemControls()
+    {
+        Assert.DoesNotContain("DA40_FUEL_VALVE", Xls().GetVariables().Keys);
+    }
 }

@@ -1,0 +1,389 @@
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Aircraft.DA40;
+
+/// <summary>
+/// Center Console → Fuel System (DA40-NG).
+///
+/// The NG's fuel system is asymmetric and that asymmetry is the whole panel. Fuel is
+/// drawn from the MAIN tank (LEFT wing) only. What the engine does not burn is routed
+/// through the AUX tank (RIGHT wing) and returned to the main — which is how the rail's
+/// hot fuel is cooled and the cold tanks are warmed. Fuel therefore accumulates in the
+/// left wing and drains from the right, and the pilot moves it back with the TRANSFER
+/// PUMP. Nothing about this is symmetric, so "left" and "right" are the wrong words for
+/// it: the AFM says MAIN and AUX and so does this panel.
+///
+/// THE FUEL VALVE IS WIRE-LOCKED, and this is the most surprising thing in the aeroplane.
+/// The real DA40 has a safety latch that must be pulled before the valve handle will
+/// turn; COWS models it as a breakable wire. Until it is broken the valve CANNOT leave
+/// MAIN — verified live: writing FUEL_SELECTOR 1 with the wire intact read back 0, and
+/// the model's own switch code forces `0 (>L:FUEL_SELECTOR)` on every position while
+/// `FUEL_SELECTOR_WIRE_CUT` is clear.
+///
+/// That matters because two AFM procedures need the valve and neither is optional:
+///   - EMERGENCY draws directly from the AUX tank when the transfer pump has failed.
+///   - OFF is the ENGINE FIRE procedure, and it genuinely works — the model clears
+///     `ENG ON FIRE:1` when the selector reaches 2.
+/// Both were flown live: EMERGENCY moved the tank selector to RIGHT and fed from the aux
+/// tank, OFF cut the feed quantity to zero and stopped the engine. A blind pilot who
+/// could not break the wire could not fight a fire, so the wire gets its own control.
+/// Breaking it is ONE-WAY, exactly as on the aeroplane.
+///
+/// THE GAUGE LIES ABOVE 14 GALLONS, by design, and the AFM says so. The capacitance
+/// probe indication is capped: measured live, the left tank held 18.78 US gal while both
+/// the probe and the G1000 read exactly 14.0. The AFM's instruction is that at an
+/// indicated 14 you must measure the tank with the dipstick, and that without that
+/// measurement your flight-planning figure is 14 US gal. A sighted pilot reads the cap
+/// off the placard next to the gauge; a blind pilot reading "14 gallons" would think the
+/// tank held 14 gallons. So the indication is reported AS the indication, flagged when it
+/// is sitting on the cap, and the measured quantity is given beside it under the name of
+/// the AFM procedure that produces it.
+///
+/// The indication is also NOISY on purpose: the model computes it from the true quantity
+/// with a slosh term driven by the turn coordinator ball, so it moves in a sideslip. That
+/// is a real capacitance probe, not a bug.
+/// </summary>
+public partial class CowsDA40Definition
+{
+    private const string FuelPanel = "Fuel System";
+
+    /// <summary>
+    /// AFM 2.14.4: the indication saturates here. Above it the gauge cannot say how much
+    /// fuel there is, only that there is at least this much.
+    /// </summary>
+    private const double FuelIndicationCapGal = 14.0;
+
+    /// <summary>AFM 2.14.4: maximum permissible difference between the two tanks.</summary>
+    private const double FuelMaxTankDifferenceGal = 9.0;
+
+    /// <summary>
+    /// The wire is read by a 1 Hz Update in the model, so the hold has to be long enough
+    /// to be certain of spanning a tick. Everything shorter is a coin toss.
+    /// </summary>
+    private const int FuelWireHoldMs = 1500;
+
+    private const double LitresPerGallonFuel = 3.785411784;
+
+    // Latest measured tank quantities, captured as their own status rows render, so the
+    // difference row can be computed. See TryGetFuelDisplayOverride for why this works
+    // and what it depends on.
+    private double _fuelMainGal;
+    private double _fuelAuxGal;
+
+    private static Dictionary<string, SimVarDefinition> BuildFuelVariables()
+    {
+        var v = new Dictionary<string, SimVarDefinition>();
+
+        // ---------- Controls ----------
+
+        v["DA40_FUEL_VALVE"] = new SimVarDefinition
+        {
+            Name = "FUEL_SELECTOR",
+            DisplayName = "Fuel Valve",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            // Order from the model's own ANIMTIPs: MAIN, EMERGENCY, OFF.
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Main",
+                [1] = "Emergency",
+                [2] = "Off"
+            },
+            HelpText = "Main for all normal operation. Emergency feeds the engine straight " +
+                       "from the auxiliary tank when the transfer pump cannot move fuel, and " +
+                       "must be returned to Main before the auxiliary tank empties or the " +
+                       "engine will stop. Off shuts the fuel off and is the engine fire " +
+                       "procedure. The valve will not move until the safety wire is broken."
+        };
+
+        v["DA40_FUEL_WIRE"] = new SimVarDefinition
+        {
+            Name = "DA40_FUEL_WIRE",
+            DisplayName = "Break Fuel Valve Safety Wire",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Holds the safety latch until the wire breaks, which unlocks the fuel " +
+                       "valve. This cannot be undone, the same as on the aeroplane. The valve " +
+                       "is locked to Main until it is done, so it has to be done before the " +
+                       "Emergency or Off positions can be selected."
+        };
+
+        v["DA40_FUEL_PUMPS"] = new SimVarDefinition
+        {
+            Name = "GENERAL ENG FUEL PUMP SWITCH:1",
+            DisplayName = "Fuel Pumps",
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "On"
+            },
+            HelpText = "There are two low-pressure pumps, one per ECU, and the ECU runs one " +
+                       "of them by itself. This switch runs BOTH, which raises fuel pressure. " +
+                       "The AFM has it on for take-off and landing, and on if fuel pressure " +
+                       "is low."
+        };
+
+        v["DA40_FUEL_TRANSFER"] = new SimVarDefinition
+        {
+            Name = "XFER_SWITCH",
+            DisplayName = "Fuel Transfer Pump",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "On"
+            },
+            HelpText = "Moves fuel from the auxiliary tank back to the main tank at about " +
+                       "60 gallons an hour, roughly a gallon a minute. It stops itself when " +
+                       "the main tank is full or the auxiliary tank is empty and the switch " +
+                       "stays on, so it will run again whenever the main tank drops."
+        };
+
+        // ---------- Status ----------
+
+        // The lock, first: everything about the valve depends on it.
+        AddFlag(v, "DA40_FUEL_WIRE_STATE", "FUEL_SELECTOR_WIRE_CUT",
+            "Fuel Valve Safety Wire", "Intact, valve locked to Main", "Broken, valve free");
+
+        // Where the engine is ACTUALLY drawing from, which is the valve's effect rather
+        // than the valve's position — they differ while the wire is intact.
+        v["DA40_FUEL_TANK_SELECTED"] = new SimVarDefinition
+        {
+            Name = "RECIP ENG FUEL TANK SELECTOR:1",
+            DisplayName = "Feeding From",
+            Type = SimVarType.SimVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [1] = "Nothing, fuel off",
+                [2] = "Main tank",
+                [3] = "Auxiliary tank"
+            }
+        };
+
+        // The gauge, as the gauge reads it - capped and banded.
+        AddReadout(v, "DA40_FUEL_MAIN_IND", "DISP_FUEL:1", "Main Tank Indicated", "gallons", "F1");
+        AddReadout(v, "DA40_FUEL_AUX_IND", "DISP_FUEL:2", "Auxiliary Tank Indicated", "gallons", "F1");
+
+        // What the dipstick would say. The AFM REQUIRES this measurement whenever the
+        // gauge is on its cap, so this is the pre-flight check, not extra information.
+        AddReadout(v, "DA40_FUEL_MAIN_ACTUAL", "FUEL_QUANT:1", "Main Tank Measured", "gallons", "F1");
+        AddReadout(v, "DA40_FUEL_AUX_ACTUAL", "FUEL_QUANT:2", "Auxiliary Tank Measured", "gallons", "F1");
+
+        // Computed. Bound to the main quantity only so it has a value to be rendered
+        // with; the text is replaced entirely. MUST stay after both tanks in the list.
+        v["DA40_FUEL_DIFFERENCE"] = new SimVarDefinition
+        {
+            Name = "FUEL_QUANT:1",
+            DisplayName = "Tank Difference",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true
+        };
+
+        AddReadout(v, "DA40_FUEL_MAIN_TEMP", "DISP_FT:1", "Main Tank Temperature", "celsius", "F0");
+        AddReadout(v, "DA40_FUEL_AUX_TEMP", "DISP_FT:2", "Auxiliary Tank Temperature", "celsius", "F0");
+
+        AddReadout(v, "DA40_FUEL_FLOW", "DISP_FF", "Fuel Flow", "gallons per hour", "F2");
+
+        // The transfer SWITCH is a control; whether the pump is actually turning is a
+        // different fact, and there are four ways for them to disagree — main tank full,
+        // auxiliary tank empty, breaker out, bus volts low. A pilot who can only hear the
+        // switch cannot tell a working system from a dead one.
+        v["DA40_FUEL_TRANSFER_RUNNING"] = new SimVarDefinition
+        {
+            Name = "CIRCUIT ON:22",
+            DisplayName = "Transfer Pump Running",
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "No",
+                [1] = "Yes"
+            }
+        };
+
+        // One of those four reasons, and the only one that is a fault. The breaker itself
+        // is a control on the Circuit Breakers panel; this is its consequence here.
+        AddFlag(v, "DA40_FUEL_CB_XFER", "CB_XFR", "Transfer Breaker", "In", "Out");
+
+        // Why a cold engine cranks and cranks: the high-pressure system has to prime
+        // before any fuel reaches the cylinders, and until it does the engine cannot
+        // catch no matter how long the starter turns.
+        AddFlag(v, "DA40_FUEL_PRIMED", "FUEL_PRIME_PRIMED:1", "Fuel Lines Primed", "No", "Yes");
+
+        // The NG has NO fuel pressure gauge - the AFM's instrument markings table has no
+        // row for it, the G1000 shows a caution instead. This is the system pressure
+        // behind that caution, and it is the only way to watch the pumps do their job.
+        AddReadout(v, "DA40_FUEL_PRESSURE", "FUEL_PRESS:1", "Fuel Pressure", "bar", "F1");
+
+        // What the engine is allowed to draw. Zero with the valve off; the auxiliary
+        // tank's contents in Emergency. This is the number that proves the valve did
+        // something.
+        AddReadout(v, "DA40_FUEL_FEED", "FUEL_FEED_QUANTITY:1", "Available To Engine", "gallons", "F1");
+
+        return v;
+    }
+
+    private static readonly List<string> FuelControls = new()
+    {
+        "DA40_FUEL_VALVE",
+        "DA40_FUEL_WIRE",
+        "DA40_FUEL_PUMPS",
+        "DA40_FUEL_TRANSFER"
+    };
+
+    // ORDER MATTERS for the two tank quantities and the difference — see
+    // TryGetFuelDisplayOverride. Otherwise this is the order a pilot works the system:
+    // the lock, what is feeding, how much there is, how hot it is, what is moving.
+    private static readonly List<string> FuelDisplay = new()
+    {
+        "DA40_FUEL_WIRE_STATE",
+        "DA40_FUEL_TANK_SELECTED",
+        "DA40_FUEL_MAIN_IND",
+        "DA40_FUEL_AUX_IND",
+        "DA40_FUEL_MAIN_ACTUAL",
+        "DA40_FUEL_AUX_ACTUAL",
+        "DA40_FUEL_DIFFERENCE",
+        "DA40_FUEL_MAIN_TEMP",
+        "DA40_FUEL_AUX_TEMP",
+        "DA40_FUEL_FLOW",
+        "DA40_FUEL_PRESSURE",
+        "DA40_FUEL_FEED",
+        "DA40_FUEL_PRIMED",
+        "DA40_FUEL_TRANSFER_RUNNING",
+        "DA40_FUEL_CB_XFER"
+    };
+
+    private bool HandleFuelSet(string varKey, double value, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
+    {
+        switch (varKey)
+        {
+            case "DA40_FUEL_VALVE":
+            {
+                int pos = Math.Clamp((int)Math.Round(value), 0, 2);
+
+                // Write it either way and report what happened. The airframe is what
+                // refuses, not MSFSBA — but a combo that silently snaps back with no
+                // explanation is indistinguishable from a broken control, and the reason
+                // is not something a blind pilot can see.
+                simConnect.ExecuteCalculatorCode($"{pos} (>L:FUEL_SELECTOR)");
+
+                bool unlocked = (simConnect.GetCachedVariableValue("FUEL_SELECTOR_WIRE_CUT") ?? 0) >= 0.5;
+                if (!unlocked && pos != 0)
+                {
+                    announcer.AnnounceImmediate(
+                        "Fuel valve is locked to Main. Break the safety wire first.");
+                }
+                return true;
+            }
+
+            case "DA40_FUEL_WIRE":
+                // A held latch, like the ECU test and the gyro cage. The model samples it
+                // at 1 Hz, so the hold has to outlast a tick.
+                HoldLVar("FUEL_WIRE", FuelWireHoldMs, simConnect);
+                announcer.AnnounceImmediate("Breaking fuel valve safety wire");
+                return true;
+
+            case "DA40_FUEL_PUMPS":
+            {
+                // The switch is a stock toggle with no set event, so the target is reached
+                // by comparing in RPN — reading in C# and writing back would race the
+                // 10 Hz model loop that also touches it.
+                int target = value >= 0.5 ? 1 : 0;
+                simConnect.ExecuteCalculatorCode(
+                    $"(A:GENERAL ENG FUEL PUMP SWITCH:1, Bool) {target} != " +
+                    "if{ (>K:TOGGLE_ELECT_FUEL_PUMP1) }");
+                return true;
+            }
+
+            case "DA40_FUEL_TRANSFER":
+                simConnect.ExecuteCalculatorCode($"{(value >= 0.5 ? 1 : 0)} (>L:XFER_SWITCH)");
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The fuel readouts that cannot be rendered by formatting a number.
+    ///
+    /// The two tank quantities are captured here as they render, so the difference row
+    /// can be computed from both. That works because every row of a status display is
+    /// rendered through this method in list order, and the difference is listed after
+    /// both tanks — which the panel test pins, because reordering the list would
+    /// otherwise silently compute the difference from a stale pair.
+    /// </summary>
+    private bool TryGetFuelDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+
+        switch (varKey)
+        {
+            case "DA40_FUEL_MAIN_ACTUAL":
+                _fuelMainGal = value;
+                displayText = DualUnitFuel(value);
+                return true;
+
+            case "DA40_FUEL_AUX_ACTUAL":
+                _fuelAuxGal = value;
+                displayText = DualUnitFuel(value);
+                return true;
+
+            case "DA40_FUEL_MAIN_IND":
+            case "DA40_FUEL_AUX_IND":
+            {
+                // AFM 2.5 gives this gauge a red arc below 1 gallon and green to 14.
+                string band = DA40InstrumentBands.Annotate(varKey, value, $"{value:0.0} gallons");
+
+                // On the cap the gauge has stopped measuring. Saying so is the difference
+                // between "the tank holds 14" and "the tank holds at least 14, go and
+                // measure it", which is the AFM's own instruction.
+                if (value >= FuelIndicationCapGal - 0.05)
+                {
+                    band += ", at the indication limit — 14 or more, measure the tank";
+                }
+
+                displayText = band;
+                return true;
+            }
+
+            case "DA40_FUEL_DIFFERENCE":
+            {
+                double diff = Math.Abs(_fuelMainGal - _fuelAuxGal);
+                displayText = diff > FuelMaxTankDifferenceGal
+                    ? $"{diff:0.0} gallons, OVER the {FuelMaxTankDifferenceGal:0} gallon limit"
+                    : $"{diff:0.0} gallons, limit {FuelMaxTankDifferenceGal:0}";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gallons and litres together. The AFM quotes both on every fuel figure it gives,
+    /// and the aeroplane is fuelled in whichever the field uses.
+    /// </summary>
+    private static string DualUnitFuel(double gallons)
+        => $"{gallons:0.0} gallons, {gallons * LitresPerGallonFuel:0} litres";
+}

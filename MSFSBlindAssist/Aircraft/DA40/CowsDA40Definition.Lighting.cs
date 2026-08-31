@@ -51,7 +51,11 @@ public partial class CowsDA40Definition
         var v = new Dictionary<string, SimVarDefinition>();
 
         AddLightSwitch(v, "DA40_LIGHT_LANDING", "LIGHT LANDING", "Landing Light");
-        AddLightSwitch(v, "DA40_LIGHT_TAXI", "LIGHT TAXI", "Taxi and Map Light");
+        // TAXI, and only taxi. The label used to say "Taxi and Map Light", which the
+        // aeroplane does not support: systems.cfg puts every Type 6 emitter in the left
+        // wing (TAXI_N, TAXI_R, TAXI_F, TAXI_B) and there is no cabin map light on the
+        // circuit. The AFM's placard reads TAXI.
+        AddLightSwitch(v, "DA40_LIGHT_TAXI", "LIGHT TAXI", "Taxi Light");
         AddLightSwitch(v, "DA40_LIGHT_POSITION", "LIGHT NAV", "Position Lights");
         AddLightSwitch(v, "DA40_LIGHT_STROBE", "LIGHT STROBE", "Strobe Lights");
 

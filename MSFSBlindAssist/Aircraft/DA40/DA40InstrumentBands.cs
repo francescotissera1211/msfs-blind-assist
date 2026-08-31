@@ -65,6 +65,9 @@ public sealed record BandRange(
 ///   Voltmeter      below 24.1 V   24.1-25         25-30          30-32           above 32
 ///   Fuel quantity  below 1 USG    --              1-14 USG       --              --
 ///
+/// Fuel quantity has no lower CAUTION band, so its lower-red boundary and its green
+/// floor are the same number: below 1 gallon is red, and there is nothing in between.
+///
 /// Airspeed (section 2.3): green 66-130 KIAS, yellow 130-172 (smooth air only),
 /// red line 172 KIAS = Vne.
 /// </summary>
@@ -100,7 +103,18 @@ public static class DA40InstrumentBands
         // Electrical. Ammeter has no lower arcs; voltmeter has the full set.
         ["DA40_ELEC_DISP_AMPS"]       = new BandRange(null, null, 60, 70),
         ["DA40_ELEC_DISP_VOLTS"]      = new BandRange(24.1, 25, 30, 32),
-        ["DA40_START_VOLTS"]          = new BandRange(24.1, 25, 30, 32)
+        ["DA40_START_VOLTS"]          = new BandRange(24.1, 25, 30, 32),
+
+        // Fuel quantity, US gallons. Red below 1, green to 14. There is no yellow and no
+        // upper red — the gauge simply stops at 14 (AFM 2.14.4), which the Fuel System
+        // panel reports in words because a saturated gauge is not a quantity.
+        ["DA40_FUEL_MAIN_IND"]        = new BandRange(1, 1, 14, null),
+        ["DA40_FUEL_AUX_IND"]         = new BandRange(1, 1, 14, null),
+
+        // Fuel temperature, degrees C. Above 60 costs high-pressure pump efficiency and
+        // the AFM has you reduce power and increase airspeed.
+        ["DA40_FUEL_MAIN_TEMP"]       = new BandRange(-25, -20, 55, 60),
+        ["DA40_FUEL_AUX_TEMP"]        = new BandRange(-25, -20, 55, 60)
     };
 
     /// <summary>The arcs for a variable, or null when that gauge has no published arcs.</summary>
