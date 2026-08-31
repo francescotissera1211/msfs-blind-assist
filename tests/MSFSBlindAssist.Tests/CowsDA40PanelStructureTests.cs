@@ -549,7 +549,7 @@ public class CowsDA40PanelStructureTests
     // ==============================================================================
 
     /// <summary>
-    /// Controls whose value is a CONTINUOUSLY VARYING QUANTITY rather than a setting.
+    /// Controls whose value is a NUMBER rather than a state.
     /// Adding one here is a deliberate decision that its value is a NUMBER to be read, not
     /// an event to be announced.
     ///
@@ -559,15 +559,33 @@ public class CowsDA40PanelStructureTests
     /// and a payload station runs continuously while GSX boards passengers. Announcing any
     /// of them would speak a new number several times a second over everything else.
     /// </summary>
-    private static readonly string[] ContinuouslyVaryingNumbers =
+    private static readonly string[] SilentNumericControls =
     {
+        // Swept by hardware - a throttle quadrant, a trim wheel.
         "DA40_POWER_LEVER_SET",
         "DA40_TRIM_SET",
+        // Run continuously while GSX boards passengers.
         "DA40_PAYLOAD_PILOT_SET",
         "DA40_PAYLOAD_FRONT_PAX_SET",
         "DA40_PAYLOAD_REAR_LEFT_SET",
         "DA40_PAYLOAD_REAR_RIGHT_SET",
-        "DA40_PAYLOAD_BAGGAGE_SET"
+        "DA40_PAYLOAD_BAGGAGE_SET",
+        // Failure SEVERITIES. Nothing outside MSFSBA sets these, so there is no background
+        // change to miss, and a percentage is a number to be read like any other.
+        "DA40_FAIL_COOLANT_LEAK",
+        "DA40_FAIL_CHT_BAFFLE",
+        "DA40_FAIL_TURBO",
+        "DA40_FAIL_VACC_LEAK",
+        "DA40_FAIL_BOOST_LEAK",
+        "DA40_FAIL_FUEL_PUMP",
+        "DA40_FAIL_FUEL_SPRING",
+        "DA40_FAIL_FUEL_LEAK",
+        "DA40_FAIL_FUEL_LEAK_L",
+        "DA40_FAIL_FUEL_LEAK_R",
+        "DA40_FAIL_INJ_1",
+        "DA40_FAIL_INJ_2",
+        "DA40_FAIL_INJ_3",
+        "DA40_FAIL_INJ_4"
     };
 
     [Theory]
@@ -589,9 +607,9 @@ public class CowsDA40PanelStructureTests
             .Select(k => new { Key = k, Def = vars[k] })
             // Buttons are momentary and have no state to announce; sliders are numeric.
             .Where(x => !x.Def.RenderAsButton && !x.Def.RenderAsSlider)
-            // A CONTINUOUSLY VARYING QUANTITY is not a switch - see the list for where
-            // that line falls and why the standby subscale is on the other side of it.
-            .Where(x => !ContinuouslyVaryingNumbers.Contains(x.Key))
+            // A NUMBER is not a switch - see the list for where that line falls, and why
+            // the standby subscale is on the other side of it.
+            .Where(x => !SilentNumericControls.Contains(x.Key))
             .Where(x => !x.Def.IsAnnounced
                      || x.Def.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
             .Select(x => x.Key)
@@ -1089,8 +1107,6 @@ public class CowsDA40PanelStructureTests
                 // Autopilot
         "GFC 700", "Flight Director",
         // Cabin
-        // Simulation
-        "Failures", "Reset", "Engine Damage"
     };
 
     /// <summary>
@@ -1718,5 +1734,105 @@ public class CowsDA40PanelStructureTests
 
         Assert.Equal("PAYLOAD STATION WEIGHT:1", vars["DA40_PAYLOAD_PILOT_SET"].Name);
         Assert.Equal("PAYLOAD STATION WEIGHT:5", vars["DA40_PAYLOAD_BAGGAGE_SET"].Name);
+    }
+
+    // ==============================================================================
+    // Simulation - failures
+    // ==============================================================================
+
+    [Fact]
+    public void FailurePanelsCoverTheNgsOwnSystems()
+    {
+        // COWS's Failures.txt is largely the LYCOMING's list - magnetos, mixture and
+        // propeller cables, manifold pressure, CHT and EGT - none of which an AE300 has.
+        // The NG's real failures are in the L:var table and absent from that document, so
+        // the panels are built from the aircraft's variables and the document supplies
+        // only the wording.
+        var controls = Ng().GetPanelControls();
+
+        Assert.Contains("DA40_FAIL_CRANK_A", controls["FADEC and Sensors"]);
+        Assert.Contains("DA40_FAIL_CAM_B", controls["FADEC and Sensors"]);
+        Assert.Contains("DA40_FAIL_LEVER_A", controls["FADEC and Sensors"]);
+        Assert.Contains("DA40_FAIL_GLOW", controls["FADEC and Sensors"]);
+        Assert.Contains("DA40_FAIL_COOLANT_LEAK", controls["Engine Failures"]);
+    }
+
+    [Fact]
+    public void NoFailurePanelOffersAMagnetoOnTheDiesel()
+    {
+        // The L:vars exist on the NG because both variants share one model, but an AE300
+        // has no magnetos and setting them would do nothing.
+        var vars = Ng().GetVariables().Keys;
+
+        Assert.DoesNotContain("DA40_FAIL_MAG_L", vars);
+        Assert.DoesNotContain("DA40_FAIL_MIX_LEVER", vars);
+    }
+
+    [Fact]
+    public void ModeFailuresNameTheirModesRatherThanNumberThem()
+    {
+        // Each number is a DIFFERENT failure of the same part - "stuck open" and "stuck
+        // closed" are not degrees of one thing.
+        var v = Ng().GetVariables()["DA40_FAIL_BYPASS"];
+
+        Assert.Equal("Normal", v.ValueDescriptions![0]);
+        Assert.Equal("Stuck closed", v.ValueDescriptions[1]);
+        Assert.Equal("Stuck open", v.ValueDescriptions[2]);
+        Assert.Equal("Stuck as is", v.ValueDescriptions[3]);
+    }
+
+    [Fact]
+    public void TrimRunawayKeepsBothDirections()
+    {
+        // FAILURES_AFCS_TRIM_RUN is -1/+1, and which way it runs is the whole point.
+        var v = Ng().GetVariables()["DA40_FAIL_AFCS_TRIM_RUN"];
+
+        Assert.Equal("Runs nose down", v.ValueDescriptions![-1]);
+        Assert.Equal("Runs nose up", v.ValueDescriptions[1]);
+    }
+
+    [Fact]
+    public void EveryFailureAnnouncesExceptTheSeverities()
+    {
+        // A failure appearing without being asked for is the most important background
+        // change this aeroplane can produce. The severities are numbers, so they follow
+        // the numeric rule instead.
+        var vars = Ng().GetVariables();
+
+        foreach (var kv in vars.Where(kv => kv.Key.StartsWith("DA40_FAIL_")
+                                         && kv.Value.ValueDescriptions is { Count: > 0 }))
+        {
+            Assert.True(kv.Value.IsAnnounced, $"{kv.Key} would not announce");
+        }
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void ResetIsAlwaysAvailable(DA40Variant variant)
+    {
+        var def = new CowsDA40Definition(variant);
+
+        // Three, not one: failures, damage, and both. And the variable behind them is
+        // RESET_FAILURES - the vendor document's FAILURES_RESET is read by nothing, which
+        // was verified live by watching a raised failure stay raised.
+        Assert.Equal(new[]
+        {
+            "DA40_FAIL_RESET",
+            "DA40_FAIL_RESET_DAMAGE",
+            "DA40_FAIL_RESET_ALL"
+        }, def.GetPanelControls()["Reset"].ToArray());
+        Assert.Contains("Reset", def.GetPanelStructure()["Simulation"]);
+    }
+
+    [Fact]
+    public void TheXlsDropsTheNgOnlyFailurePanels()
+    {
+        var xls = Xls().GetPanelStructure()["Simulation"];
+
+        Assert.DoesNotContain("FADEC and Sensors", xls);
+        Assert.DoesNotContain("Engine Damage", xls);
+        Assert.Contains("Light Failures", xls);
+        Assert.Contains("Reset", xls);
     }
 }

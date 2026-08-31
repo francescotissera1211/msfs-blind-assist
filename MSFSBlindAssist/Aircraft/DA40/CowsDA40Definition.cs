@@ -115,11 +115,21 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Doors and Windows",
                 "Seating and Payload"
             },
+            // The failure set is built from the aircraft's own L:vars, grouped the way
+            // the vendor's Failures.txt groups them. The NG-only panels are filtered out
+            // on the XLS by FailurePanels(isNg).
             ["Simulation"] = new List<string>
             {
-                "Failures",
-                "Reset",
-                "Engine Damage"
+                "Engine Failures",
+                "FADEC and Sensors",
+                "Fuel Failures",
+                "Electrical Failures",
+                "Indication Failures",
+                "Flight System Failures",
+                "Light Failures",
+                "Brake Failures",
+                "Engine Damage",
+                "Reset"
             }
         };
 
@@ -143,6 +153,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             structure["Center Console"].Insert(1, "Mixture and Propeller");
             structure["Instrument Panel"].Insert(2, "Magnetos");
             structure["Center Console"].Insert(3, "Priming");
+
+            structure["Simulation"].Remove("FADEC and Sensors");
+            structure["Simulation"].Remove("Engine Failures");
+            structure["Simulation"].Remove("Fuel Failures");
+            structure["Simulation"].Remove("Engine Damage");
 
             // No "Lean Assist" panel. It is an MFD PAGE, reached with the softkeys, so it
             // belongs to the G1000 display window like every other page.
@@ -187,6 +202,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[EltPanel] = new List<string>(EltControls);
         controls[CabinAirPanel] = new List<string>(CabinAirControls);
         controls[PayloadPanel] = new List<string>(PayloadControls);
+
+        foreach (var kv in FailurePanels(IsNG))
+        {
+            controls[kv.Key] = kv.Value;
+        }
 
         foreach (var kv in BreakerPanels)
         {
@@ -273,6 +293,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildPayloadVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildFailureVariables(IsNG))
         {
             vars[kv.Key] = kv.Value;
         }
@@ -461,6 +486,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
         if (HandleCabinAirSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 
