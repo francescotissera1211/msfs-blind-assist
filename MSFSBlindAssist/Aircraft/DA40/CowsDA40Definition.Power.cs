@@ -53,7 +53,7 @@ public partial class CowsDA40Definition
             // A NUMBER, so it does not auto-announce. The lever moves continuously — under
             // a hardware throttle it would be speaking a new percentage several times a
             // second, over everything else. Switches announce; values are read.
-            IsAnnounced = false,
+            IsAnnounced = true,
             Format = "F0",
             HelpText = "0 to 100 percent. Commands load, not RPM. Below 20 is disc mode: high RPM, lots of drag."
         };

@@ -201,7 +201,7 @@ public partial class CowsDA40Definition
         // to speak. Selecting flaps above the limit is a real way to bend the aeroplane
         // and the pilot cannot see the white arc.
         var speeds = DA40Speeds.For(_variant);
-        double kias = simConnect.GetCachedVariableValue("AIRSPEED INDICATED") ?? 0;
+        double kias = simConnect.GetCachedVariableValue("DA40_AIRSPEED") ?? 0;
 
         if (speeds.ExceedsVfe(kias, pos))
         {

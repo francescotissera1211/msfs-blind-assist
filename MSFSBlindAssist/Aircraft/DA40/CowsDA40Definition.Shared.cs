@@ -14,9 +14,17 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// `?? 0` fallback then answers zero. That is exactly what the B, F and W keys did: they
 /// reported "0 hectopascals" and "0.0 gallons" on a full aeroplane.
 ///
-/// And only CONTINUOUS variables are in it at all — an OnRequest variable is polled only
-/// while its own panel is open, so a hotkey depending on one answers a stale zero
-/// whenever the pilot has not just been looking at that panel. Registering them here makes B and L work now
+/// And CONTINUOUS ALONE IS NOT ENOUGH. Batch membership — which is what actually gets a
+/// variable polled and cached — is `Continuous && IsAnnounced && !ExcludeFromBatch`
+/// (SimConnectManager.Setup.cs). A Continuous variable with IsAnnounced false falls to the
+/// individual-data-def branch instead, which is only read on request, so it never reaches
+/// the cache at all. That is why the B, F and W keys still answered "not available yet"
+/// after being pointed at the right KEYS: the keys were right and the variables were never
+/// being polled.
+///
+/// So everything here is IsAnnounced, and silenced instead in ProcessSimVarUpdate, which
+/// returns true for these keys so the generic announcer never speaks them. Announcing a
+/// tank quantity or a subscale on every change would bury everything else. Registering them here makes B and L work now
 /// rather than waiting for the G1000 and Flaps panels; when those arrive they reuse these
 /// same keys rather than defining second copies.
 /// </summary>
@@ -33,7 +41,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "inHg",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            IsAnnounced = true,
             ExcludeFromMonitorManager = true
         },
 
@@ -51,7 +59,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "gallons",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
             Format = "F1"
@@ -64,10 +72,24 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "gallons",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
             Format = "F1"
+        },
+
+        // Indicated airspeed. The flap panel's overspeed warning needs it from the cache,
+        // and airspeed is otherwise only a FIXED data definition in SimConnectManager -
+        // not a keyed variable, so there is nothing in lastVariableValues to look up.
+        ["DA40_AIRSPEED"] = new SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED",
+            DisplayName = "Airspeed",
+            Type = SimVarType.SimVar,
+            Units = "knots",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true
         },
 
         // Gross weight, for the W readout.
@@ -78,7 +100,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "pounds",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            IsAnnounced = true,
             ExcludeFromMonitorManager = true
         }
 
@@ -90,4 +112,36 @@ public partial class CowsDA40Definition
         // continuous batch sorts by name and a duplicate shifts every later variable's
         // struct slot.
     };
+
+    /// <summary>
+    /// Readout plumbing that must be POLLED but must never be SPOKEN.
+    ///
+    /// These have to be IsAnnounced to earn a place in the continuous batch - that is the
+    /// only thing that gets them cached - so the silence has to come from somewhere else,
+    /// and ProcessSimVarUpdate is where. Every one is a NUMBER that changes constantly.
+    /// </summary>
+    public static IReadOnlyCollection<string> SilentCachedReadoutKeys => SilentCachedReadouts;
+
+    private static readonly HashSet<string> SilentCachedReadouts = new()
+    {
+        "DA40_G1000_BARO",
+        "DA40_FUEL_MAIN_ACTUAL",
+        "DA40_FUEL_AUX_ACTUAL",
+        "DA40_GROSS_WEIGHT",
+        "DA40_AIRSPEED",
+        "DA40_TRIM_SET",
+        "DA40_POWER_LEVER_SET"
+    };
+
+    /// <summary>
+    /// Returning true means "handled" - the generic announcer never runs for that key.
+    /// Nothing is announced here; that IS the handling.
+    /// </summary>
+    public override bool ProcessSimVarUpdate(string varName, double value,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (SilentCachedReadouts.Contains(varName)) return true;
+
+        return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
 }

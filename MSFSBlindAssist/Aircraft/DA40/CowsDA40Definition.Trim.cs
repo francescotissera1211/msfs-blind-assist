@@ -77,7 +77,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "percent",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            IsAnnounced = true,
             Format = "F0",
             HelpText = "Minus 100 nose down to plus 100 nose up. Full travel is 7 degrees."
         };

@@ -101,8 +101,6 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
-            // Three decimals or a whole-MHz frequency loses its fraction and reads as a
-            // bare "121" - the same trap the A380 RMP readouts hit.
             Format = "F3"
         };
     }
@@ -125,6 +123,20 @@ public partial class CowsDA40Definition
                 [1] = "Heard"
             }
         };
+    }
+
+    /// <summary>
+    /// Frequencies, rendered here rather than by Format. Format is not enough for these -
+    /// live, COM 1 read "128" and COM 2 "125" with Format set to F3 - which is the same
+    /// trap the A380's RMP readouts hit and the same remedy: a display override.
+    /// </summary>
+    private bool TryGetAudioDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        if (varKey != "DA40_AUDIO_COM1_ACTIVE" && varKey != "DA40_AUDIO_COM2_ACTIVE") return false;
+
+        displayText = $"{value:0.000} MHz";
+        return true;
     }
 
     private static readonly List<string> AudioControls = new()

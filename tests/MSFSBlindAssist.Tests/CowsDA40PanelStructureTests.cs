@@ -608,11 +608,16 @@ public class CowsDA40PanelStructureTests
         var def = new CowsDA40Definition(variant);
         var vars = def.GetVariables();
 
+        // A variable can be IsAnnounced and still silent: batch membership REQUIRES
+        // IsAnnounced (Continuous alone does not get a variable polled), so anything a
+        // hotkey reads from the cache has to carry the flag and be silenced instead in
+        // ProcessSimVarUpdate, which returns true for it.
         var noisy = def.GetPanelDisplayVariables()
             .SelectMany(p => p.Value)
             .Distinct()
             .Where(k => k.StartsWith("DA40_"))
             .Where(k => vars[k].IsAnnounced)
+            .Where(k => !CowsDA40Definition.SilentCachedReadoutKeys.Contains(k))
             .ToList();
 
         Assert.True(noisy.Count == 0,
@@ -826,7 +831,12 @@ public class CowsDA40PanelStructureTests
         var vars = Ng().GetVariables();
 
         Assert.True(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
-        Assert.False(vars["DA40_G1000_BARO"].IsAnnounced);
+
+        // It IS IsAnnounced - that is the only way into the continuous batch, and the
+        // batch is the only thing that caches it - and it is silenced in
+        // ProcessSimVarUpdate instead.
+        Assert.True(vars["DA40_G1000_BARO"].IsAnnounced);
+        Assert.Contains("DA40_G1000_BARO", CowsDA40Definition.SilentCachedReadoutKeys);
 
         // DA40_FLAPS_POSITION is NOT plumbing any more. The Flaps panel promoted the same
         // key into its selector control rather than defining a second copy, so it now
@@ -1396,5 +1406,55 @@ public class CowsDA40PanelStructureTests
             .ToList();
 
         Assert.DoesNotContain("Cabin Heat and Vent", panels);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryVariableReadFromTheCacheIsBatchEligible(DA40Variant variant)
+    {
+        // CONTINUOUS ALONE IS NOT ENOUGH. Batch membership - the thing that actually gets
+        // a variable polled and cached - is Continuous AND IsAnnounced AND not
+        // ExcludeFromBatch (SimConnectManager.Setup.cs). A Continuous variable with
+        // IsAnnounced false falls to the individual-data-def branch, which is only read on
+        // request, so it never reaches the cache: that is why B, F and W answered "not
+        // available yet" even after being pointed at the right keys.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (var key in new[]
+                 {
+                     "DA40_G1000_BARO", "DA40_STBY_ALTIMETER_SET",
+                     "DA40_FUEL_MAIN_ACTUAL", "DA40_FUEL_AUX_ACTUAL",
+                     "DA40_FLAPS_POSITION", "DA40_GROSS_WEIGHT",
+                     "DA40_AIRSPEED", "DA40_TRIM_SET"
+                 })
+        {
+            var v = vars[key];
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous, v.UpdateFrequency);
+            Assert.True(v.IsAnnounced, $"{key} is Continuous but not IsAnnounced, so it is never batched or cached");
+            Assert.False(v.ExcludeFromBatch, $"{key} is excluded from the batch, so it is never cached");
+        }
+    }
+
+    [Fact]
+    public void EverySilentCachedReadoutActuallyExists()
+    {
+        // The silence comes from a name match in ProcessSimVarUpdate, so a typo or a
+        // renamed key silently stops silencing and the pilot gets a number spoken at them
+        // several times a second.
+        //
+        // Checked against the UNION of both variants: the set is shared, but some of its
+        // keys are variant-gated (the power lever is NG-only), and a key missing on one
+        // airframe is correct rather than a typo.
+        var known = Ng().GetVariables().Keys
+            .Concat(Xls().GetVariables().Keys)
+            .ToHashSet();
+
+        var missing = CowsDA40Definition.SilentCachedReadoutKeys
+            .Where(k => !known.Contains(k))
+            .ToList();
+
+        Assert.True(missing.Count == 0,
+            $"silenced keys that no longer exist - {string.Join(", ", missing)}");
     }
 }

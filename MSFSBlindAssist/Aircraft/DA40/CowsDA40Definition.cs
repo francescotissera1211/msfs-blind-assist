@@ -353,6 +353,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetFlapsDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetTrimDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBrakeDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetAudioDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
