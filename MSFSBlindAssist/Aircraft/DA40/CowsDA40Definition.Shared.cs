@@ -26,18 +26,14 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false,
             ExcludeFromMonitorManager = true
-        },
-
-        // Flap selector position, for the L key and the flap limit speeds.
-        ["DA40_FLAPS_POSITION"] = new SimVarDefinition
-        {
-            Name = "FLAPS HANDLE INDEX",
-            DisplayName = "Flaps",
-            Type = SimVarType.SimVar,
-            Units = "number",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
-            ExcludeFromMonitorManager = true
         }
+
+        // DA40_FLAPS_POSITION used to live here for the same reason. It has since been
+        // PROMOTED into the Flaps panel, where it is the selector control itself — the
+        // key is unchanged, so the L readout and the flap limit speeds still find it.
+        // It was never duplicated, and must not be: two keys sharing one SimVar Name are
+        // fine in general but NOT when both are Continuous and batched, because the
+        // continuous batch sorts by name and a duplicate shifts every later variable's
+        // struct slot.
     };
 }

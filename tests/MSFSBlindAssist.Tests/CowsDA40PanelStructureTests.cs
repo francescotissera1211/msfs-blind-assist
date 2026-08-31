@@ -799,13 +799,19 @@ public class CowsDA40PanelStructureTests
     [Fact]
     public void ReadoutSupportVariablesDoNotCluttertheMonitorManager()
     {
-        // They are silent plumbing for the hotkeys, so a Ctrl+M row for them would be a
-        // checkbox that mutes nothing.
+        // Silent plumbing for the hotkeys gets no Ctrl+M row, because the checkbox would
+        // mute nothing. The G1000 subscale is still plumbing: the B key reads it, the
+        // Standby panel owns the OTHER altimeter, and nothing announces this one.
         var vars = Ng().GetVariables();
 
         Assert.True(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
-        Assert.True(vars["DA40_FLAPS_POSITION"].ExcludeFromMonitorManager);
         Assert.False(vars["DA40_G1000_BARO"].IsAnnounced);
+
+        // DA40_FLAPS_POSITION is NOT plumbing any more. The Flaps panel promoted the same
+        // key into its selector control rather than defining a second copy, so it now
+        // announces external changes and earns its Ctrl+M row like every other switch.
+        Assert.False(vars["DA40_FLAPS_POSITION"].ExcludeFromMonitorManager);
+        Assert.True(vars["DA40_FLAPS_POSITION"].IsAnnounced);
     }
 
     // ==============================================================================
@@ -941,5 +947,90 @@ public class CowsDA40PanelStructureTests
     public void XlsHasNoNgFuelSystemControls()
     {
         Assert.DoesNotContain("DA40_FUEL_VALVE", Xls().GetVariables().Keys);
+    }
+
+    // ==============================================================================
+    // Flaps panel (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void FlapsPanelExistsOnBothVariants(DA40Variant variant)
+    {
+        // The flap system is identical on both airframes; only the limit speeds differ.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Flaps"];
+
+        Assert.Equal(new[] { "DA40_FLAPS_POSITION" }, controls.ToArray());
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void FlapSelectorUsesTheAeroplanesOwnPositionNames(DA40Variant variant)
+    {
+        // UP / T-O / LDG. The detents are not proportional - measured 0, 47 and 100
+        // percent travel - so "flaps 1" and "half flap" would both be wrong.
+        var v = new CowsDA40Definition(variant).GetVariables()["DA40_FLAPS_POSITION"];
+
+        Assert.Equal("UP", v.ValueDescriptions![0]);
+        Assert.Equal("T/O", v.ValueDescriptions[1]);
+        Assert.Equal("LDG", v.ValueDescriptions[2]);
+    }
+
+    [Fact]
+    public void FlapPositionIsDefinedExactlyOnce()
+    {
+        // It was registered in Shared.cs for the L readout before the panel existed, and
+        // the panel PROMOTED it rather than adding a second copy. Two Continuous batched
+        // keys sharing one SimVar Name shift every later variable's struct slot.
+        var vars = Ng().GetVariables();
+
+        var sharingTheName = vars
+            .Where(kv => kv.Value.Name == "FLAPS HANDLE INDEX"
+                      && kv.Value.UpdateFrequency == MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
+            .Select(kv => kv.Key)
+            .ToList();
+
+        Assert.Single(sharingTheName);
+        Assert.Equal("DA40_FLAPS_POSITION", sharingTheName[0]);
+    }
+
+    [Fact]
+    public void FlapScanReportsEachSideSeparately()
+    {
+        // AFM 4B.5 opens with "FLAPS position ... check visually", which is the one
+        // instruction in the manual a blind pilot cannot follow. A split flap is a real
+        // modelled failure, so both sides and a computed asymmetry are reported.
+        var display = Ng().GetPanelDisplayVariables()["Flaps"];
+
+        Assert.Contains("DA40_FLAPS_TRAVEL_LEFT", display);
+        Assert.Contains("DA40_FLAPS_TRAVEL_RIGHT", display);
+        Assert.Contains("DA40_FLAPS_ASYMMETRY", display);
+    }
+
+    [Fact]
+    public void FlapAsymmetryIsListedAfterBothSides()
+    {
+        // Computed from the two travels as they render, in list order.
+        var display = Ng().GetPanelDisplayVariables()["Flaps"];
+
+        int left = display.IndexOf("DA40_FLAPS_TRAVEL_LEFT");
+        int right = display.IndexOf("DA40_FLAPS_TRAVEL_RIGHT");
+        int split = display.IndexOf("DA40_FLAPS_ASYMMETRY");
+
+        Assert.True(split > left && split > right,
+            "flap asymmetry must render after both sides");
+    }
+
+    [Fact]
+    public void FlapLimitSpeedsDifferBetweenVariants()
+    {
+        // NG 110 / 98, XLS 108 / 91 - the panel reads them from DA40Speeds rather than
+        // carrying its own copy.
+        Assert.Equal(110, DA40Speeds.For(DA40Variant.NG).VfeTakeoff);
+        Assert.Equal(98, DA40Speeds.For(DA40Variant.NG).VfeLanding);
+        Assert.Equal(108, DA40Speeds.For(DA40Variant.XLS).VfeTakeoff);
+        Assert.Equal(91, DA40Speeds.For(DA40Variant.XLS).VfeLanding);
     }
 }
