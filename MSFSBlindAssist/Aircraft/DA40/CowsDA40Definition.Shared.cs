@@ -142,6 +142,12 @@ public partial class CowsDA40Definition
     {
         if (SilentCachedReadouts.Contains(varName)) return true;
 
+        // Remember every breaker position so the per-panel "how many are out" row can be
+        // computed. A display override gets no SimConnect, so it cannot read them itself.
+        // Returning FALSE here on purpose: a breaker moving on its own is exactly the kind
+        // of background change that must still be announced.
+        if (varName.StartsWith("DA40_CB_")) _breakerState[varName] = value;
+
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
 }

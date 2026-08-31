@@ -63,10 +63,13 @@ public class CowsDA40PanelStructureTests
     [Fact]
     public void BothVariantsShareTheCommonSections()
     {
+        // No G1000 sections: the displays are driveable and scrapeable in their own
+        // right, and the radios and transponder can ONLY be tuned there, so the G1000
+        // gets a display window rather than panels that would be a worse copy of it.
         var expected = new[]
         {
             "Instrument Panel", "Center Console", "Circuit Breakers",
-            "G1000 PFD", "G1000 MFD", "Autopilot", "Cabin", "Simulation"
+            "Autopilot", "Cabin", "Simulation"
         };
 
         Assert.Equal(expected, Ng().GetPanelStructure().Keys.ToArray());
@@ -88,7 +91,6 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("Magnetos", ng["Instrument Panel"]);
         Assert.DoesNotContain("Mixture and Propeller", ng["Center Console"]);
         Assert.DoesNotContain("Priming", ng["Center Console"]);
-        Assert.DoesNotContain("Lean Assist", ng["G1000 MFD"]);
     }
 
     [Fact]
@@ -99,7 +101,6 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("Magnetos", xls["Instrument Panel"]);
         Assert.Contains("Mixture and Propeller", xls["Center Console"]);
         Assert.Contains("Priming", xls["Center Console"]);
-        Assert.Contains("Lean Assist", xls["G1000 MFD"]);
 
         Assert.DoesNotContain("ECU", xls["Instrument Panel"]);
     }
@@ -1078,12 +1079,7 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYet =
     {
         // Center Console
-        // Circuit Breakers
-        "Engine and Fuel", "Flight Instruments", "Avionics", "Bus and Power",
-        "Lighting", "Airframe Systems", "Copilot",
-        // G1000
-        "PFD Readout", "CAS Messages", "Engine Indication", "Fuel Calculator",
-        // Autopilot
+                // Autopilot
         "GFC 700", "Flight Director",
         // Cabin
         "Doors and Windows", "Seating and Payload",
@@ -1102,8 +1098,7 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYetOnXls =
     {
         "Engine Start", "Power and Levers", "Fuel System",
-        "Mixture and Propeller", "Magnetos", "Priming", "Lean Assist"
-    };
+        "Mixture and Propeller", "Magnetos", "Priming",     };
 
     private static bool IsKnownUnbuilt(DA40Variant variant, string panel)
         => NotBuiltYet.Contains(panel)
@@ -1456,5 +1451,83 @@ public class CowsDA40PanelStructureTests
 
         Assert.True(missing.Count == 0,
             $"silenced keys that no longer exist - {string.Join(", ", missing)}");
+    }
+
+    // ==============================================================================
+    // Circuit Breakers (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryBreakerTheAeroplaneHasIsPresent(DA40Variant variant)
+    {
+        // Thirty-four, read out of the model's own CircuitBreakers.xml. Not a curated
+        // subset - the checklist says "circuit breakers CHECKED IN" and a pilot cannot
+        // check what is not there.
+        var def = new CowsDA40Definition(variant);
+
+        var breakers = def.GetPanelControls()
+            .Where(p => p.Key is "Engine and Fuel" or "Flight Instruments" or "Avionics"
+                              or "Bus and Power" or "Lighting" or "Airframe Systems")
+            .SelectMany(p => p.Value)
+            .Distinct()
+            .ToList();
+
+        Assert.Equal(34, breakers.Count);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryBreakerAnnouncesAndReadsInOrPulled(DA40Variant variant)
+    {
+        // A breaker moving without being touched means something failed - the definition
+        // of a background change worth speaking. 0 is IN, 1 is PULLED, from the model's
+        // own click code.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (var kv in vars.Where(kv => kv.Key.StartsWith("DA40_CB_")
+                                         && !kv.Key.EndsWith("_OUT")))
+        {
+            Assert.True(kv.Value.IsAnnounced, $"{kv.Key} would not announce");
+            Assert.Equal("In", kv.Value.ValueDescriptions![0]);
+            Assert.Equal("PULLED", kv.Value.ValueDescriptions[1]);
+        }
+    }
+
+    [Fact]
+    public void EveryBreakerPanelCountsItsOwnBreakers()
+    {
+        // "Circuit breakers CHECKED IN" appears three times in the checklist, and
+        // answering it by tabbing thirty-four combos is auditing, not checking.
+        var display = Ng().GetPanelDisplayVariables();
+
+        foreach (var panel in new[] { "Engine and Fuel", "Flight Instruments", "Avionics",
+                                      "Bus and Power", "Lighting", "Airframe Systems" })
+        {
+            Assert.Single(display[panel]);
+            Assert.EndsWith("_OUT", display[panel][0]);
+        }
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void ThereIsNoCopilotBreakerPanelOrG1000Panel(DA40Variant variant)
+    {
+        // Both were planning sketches. The aeroplane has no copilot breaker set, and
+        // everything a G1000 panel would carry is ON the displays - which are clickable
+        // and driveable over the Coherent debugger, and are the ONLY way to tune the
+        // radios and the transponder. The G1000 gets a display window instead.
+        var panels = new CowsDA40Definition(variant).GetPanelStructure()
+            .SelectMany(section => section.Value)
+            .ToList();
+
+        Assert.DoesNotContain("Copilot", panels);
+        Assert.DoesNotContain("PFD Readout", panels);
+        Assert.DoesNotContain("CAS Messages", panels);
+        Assert.DoesNotContain("Engine Indication", panels);
+        Assert.DoesNotContain("Fuel Calculator", panels);
     }
 }

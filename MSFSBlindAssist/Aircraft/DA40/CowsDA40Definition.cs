@@ -89,6 +89,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             // avoid colliding with the Instrument Panel's "Electrical" and the Center
             // Console's panels — panel names key a FLAT dictionary, so a duplicate would
             // silently collapse the two into one (covered by a test).
+            // The six groups the 34 breakers actually fall into. There is no "Copilot"
+            // set — the planning sketch had one and the aeroplane does not.
             ["Circuit Breakers"] = new List<string>
             {
                 "Engine and Fuel",
@@ -96,33 +98,15 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Avionics",
                 "Bus and Power",
                 "Lighting",
-                "Airframe Systems",
-                "Copilot"
+                "Airframe Systems"
             },
-            // The G1000 bezel — 12 softkeys, the FMS knobs, MENU/ENT/CLR/FPL/PROC/DIRECT-TO,
-            // baro and range — is NOT a panel. It belongs in a dedicated display window
-            // reached by an output-mode hotkey, the way the A380X E/WD (Alt+E), SD (Alt+S),
-            // ND (Alt+N), PFD (Alt+P) and ISIS (Alt+I) already work: the window carries the
-            // live display text AND the interactive keys together, and the softkey labels
-            // change per page (Check <-> Next Item, Caution <-> Alerts) so they have to be
-            // read live rather than laid out as a static control list.
-            // The panels below are the SCANNABLE READOUTS only.
-            ["G1000 PFD"] = new List<string>
-            {
-                "PFD Readout",
-                "CAS Messages"
-            },
-            // Aircraft Options and the Electronic Checklist are NOT panels. Both are
-            // interactive pages inside the MFD, driven by its softkeys and FMS knobs, so
-            // they belong in the G1000 display window with the rest of the bezel. Anything
-            // that can be done outside a panel does not get a panel.
-            // What remains here is data a blind pilot cannot otherwise reach: the engine
-            // indication strip and the fuel calculator, both L:var backed and scannable.
-            ["G1000 MFD"] = new List<string>
-            {
-                "Engine Indication",
-                "Fuel Calculator"
-            },
+            // No "G1000 PFD" or "G1000 MFD" panels. Everything they would have carried is
+            // ON the displays and reachable there: the PFD and MFD are clickable and
+            // driveable over the Coherent debugger, the CAS window is scrapeable, and the
+            // radios and transponder are tuned with the bezel knobs and softkeys — there
+            // is no other way to tune them on this aeroplane. So the G1000 gets a display
+            // WINDOW opened by a hotkey, the way the A380X E/WD, SD, ND, PFD and ISIS
+            // windows already work, and a panel would only be a worse copy of it.
             ["Autopilot"] = new List<string>
             {
                 "GFC 700",
@@ -160,8 +144,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         {
             structure["Center Console"].Insert(1, "Mixture and Propeller");
             structure["Instrument Panel"].Insert(2, "Magnetos");
-            structure["G1000 MFD"].Insert(1, "Lean Assist");
             structure["Center Console"].Insert(3, "Priming");
+
+            // No "Lean Assist" panel. It is an MFD PAGE, reached with the softkeys, so it
+            // belongs to the G1000 display window like every other page.
         }
 
         return structure;
@@ -198,6 +184,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[TrimPanel] = new List<string>(TrimControls);
         controls[BrakesPanel] = new List<string>(BrakeControls);
         controls[AudioPanel] = new List<string>(AudioControls);
+
+        foreach (var kv in BreakerPanels)
+        {
+            controls[kv.Key] = new List<string>(kv.Value);
+        }
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -258,6 +249,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildBreakerVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         if (IsNG)
         {
             foreach (var kv in BuildPowerVariables())
@@ -312,6 +308,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[BrakesPanel] = new List<string>(BrakeDisplay);
         d[AudioPanel] = new List<string>(AudioDisplay);
 
+        d[CbEngineFuelPanel] = new List<string>(CbEngineFuelDisplay);
+        d[CbFlightInstrumentsPanel] = new List<string>(CbFlightInstrumentsDisplay);
+        d[CbAvionicsPanel] = new List<string>(CbAvionicsDisplay);
+        d[CbBusPowerPanel] = new List<string>(CbBusPowerDisplay);
+        d[CbLightingPanel] = new List<string>(CbLightingDisplay);
+        d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
+
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
 
@@ -354,6 +357,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetTrimDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBrakeDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetAudioDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetBreakerDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
@@ -389,6 +393,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleTrimSet(varKey, value, simConnect, announcer)) return true;
         if (HandleBrakeSet(varKey, value, simConnect, announcer)) return true;
         if (HandleAudioSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleBreakerSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

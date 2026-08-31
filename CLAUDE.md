@@ -760,6 +760,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A panel listed in `GetPanelStructure()` with no controls AND no display vars renders BLANK, which reads as broken — every panel must be built or on the explicit not-yet-built list. → [da40.md](docs/da40.md)
 - The NG power lever commands LOAD and its commanded RPM is NON-MONOTONIC (2150 at idle, 1800 at 20 %, 2300 at full) — always report commanded RPM beside actual, or "disc mode" is invisible. → [da40.md](docs/da40.md)
 - Anything doable inside a G1000 display (MFD pages, the checklist, softkeys) does NOT get a panel — it belongs in a display window reached by a hotkey. → [da40.md](docs/da40.md)
+- The DA40 has 34 circuit breakers across six panels, read from the model's own `CircuitBreakers.xml`; `(L:CB_XXX)` is 0 IN / 1 PULLED and they genuinely gate systems (pulling `CB_FLP` extinguishes `FLAP_LIGHT:1`, verified live). There is no Copilot breaker set. → [da40.md](docs/da40.md)
 
 ### Gemini AI (→ [gemini.md](docs/gemini.md))
 
