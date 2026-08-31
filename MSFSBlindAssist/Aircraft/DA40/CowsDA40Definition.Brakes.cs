@@ -70,8 +70,12 @@ public partial class CowsDA40Definition
         AddReadout(v, "DA40_BRAKE_TEMP_L", "BRAKE_TEMP:1", "Brake Temperature Left", "celsius", "F0");
         AddReadout(v, "DA40_BRAKE_TEMP_R", "BRAKE_TEMP:2", "Brake Temperature Right", "celsius", "F0");
 
-        AddBrakeFade(v, "DA40_BRAKE_FADE_L", "BRAKE_FADE:1", "Braking Left");
-        AddBrakeFade(v, "DA40_BRAKE_FADE_R", "BRAKE_FADE:2", "Braking Right");
+        // NAMED "effectiveness" and always rendered as a PERCENTAGE. The first labelling
+        // was "Braking Left: full", which reads as "the left brake is fully applied" -
+        // the opposite kind of fact from the one being reported. A percentage cannot be
+        // misread that way.
+        AddBrakeFade(v, "DA40_BRAKE_FADE_L", "BRAKE_FADE:1", "Brake Effectiveness Left");
+        AddBrakeFade(v, "DA40_BRAKE_FADE_R", "BRAKE_FADE:2", "Brake Effectiveness Right");
 
         // How hard the pedals are actually being pressed, per side. A stuck or dragging
         // pedal is what heats a brake for no reason, and it is invisible otherwise.
@@ -160,8 +164,8 @@ public partial class CowsDA40Definition
             case "DA40_BRAKE_FADE_L":
             case "DA40_BRAKE_FADE_R":
                 displayText = value >= 0.995
-                    ? "full"
-                    : $"{value * 100:0} percent of normal";
+                    ? "100 percent"
+                    : $"{value * 100:0} percent, FADED";
                 return true;
         }
 

@@ -1068,7 +1068,6 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYet =
     {
         // Center Console
-        "Cabin Heat and Vent", "Audio",
         // Circuit Breakers
         "Engine and Fuel", "Flight Instruments", "Avionics", "Bus and Power",
         "Lighting", "Airframe Systems", "Copilot",
@@ -1338,5 +1337,64 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_BRAKE_PRESS_L", display);
         Assert.Contains("DA40_BRAKE_PRESS_R", display);
+    }
+
+    // ==============================================================================
+    // Audio panel (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void AudioPanelCarriesWhatTheAudioPanelDoes(DA40Variant variant)
+    {
+        // The GMA 1347 itself is in the G1000 bezel, so it belongs to the display window.
+        // What is here is what it DOES, reachable without it, plus the headset jack -
+        // the only audio item COWS models on its own.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Audio"];
+
+        Assert.Equal(new[]
+        {
+            "DA40_AUDIO_TRANSMIT",
+            "DA40_AUDIO_MONITOR_BOTH",
+            "DA40_AUDIO_HEADSET"
+        }, controls.ToArray());
+    }
+
+    [Fact]
+    public void TransmitSelectionReadsTheWayTheSelectionDoes()
+    {
+        // Bound to COM 2's transmit flag, so 0 is COM 1 and 1 is COM 2 rather than the
+        // inverted reading COM 1's flag would give.
+        var v = Ng().GetVariables()["DA40_AUDIO_TRANSMIT"];
+
+        Assert.Equal("COM TRANSMIT:2", v.Name);
+        Assert.Equal("COM 1", v.ValueDescriptions![0]);
+        Assert.Equal("COM 2", v.ValueDescriptions[1]);
+    }
+
+    [Fact]
+    public void ComFrequenciesKeepTheirDecimals()
+    {
+        // Format defaults to "F0", which would render 121.500 as a bare "121".
+        foreach (var key in new[] { "DA40_AUDIO_COM1_ACTIVE", "DA40_AUDIO_COM2_ACTIVE" })
+        {
+            Assert.Equal("F3", Ng().GetVariables()[key].Format);
+        }
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void ThereIsNoCabinHeatOrVentilationPanel(DA40Variant variant)
+    {
+        // The AFM legend has movable ventilation nozzles and the aeroplane has cabin
+        // heat, but COWS models neither as a control - no component, no L:var, no simvar.
+        // A panel for it could never be filled, and an empty panel reads as broken.
+        var panels = new CowsDA40Definition(variant).GetPanelStructure()
+            .SelectMany(section => section.Value)
+            .ToList();
+
+        Assert.DoesNotContain("Cabin Heat and Vent", panels);
     }
 }

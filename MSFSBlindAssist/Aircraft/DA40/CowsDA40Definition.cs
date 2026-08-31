@@ -78,7 +78,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Flaps",
                 "Elevator Trim",
                 "Brakes",
-                "Cabin Heat and Vent",
+                // No "Cabin Heat and Vent". The AFM legend has movable ventilation
+                // nozzles and the aeroplane has cabin heat, but COWS models NEITHER as a
+                // control: no component in the interaction XML, no L:var, no simvar. A
+                // panel for it could never be filled, and an empty panel reads as broken.
                 "Audio"
             },
             // The section already says "Circuit Breakers"; repeating "CB" on every panel
@@ -194,6 +197,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[FlapsPanel] = new List<string>(FlapsControls);
         controls[TrimPanel] = new List<string>(TrimControls);
         controls[BrakesPanel] = new List<string>(BrakeControls);
+        controls[AudioPanel] = new List<string>(AudioControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -245,6 +249,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildBrakeVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildAudioVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -301,6 +310,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
         d[BrakesPanel] = new List<string>(BrakeDisplay);
+        d[AudioPanel] = new List<string>(AudioDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -377,6 +387,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleFlapsSet(varKey, value, simConnect, announcer)) return true;
         if (HandleTrimSet(varKey, value, simConnect, announcer)) return true;
         if (HandleBrakeSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleAudioSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 
