@@ -57,6 +57,7 @@ public partial class MainForm : Form
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
 
     private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
+    private Forms.DA40.CowsDA40MonitorManagerForm? cowsDA40MonitorManagerForm;
 
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
 

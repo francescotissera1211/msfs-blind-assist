@@ -256,9 +256,6 @@ public class CowsDA40PanelStructureTests
             var v = vars[key];
             Assert.Equal(2, v.ValueDescriptions.Count);
             Assert.False(v.RenderAsReadOnlyStatus, $"{key} must be settable");
-            // Screen readers announce combo changes themselves; a def-side announce
-            // on top of that is the double-talk CLAUDE.md forbids.
-            Assert.False(v.IsAnnounced, $"{key} must not self-announce on UI set");
         }
     }
 
@@ -541,5 +538,116 @@ public class CowsDA40PanelStructureTests
         // Opening alternate air moved ENG_ALT_AIR_FACTOR from 1.00 to 0.98 live; without
         // it there is no way to tell the door did anything.
         Assert.Contains("DA40_ICE_ALT_AIR_FACTOR", Ng().GetPanelDisplayVariables()["Ice and Pitot"]);
+    }
+
+    // ==============================================================================
+    // Auto-announce and the Monitor Manager
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EverySettableSwitchAnnouncesExternalChanges(DA40Variant variant)
+    {
+        // A switch thrown in the cockpit, by hardware, or by a failure MUST speak.
+        // IsAnnounced governs BACKGROUND changes only — MSFSBA's own combo sets are
+        // suppressed by the global _uiSetEcho wrap, so this does not cause double-talk.
+        // Continuous is required as well: OnRequest vars are never polled, so an external
+        // change is simply never seen.
+        var def = new CowsDA40Definition(variant);
+        var vars = def.GetVariables();
+
+        var silent = def.GetPanelControls()
+            .SelectMany(p => p.Value)
+            .Distinct()
+            .Select(k => new { Key = k, Def = vars[k] })
+            // Buttons are momentary and have no state to announce; sliders are numeric.
+            .Where(x => !x.Def.RenderAsButton && !x.Def.RenderAsSlider)
+            .Where(x => !x.Def.IsAnnounced
+                     || x.Def.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
+            .Select(x => x.Key)
+            .ToList();
+
+        Assert.True(silent.Count == 0,
+            $"{variant}: these switches will not announce external changes — {string.Join(", ", silent)}");
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void NumericReadoutsStaySilent(DA40Variant variant)
+    {
+        // Volts, temperatures and RPM change constantly. Announcing them would bury the
+        // changes that matter; they are read on demand from the status display instead.
+        var def = new CowsDA40Definition(variant);
+        var vars = def.GetVariables();
+
+        var noisy = def.GetPanelDisplayVariables()
+            .SelectMany(p => p.Value)
+            .Distinct()
+            .Where(k => vars[k].IsAnnounced)
+            .ToList();
+
+        Assert.True(noisy.Count == 0,
+            $"{variant}: these readouts would speak on every change — {string.Join(", ", noisy)}");
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryAnnouncedSwitchGetsAMonitorManagerRow(DA40Variant variant)
+    {
+        // Ctrl+M must be able to mute anything that speaks, or the pilot has no control
+        // over the chatter. MonitorRowBuilder lists Continuous + IsAnnounced vars.
+        var def = new CowsDA40Definition(variant);
+        var rows = MSFSBlindAssist.Services.MonitorRowBuilder.Build(def.GetVariables());
+        var rowKeys = rows.Select(r => r.Key).ToHashSet();
+
+        var announced = def.GetVariables()
+            .Where(kv => kv.Value.IsAnnounced
+                      && kv.Value.UpdateFrequency == MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous
+                      && !kv.Value.ExcludeFromMonitorManager)
+            .Select(kv => kv.Key);
+
+        foreach (var key in announced)
+        {
+            Assert.True(rowKeys.Contains(key), $"{variant}: {key} announces but has no Ctrl+M row");
+        }
+
+        Assert.NotEmpty(rows);
+    }
+
+    [Fact]
+    public void MonitorRowsCarryReadableLabels()
+    {
+        var rows = MSFSBlindAssist.Services.MonitorRowBuilder.Build(Ng().GetVariables());
+
+        foreach (var row in rows)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(row.Label));
+            // The label should be the display name, not a raw DA40_ key.
+            Assert.False(row.Label.StartsWith("DA40_"), $"{row.Key} shows a raw key as its label");
+        }
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void ScansDoNotRepeatControls(DA40Variant variant)
+    {
+        // A control already reads its own position when you tab to it. Repeating it on
+        // the scan is duplication, and it drags an announcing variable into a list that
+        // is supposed to be silent.
+        var def = new CowsDA40Definition(variant);
+        var controls = def.GetPanelControls().SelectMany(p => p.Value).ToHashSet();
+
+        var repeated = def.GetPanelDisplayVariables()
+            .SelectMany(p => p.Value)
+            .Where(controls.Contains)
+            .Distinct()
+            .ToList();
+
+        Assert.True(repeated.Count == 0,
+            $"{variant}: controls repeated on a scan — {string.Join(", ", repeated)}");
     }
 }

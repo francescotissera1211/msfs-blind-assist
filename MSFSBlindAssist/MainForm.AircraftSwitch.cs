@@ -728,6 +728,14 @@ public partial class MainForm
             fbwA380MonitorManagerForm.Dispose();
             fbwA380MonitorManagerForm = null;
         }
+        // Dispose the DA40 monitor manager when switching aircraft — it snapshots the
+        // variable dictionary at construction, so a stale one would list the old airframe.
+        if (cowsDA40MonitorManagerForm != null && !cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm.Dispose();
+            cowsDA40MonitorManagerForm = null;
+        }
+
         // Dispose fenixMonitorManagerForm when switching aircraft
         if (fenixMonitorManagerForm != null && !fenixMonitorManagerForm.IsDisposed)
         {

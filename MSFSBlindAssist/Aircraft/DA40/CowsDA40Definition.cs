@@ -244,6 +244,26 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         => new Dictionary<string, string>();
 
     /// <summary>
+    /// Ctrl+M opens this aircraft's Monitor Manager, where the pilot ticks and un-ticks
+    /// which background changes speak. Everything else falls through to the base.
+    /// </summary>
+    public override bool HandleHotkeyAction(
+        Hotkeys.HotkeyAction action,
+        SimConnect.SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm,
+        Hotkeys.HotkeyManager hotkeyManager)
+    {
+        if (action == Hotkeys.HotkeyAction.MonitorManager)
+        {
+            (parentForm as MainForm)?.ShowCowsDA40MonitorManagerDialog();
+            return true;
+        }
+
+        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+    }
+
+    /// <summary>
     /// Per-panel display text overrides, for fields MSFSBA computes rather than reads.
     /// </summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)

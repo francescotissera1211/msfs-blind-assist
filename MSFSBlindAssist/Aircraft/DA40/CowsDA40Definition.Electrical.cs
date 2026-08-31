@@ -58,8 +58,8 @@ public partial class CowsDA40Definition
             DisplayName = "Electric Master",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
@@ -69,8 +69,8 @@ public partial class CowsDA40Definition
             DisplayName = "Avionics Master",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
@@ -81,8 +81,8 @@ public partial class CowsDA40Definition
             Name = "ESS_BUS_SWITCH",
             DisplayName = "Essential Bus",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Essential bus only" }
         };
 
@@ -91,8 +91,8 @@ public partial class CowsDA40Definition
             Name = "EMERGENCY_BATT_COVER",
             DisplayName = "Emergency Battery Guard",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         };
 
@@ -102,8 +102,8 @@ public partial class CowsDA40Definition
             Name = "EMERGENCY_BATT",
             DisplayName = "Emergency Battery",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 

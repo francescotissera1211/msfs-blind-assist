@@ -341,6 +341,15 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the COWS DA40 Monitor Manager. The DA40 definition
+                // announces nothing from inside ProcessSimVarUpdate — every switch rides
+                // the generic path — so this single gate is the whole mute story for it.
+                if (currentAircraft.AircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) &&
+                    Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Suppress the generic announce for a var the iFly autopilot window
                 // JUST wrote: the focused button's label rename is the screen-reader
                 // feedback (NVDA reads the name change), so the Step-6 announce would

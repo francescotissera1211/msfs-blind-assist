@@ -24,6 +24,15 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///
 /// The ice/wing inspection light is NOT here. It is a light, it lives on the Lighting
 /// panel, and no control is duplicated across panels.
+///
+/// Two things deliberately NOT shown:
+///   - L:ABS_AMBIENT_TEMPERATURE. "ABS" is absolute — it is KELVIN, and reported 303 on a
+///     30 degC day. An L:var's Units string is only a label, so OAT is read from the
+///     AMBIENT TEMPERATURE SimVar, which is already in celsius.
+///   - L:STBY_DIFFERENTIAL_PRESSURE. It reads about 4 at rest and the model only uses it
+///     internally, as a threshold against 200 in the glow-plug logic. It is not a cockpit
+///     indication and its units are undocumented, so putting a bare "4" on the scan would
+///     be noise dressed up as instrumentation.
 /// </summary>
 public partial class CowsDA40Definition
 {
@@ -39,8 +48,8 @@ public partial class CowsDA40Definition
             DisplayName = "Pitot Heat",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
             HelpText = "With this off the G1000 shows PITOT HT OFF. Switched on while " +
                        "stationary on the ground the aeroplane raises PITOT FAIL — that is " +
@@ -52,8 +61,8 @@ public partial class CowsDA40Definition
             Name = "ENGINE_ALTERNATE_AIR",
             DisplayName = "Alternate Air",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
             HelpText = "Engine induction air. The AFM has it CLOSED for take-off, and OPEN " +
                        "for unintentional flight into icing and for engine trouble."
@@ -65,8 +74,8 @@ public partial class CowsDA40Definition
             DisplayName = "Alternate Static Valve",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
             HelpText = "Opens the cabin static source if the external static port blocks. " +
                        "Expect the altimeter and airspeed to shift when it is opened."
@@ -79,9 +88,21 @@ public partial class CowsDA40Definition
         // Moves off 1.00 when alternate air opens — the induction restriction, so the
         // pilot can see the door is actually doing something.
         AddReadout(v, "DA40_ICE_ALT_AIR_FACTOR", "ENG_ALT_AIR_FACTOR", "Induction Air Factor", "", "F2");
-        AddReadout(v, "DA40_ICE_OAT", "ABS_AMBIENT_TEMPERATURE", "Outside Air Temperature", "celsius", "F0");
-        AddReadout(v, "DA40_ICE_STBY_DIFF_PRESSURE", "STBY_DIFFERENTIAL_PRESSURE",
-            "Standby Differential Pressure", "", "F0");
+        // Read from the SimVar, NOT from L:ABS_AMBIENT_TEMPERATURE. "ABS" means absolute:
+        // that L:var is in KELVIN and rendered 303 for a 30 degC day. A units string on an
+        // L:var is only a label — MSFSBA prints the raw number — so the conversion has to
+        // come from the source, and the SimVar already gives celsius.
+        v["DA40_ICE_OAT"] = new SimVarDefinition
+        {
+            Name = "AMBIENT TEMPERATURE",
+            DisplayName = "Outside Air Temperature",
+            Type = SimVarType.SimVar,
+            Units = "celsius",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            Format = "F0"
+        };
 
         return v;
     }
@@ -98,9 +119,7 @@ public partial class CowsDA40Definition
         "DA40_ICE_PITOT_STATE",
         "DA40_ICE_ALT_AIR_STATE",
         "DA40_ICE_ALT_AIR_FACTOR",
-        "DA40_ICE_ALTERNATE_STATIC",
-        "DA40_ICE_OAT",
-        "DA40_ICE_STBY_DIFF_PRESSURE"
+        "DA40_ICE_OAT"
     };
 
     /// <summary>

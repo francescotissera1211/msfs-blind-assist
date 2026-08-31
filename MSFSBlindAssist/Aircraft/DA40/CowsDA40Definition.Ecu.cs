@@ -80,8 +80,8 @@ public partial class CowsDA40Definition
             Name = "ECU_VOTER:1",
             DisplayName = "ECU Voter",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             // Order from the model's own ANIMTIPs — not the intuitive A/AUTO/B.
             ValueDescriptions = new Dictionary<double, string>
             {

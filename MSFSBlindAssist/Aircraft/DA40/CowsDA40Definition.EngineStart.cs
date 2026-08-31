@@ -71,8 +71,8 @@ public partial class CowsDA40Definition
             DisplayName = "Engine Master",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
             HelpText = "Guarded switch. Turning it off shuts the engine down."
         };
@@ -82,8 +82,8 @@ public partial class CowsDA40Definition
             Name = "MASTER_COVER:1",
             DisplayName = "Engine Master Guard",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
             HelpText = "The guard does not block the switch in the simulator, and the " +
                        "model opens it by itself when the master is operated."

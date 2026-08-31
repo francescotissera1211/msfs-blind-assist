@@ -92,8 +92,11 @@ public partial class CowsDA40Definition
             DisplayName = display,
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            // Continuous + announced: a light thrown from the cockpit or from hardware
+            // must speak. MSFSBA's own combo sets are covered by the global _uiSetEcho
+            // wrap, so setting it from the panel does not double-announce.
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
     }
