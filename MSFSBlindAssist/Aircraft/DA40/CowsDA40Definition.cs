@@ -274,6 +274,18 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     {
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
 
+        // Gauges with published arcs report the arc alongside the number. A sighted pilot
+        // does not read "87 degrees" off the oil temperature gauge — they see the needle in
+        // the green, and that is the reading. See DA40InstrumentBands (AFM section 2.5).
+        var band = DA40InstrumentBands.For(varKey);
+        if (band != null && GetVariables().TryGetValue(varKey, out var def))
+        {
+            string number = value.ToString(def.Format);
+            string withUnits = string.IsNullOrWhiteSpace(def.Units) ? number : $"{number} {def.Units}";
+            displayText = DA40InstrumentBands.Annotate(varKey, value, withUnits);
+            return true;
+        }
+
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 

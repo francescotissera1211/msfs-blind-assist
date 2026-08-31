@@ -1,0 +1,159 @@
+COWS DIAMOND DA40 HOTKEY REFERENCE
+
+Covers the DA40-NG and the DA40-XLS. Where the two differ, the difference is
+noted in the aircraft-specific section at the end.
+
+The DA40 is a single-engine GA aeroplane with a Garmin G1000 and a GFC 700
+autopilot. It has no autothrottle, no Airbus FCU and no MCDU, so the FCU and MCDU
+sections of the airliner guides do not apply here. Everything else below is the
+standard MSFSBA set and works on this aircraft.
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display without leaving your place in it
+  Ctrl+M     Monitor Manager - tick and un-tick which background changes are spoken
+
+The Status Display is the primary readout on this aircraft. Every panel has one,
+holding what the matching glance at the real panel would take in: the whole
+electrical picture, the whole engine picture, and so on. Gauges with published
+arcs report their arc with the value, so oil temperature reads "87 celsius,
+green" rather than a bare number - the arc is what a sighted pilot actually sees.
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     Read ND active (TO) waypoint: name, distance, bearing
+
+Fuel:
+  F          Read Fuel On Board (pounds)
+  Shift+F    Read Fuel On Board (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds) + center of gravity
+  Shift+W    Read Gross Weight (kilograms) + center of gravity
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Approach:
+  Ctrl+0     Read Approach Capability (CAT rating)
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Read Distance to Destination (from the FMS)
+  Shift+D    Read Distance + time to Top of Descent (once computed in flight,
+             e.g. "145 miles to top of descent: 00:16:58")
+
+Location:
+  C          Read Nearest City
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  (Open the form with Input mode > Shift+Y)
+
+Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Displays:
+  Alt+P      Read PFD
+  Alt+N      Read Navigation Display
+  Alt+E      Read CAS messages (the DA40's equivalent of an E/WD)
+
+Autopilot (GFC 700):
+  The GFC 700 has NO absolute altitude set - the altitude preselect only moves in
+  steps (1000 ft coarse, 100 ft fine), so altitude is entered by stepping rather
+  than by typing a value. There is no autothrottle on either variant.
+
+DA40-specific notes:
+
+  Held controls. Several controls on this aeroplane are held rather than clicked,
+  and MSFSBA holds them for you for the correct duration: the ECU test (about 26
+  seconds, cycling the propeller once per ECU), the attitude-gyro cage, and the
+  fuel-selector break wire. Press the button once and let it run.
+
+  Silent switches. Panel controls make no cockpit sound. The aeroplane's switch
+  sounds are attached to its mouse clickspots, so driving a control through
+  MSFSBA bypasses them. Confirm a change by reading the value back, not by ear.
+
+  Guards. The engine-master and emergency-battery guards are real controls you
+  can open and close, but they do not physically block their switches in the
+  simulator, and the model opens the engine-master guard by itself when that
+  switch is operated.
+
+  Cold starts. On a cold engine the glow plugs run and the GLOW annunciation
+  lights; the AFM has you wait for it to go out before cranking. The Engine Start
+  panel shows glow state, the glow timer and plug temperature, so the wait is
+  visible. A warm engine never shows it and starts immediately.
+
+Automatic Announcements:
+  Every switch and selector speaks when it changes outside MSFSBA - moved in the
+  cockpit, by hardware, or by a failure. Numeric values (volts, temperatures,
+  RPM, brightness) deliberately do not speak; they change constantly and would
+  bury what matters. Read them from the Status Display instead.
+
+  Use Ctrl+M to mute anything you would rather not hear.
