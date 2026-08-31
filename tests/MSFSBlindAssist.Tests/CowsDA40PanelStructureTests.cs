@@ -767,4 +767,38 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_STBY_GYRO_BANK", display);
         Assert.Contains("DA40_STBY_TRUE_BANK", display);
     }
+
+    // ==============================================================================
+    // Output-mode readouts
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void ReadoutHotkeysHaveTheirVariablesInTheCache(DA40Variant variant)
+    {
+        // A readout answers from the SimConnect cache, and only Continuous variables are
+        // in it. An OnRequest variable here would make the key answer a stale zero, which
+        // is indistinguishable from a broken key.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (var key in new[] { "DA40_G1000_BARO", "DA40_FLAPS_POSITION" })
+        {
+            Assert.True(vars.ContainsKey(key), $"{variant}: {key} missing");
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous,
+                         vars[key].UpdateFrequency);
+        }
+    }
+
+    [Fact]
+    public void ReadoutSupportVariablesDoNotCluttertheMonitorManager()
+    {
+        // They are silent plumbing for the hotkeys, so a Ctrl+M row for them would be a
+        // checkbox that mutes nothing.
+        var vars = Ng().GetVariables();
+
+        Assert.True(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
+        Assert.True(vars["DA40_FLAPS_POSITION"].ExcludeFromMonitorManager);
+        Assert.False(vars["DA40_G1000_BARO"].IsAnnounced);
+    }
 }

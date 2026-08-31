@@ -217,6 +217,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildSharedReadoutVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         if (IsNG)
         {
             foreach (var kv in BuildEngineStartVariables())
@@ -277,6 +282,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             return true;
         }
 
+        if (HandleDA40Readout(action, simConnect, announcer)) return true;
+
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
 
@@ -314,7 +321,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleElectricalSet(varKey, value, simConnect)) return true;
         if (HandleLightingSet(varKey, value, simConnect)) return true;
         if (HandleIcePitotSet(varKey, value, simConnect)) return true;
-        if (HandleStandbySet(varKey, value, simConnect)) return true;
+        if (HandleStandbySet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

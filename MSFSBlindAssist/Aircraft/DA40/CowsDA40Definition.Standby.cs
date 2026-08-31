@@ -218,7 +218,8 @@ public partial class CowsDA40Definition
     /// Standby writes. The subscale is a plain latching L:var clamped to the knob's own
     /// travel; the cage knob is held, because the airframe zeroes it every frame.
     /// </summary>
-    private bool HandleStandbySet(string varKey, double value, SimConnectManager simConnect)
+    private bool HandleStandbySet(string varKey, double value, SimConnectManager simConnect,
+        Accessibility.ScreenReaderAnnouncer announcer)
     {
         switch (varKey)
         {
@@ -226,13 +227,22 @@ public partial class CowsDA40Definition
             {
                 // Accept hectopascals or inches. The ranges cannot overlap - inHg runs
                 // 28.00 to 31.50 and hPa 948 to 1066 - so magnitude disambiguates.
-                double inHg = value > 100 ? value / 33.8639 : value;
-                simConnect.SetLVar("KOHLSMAN SETTING HG:2", Math.Clamp(inHg, 28.00, 31.50));
+                double inHg = Math.Clamp(value > 100 ? value / 33.8639 : value, 28.00, 31.50);
+                simConnect.SetLVar("KOHLSMAN SETTING HG:2", inHg);
+
+                // A typed numeric entry gets a spoken confirmation — the pilot needs the
+                // exact value back, and it is the one announcement CLAUDE.md explicitly
+                // asks for. In BOTH units, since either could have been typed.
+                announcer.AnnounceImmediate(
+                    $"Standby altimeter {inHg * 33.8639:0} hectopascals, {inHg:0.00} inches");
                 return true;
             }
 
             case "DA40_STBY_GYRO_CAGE":
+                // Say what it did. A button that makes a noise and reports nothing is
+                // indistinguishable from a button that does nothing.
                 HoldLVar("ATT_CAGE", GyroCageHoldMs, simConnect);
+                announcer.AnnounceImmediate("Caging standby horizon");
                 return true;
 
             case "DA40_STBY_DISPLAY_BACKUP":
