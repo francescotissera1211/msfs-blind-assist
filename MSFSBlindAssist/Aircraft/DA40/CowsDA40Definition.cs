@@ -69,7 +69,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Lighting Switches",
                 "Ice and Pitot",
                 "Standby Instruments",
-                "Annunciators"
+                "Annunciators",
+                "ELT"
             },
             ["Center Console"] = new List<string>
             {
@@ -185,6 +186,9 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[BrakesPanel] = new List<string>(BrakeControls);
         controls[AudioPanel] = new List<string>(AudioControls);
 
+        controls[DoorsPanel] = new List<string>(DoorControls);
+        controls[EltPanel] = new List<string>(EltControls);
+
         foreach (var kv in BreakerPanels)
         {
             controls[kv.Key] = new List<string>(kv.Value);
@@ -254,6 +258,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildDoorVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildEltVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         if (IsNG)
         {
             foreach (var kv in BuildPowerVariables())
@@ -314,6 +328,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[CbBusPowerPanel] = new List<string>(CbBusPowerDisplay);
         d[CbLightingPanel] = new List<string>(CbLightingDisplay);
         d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
+        d[DoorsPanel] = new List<string>(DoorDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -370,6 +385,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetBrakeDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetAudioDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBreakerDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetDoorDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
@@ -429,6 +445,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleBrakeSet(varKey, value, simConnect, announcer)) return true;
         if (HandleAudioSet(varKey, value, simConnect, announcer)) return true;
         if (HandleBreakerSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleDoorSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

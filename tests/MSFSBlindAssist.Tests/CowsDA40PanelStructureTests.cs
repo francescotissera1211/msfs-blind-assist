@@ -1082,7 +1082,7 @@ public class CowsDA40PanelStructureTests
                 // Autopilot
         "GFC 700", "Flight Director",
         // Cabin
-        "Doors and Windows", "Seating and Payload",
+        "Seating and Payload",
         // Simulation
         "Failures", "Reset", "Engine Damage"
     };
@@ -1529,5 +1529,80 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("CAS Messages", panels);
         Assert.DoesNotContain("Engine Indication", panels);
         Assert.DoesNotContain("Fuel Calculator", panels);
+    }
+
+    // ==============================================================================
+    // Doors and Windows (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void DoorsPanelHasAllFourOpenings(DA40Variant variant)
+    {
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Doors and Windows"];
+
+        Assert.Equal(new[]
+        {
+            "DA40_DOOR_CANOPY",
+            "DA40_DOOR_REAR",
+            "DA40_DOOR_STORM_L",
+            "DA40_DOOR_STORM_R"
+        }, controls.ToArray());
+    }
+
+    [Fact]
+    public void DoorSimVarIndicesAreOneLowerThanTheirExitEvents()
+    {
+        // The trap: K:TOGGLE_AIRCRAFT_EXIT index is one HIGHER than the INTERACTIVE POINT
+        // OPEN index. Verified live - event 3 opened :2, event 7 opened :6 - and getting
+        // it wrong means reading a different door than the one being toggled.
+        var vars = Ng().GetVariables();
+
+        Assert.Equal("INTERACTIVE POINT OPEN:2", vars["DA40_DOOR_CANOPY"].Name);
+        Assert.Equal("INTERACTIVE POINT OPEN:3", vars["DA40_DOOR_REAR"].Name);
+        Assert.Equal("INTERACTIVE POINT OPEN:6", vars["DA40_DOOR_STORM_L"].Name);
+        Assert.Equal("INTERACTIVE POINT OPEN:7", vars["DA40_DOOR_STORM_R"].Name);
+    }
+
+    [Fact]
+    public void DoorsAreRegisteredAsSimVarsNotLVars()
+    {
+        // A name with a space and a colon is a STOCK SimVar. Force-registering one as an
+        // L:var once broke A380 detection outright.
+        foreach (var key in new[] { "DA40_DOOR_CANOPY", "DA40_DOOR_REAR",
+                                    "DA40_DOOR_STORM_L", "DA40_DOOR_STORM_R" })
+        {
+            Assert.Equal(MSFSBlindAssist.SimConnect.SimVarType.SimVar,
+                         Ng().GetVariables()[key].Type);
+        }
+    }
+
+    [Fact]
+    public void DoorScanCarriesTheWindThatRefusesThem()
+    {
+        // The click is gated at 30 knots and a 1 Hz Update slams an open door shut at the
+        // same figure. Without the wind on the scan a refusal is indistinguishable from a
+        // broken control.
+        Assert.Contains("DA40_DOOR_WIND", Ng().GetPanelDisplayVariables()["Doors and Windows"]);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void TheEltIsExposed(DA40Variant variant)
+    {
+        // An earlier audit concluded the ELT had no interactive component and there was
+        // nothing to expose. It does - the component is named SAFETY, after the system
+        // rather than the switch, which is how it was missed. The shutdown checklist item
+        // is "ELT check not transmitting", so the state is the whole point.
+        var def = new CowsDA40Definition(variant);
+
+        Assert.Equal(new[] { "DA40_ELT" }, def.GetPanelControls()["ELT"].ToArray());
+        Assert.Contains("ELT", def.GetPanelStructure()["Instrument Panel"]);
+
+        var v = def.GetVariables()["DA40_ELT"];
+        Assert.Equal("Armed", v.ValueDescriptions![0]);
+        Assert.True(v.IsAnnounced);
     }
 }
