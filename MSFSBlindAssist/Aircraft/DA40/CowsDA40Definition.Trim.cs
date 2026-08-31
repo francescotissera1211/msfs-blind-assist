@@ -58,6 +58,12 @@ public partial class CowsDA40Definition
     /// </summary>
     private const int TrimNudgeHoldMs = 1000;
 
+    /// <summary>
+    /// How long the AP disconnect is held. Long enough for the pilot to command trim
+    /// against it and hear that nothing moves, which is the whole point of the check.
+    /// </summary>
+    private const int TrimInterruptHoldMs = 3000;
+
     /// <summary>The airframe's trim limit, from flight_model.cfg (elevator_trim_limit).</summary>
     private const double TrimLimitDegrees = 7.0;
 
@@ -104,6 +110,23 @@ public partial class CowsDA40Definition
             SuppressRestingButtonState = true,
             IsAnnounced = false,
             HelpText = "One second, about a tenth of travel."
+        };
+
+        // The AP DISC button on the stick. It lives HERE rather than waiting for the
+        // Autopilot panel because its OTHER job is the trim interrupt, and that is what
+        // the before-takeoff check exercises: "DISCONN press, check electric trim not
+        // working". The autopilot is the last thing being built; leaving a checklist item
+        // unreachable until then would be a gap, and this control needs nothing from it.
+        v["DA40_TRIM_AP_DISC"] = new SimVarDefinition
+        {
+            Name = "DA40_TRIM_AP_DISC",
+            DisplayName = "AP Disconnect and Trim Interrupt",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Held. Blocks the electric trim while pressed - the before-takeoff check."
         };
 
         v["DA40_TRIM_CENTRE"] = new SimVarDefinition
@@ -169,7 +192,8 @@ public partial class CowsDA40Definition
         "DA40_TRIM_SET",
         "DA40_TRIM_NOSE_UP",
         "DA40_TRIM_NOSE_DOWN",
-        "DA40_TRIM_CENTRE"
+        "DA40_TRIM_CENTRE",
+        "DA40_TRIM_AP_DISC"
     };
 
     private static readonly List<string> TrimDisplay = new()
@@ -225,6 +249,13 @@ public partial class CowsDA40Definition
             case "DA40_TRIM_NOSE_DOWN":
                 HoldLVar("INPUT_TRIM_DN", TrimNudgeHoldMs, simConnect,
                     () => AnnounceTrimAfterNudge(simConnect, announcer));
+                return true;
+
+            case "DA40_TRIM_AP_DISC":
+                // Held, like every other momentary control on this airframe. Long enough
+                // to command trim against it and hear that nothing moves.
+                HoldLVar("INPUT_AP_DISC", TrimInterruptHoldMs, simConnect);
+                announcer.AnnounceImmediate("Trim interrupt held");
                 return true;
 
             case "DA40_TRIM_CENTRE":

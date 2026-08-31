@@ -332,6 +332,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[CbLightingPanel] = new List<string>(CbLightingDisplay);
         d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
         d[DoorsPanel] = new List<string>(DoorDisplay);
+        d[CabinAirPanel] = new List<string>(CabinAirDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);

@@ -1219,12 +1219,16 @@ public class CowsDA40PanelStructureTests
         // its circuit). Plus a centring reference.
         var controls = new CowsDA40Definition(variant).GetPanelControls()["Elevator Trim"];
 
+        // AP DISC lives HERE rather than waiting for the Autopilot panel: its other job
+        // is the trim interrupt, which is what the before-takeoff check exercises, and it
+        // needs nothing from the autopilot to work.
         Assert.Equal(new[]
         {
             "DA40_TRIM_SET",
             "DA40_TRIM_NOSE_UP",
             "DA40_TRIM_NOSE_DOWN",
-            "DA40_TRIM_CENTRE"
+            "DA40_TRIM_CENTRE",
+            "DA40_TRIM_AP_DISC"
         }, controls.ToArray());
     }
 
@@ -1634,5 +1638,17 @@ public class CowsDA40PanelStructureTests
         var v = def.GetVariables()["DA40_ELT"];
         Assert.Equal("Armed", v.ValueDescriptions![0]);
         Assert.True(v.IsAnnounced);
+    }
+
+    [Fact]
+    public void CabinLeversShowWhatDecidesThem()
+    {
+        // There is no cabin temperature to show - MSFS has no such SimVar and nothing in
+        // the package reads either lever - so the scan carries what a pilot would actually
+        // reason from: outside air, and the coolant that IS the heat source.
+        var display = Ng().GetPanelDisplayVariables()["Cabin Heat and Vent"];
+
+        Assert.Contains("DA40_CABIN_OAT", display);
+        Assert.Contains("DA40_CABIN_HEAT_SOURCE", display);
     }
 }
