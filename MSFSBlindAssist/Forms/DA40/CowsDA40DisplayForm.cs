@@ -45,6 +45,8 @@ public sealed class CowsDA40DisplayForm : Form
     private readonly SimConnectManager _simConnect;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _side;
+    private readonly System.Windows.Forms.Timer _connectWatchdog;
+    private bool _gotRows;
     private bool _disposed;
 
     public CowsDA40DisplayForm(string title, string coherentViewNeedle, string side,
@@ -106,26 +108,71 @@ public sealed class CowsDA40DisplayForm : Form
             agentFileName: "coherent-da40-g1000-agent.js");
         _client.RowsUpdated += OnRowsUpdated;
 
+        // A CLIENT ERROR MUST REACH THE PILOT. Without this the window sits on
+        // "Connecting to the display..." for ever with no reason given, which is
+        // indistinguishable from a hung app - and every cause below is one the pilot can
+        // actually do something about.
+        _client.Error += OnClientError;
+
+        // And if nothing arrives at all, say so rather than leaving the first line
+        // standing. Coherent GT allows only ONE inspector socket per view, so the usual
+        // reason is that something else already holds this display.
+        _connectWatchdog = new System.Windows.Forms.Timer { Interval = 6000 };
+        _connectWatchdog.Tick += (s, e) =>
+        {
+            _connectWatchdog!.Stop();
+            if (_disposed || _gotRows) return;
+            _text.SetLines(new List<string>
+            {
+                "Could not read the display.",
+                "",
+                "The G1000 allows only one debugger connection per screen, so the usual",
+                "cause is that something else is already reading this one - another copy",
+                "of this window, or a developer tool.",
+                "",
+                "Check the sim is running with the aircraft loaded, then press F5."
+            });
+        };
+
         Load += (s, e) =>
         {
             BringToFront();
             Activate();
             _text.Focus();
             _client.Start();
+            _connectWatchdog.Start();
         };
 
         FormClosed += (s, e) =>
         {
+            _connectWatchdog.Stop();
+            _connectWatchdog.Dispose();
             _client.RowsUpdated -= OnRowsUpdated;
+            _client.Error -= OnClientError;
             _client.Stop();
             _client.Dispose();
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
     }
 
+    private void OnClientError(string message)
+    {
+        if (_disposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (_disposed) return;
+                _text.SetLines(new List<string> { "Display error: " + message, "", "Press F5 to retry." });
+            }));
+        }
+        catch (InvalidOperationException) { }
+    }
+
     private void OnRowsUpdated(List<string> rows)
     {
         if (_disposed || !IsHandleCreated) return;
+        _gotRows = true;
 
         // The client raises this on the thread that created it, which is this UI thread —
         // but a handle can be destroyed between the check and the call on a close race, so
