@@ -27,6 +27,37 @@
         return el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
     }
 
+    // textContent CONCATENATES with no separator, so a pane full of little spans reads
+    // back as "Timer0:00:00UpStart?VNE172KT On". Collecting the text NODES and joining
+    // them with a space is what turns that into "Timer 0:00:00 Up Start? VNE 172 KT On".
+    function spacedText(el) {
+        if (!el) return "";
+        var parts = [];
+        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+        var n;
+        while ((n = walker.nextNode())) {
+            var t = (n.nodeValue || "").replace(/\s+/g, " ").trim();
+            if (t) parts.push(t);
+        }
+
+        // Join with a space BETWEEN WORDS but not inside a number. The G1000 renders a
+        // clock and a scrolling readout as one span per character, so a blanket space
+        // turns 0:00:00 into "0 : 0 0 : 0 0" - unreadable as a time. Two adjacent
+        // digit-ish characters belong to one value; anything else gets the space.
+        var out = "";
+        for (var i = 0; i < parts.length; i++) {
+            if (!out) { out = parts[i]; continue; }
+            var a = out.charAt(out.length - 1);
+            var b = parts[i].charAt(0);
+            var glue = /[0-9.:]/.test(a) && /[0-9.:]/.test(b);
+            out += (glue ? "" : " ") + parts[i];
+        }
+
+        // A field the pilot has not filled in renders as a row of underscores. "blank"
+        // is what that means, and it is one word instead of five.
+        return out.replace(/(?:_\s*){2,}/g, "blank ").replace(/\s+/g, " ").trim();
+    }
+
     function classList(el) {
         var cn = el.className;
         if (cn && cn.baseVal !== undefined) cn = cn.baseVal;
@@ -126,6 +157,75 @@
         return out;
     };
 
+    // ------------------------------------------------------------ popout panes
+    //
+    // Several softkeys do not change the softkey row at all - they open a DIALOG over the
+    // display. Tmr/Ref and Nearest are the two on the PFD, and until this existed they
+    // were pressable but unreadable: the key worked, and nothing could be read back.
+    //
+    // A dialog is open when its OPACITY is not zero, and by nothing else. All four of the
+    // PFD's dialogs are permanently display:block, visibility:visible, 310 by 220, and
+    // carrying the class "quickclosed" whether open or shut - measured. A closed one is
+    // simply transparent. Filtering on display, visibility, size or that class name finds
+    // four windows that are not on screen; filtering on opacity finds the one that is.
+    //
+    // The four are Nearest Airports, Alerts (the full text behind the CAS abbreviations),
+    // Timer and References, and ADF/DME Tuning.
+    A.panes = function () {
+        var out = [];
+        var dialogs = document.querySelectorAll(".popout-dialog");
+
+        for (var i = 0; i < dialogs.length; i++) {
+            var d = dialogs[i];
+            var cls = classList(d).join(" ");
+            if (!visible(d)) continue;
+            if (parseFloat(window.getComputedStyle(d).opacity || "1") < 0.05) continue;
+
+            var title = text(d.querySelector(".popout-dialog-title")) ||
+                        (/nearest-airport/.test(cls) ? "Nearest Airports" : "");
+            var lines = [];
+
+            // The nearest-airport list has NAMED fields, so it is read as fields rather
+            // than as its own textContent - which runs together into "VCBI0200.4 NMILS".
+            var items = d.querySelectorAll(".nearest-airport-item");
+            if (items.length) {
+                for (var k = 0; k < items.length; k++) {
+                    var it = items[k];
+                    var parts = [
+                        text(it.querySelector(".nearest-airport-name")),
+                        text(it.querySelector(".nearest-airport-bearing")),
+                        text(it.querySelector(".nearest-airport-distance")),
+                        text(it.querySelector(".nearest-airport-approach")),
+                        text(it.querySelector(".nearest-airport-freqtype")),
+                        text(it.querySelector(".nearest-airport-frequency")),
+                        text(it.querySelector(".nearest-airport-rwy-number"))
+                    ].filter(function (x) { return x; });
+                    if (parts.length) lines.push(parts.join(", "));
+                }
+            } else {
+                // One line per row of the pane, so a reader can arrow through it, with
+                // the text nodes spaced rather than run together.
+                var kids = d.children.length === 1 ? d.children[0].children : d.children;
+                for (var c = 0; c < kids.length; c++) {
+                    var line = spacedText(kids[c]);
+                    if (line) lines.push(line);
+                }
+                if (!lines.length) {
+                    var whole = spacedText(d);
+                    if (whole) lines.push(whole);
+                }
+            }
+
+            // No dialog carries a title element, so the pane names itself with its own
+            // first line - "Timer", "Alerts", "ADF/DME TUNING" - which is what a sighted
+            // pilot reads at the top of it anyway.
+            if (!title && lines.length) title = lines.shift();
+            if (lines.length || title) out.push({ title: title || "Window", lines: lines });
+        }
+
+        return out;
+    };
+
     // ---------------------------------------------------------------- pressing
     //
     // ONE SOFTKEY IS ONE BUTTON. There is no such thing as several items behind one key.
@@ -155,6 +255,7 @@
         return JSON.stringify({
             v: A.VERSION,
             cas: A.cas(),
+            panes: A.panes(),
             fma: A.fma(),
             nav: A.nav(),
             softkeys: A.softkeys()
@@ -190,6 +291,12 @@
             + (n.suspended ? ", SUSPENDED" : ""));
         if (n.crossTrack) rows.push("Cross track: " + n.crossTrack);
         if (n.message) rows.push("GPS message: " + n.message);
+
+        var panes = A.panes();
+        for (var p = 0; p < panes.length; p++) {
+            rows.push(panes[p].title + ":");
+            for (var q = 0; q < panes[p].lines.length; q++) rows.push("  " + panes[p].lines[q]);
+        }
 
         // "Softkey N:" is a CONTRACT with CowsDA40DisplayForm, which matches that prefix
         // to know which rows can be pressed and which key each one is. Change the wording

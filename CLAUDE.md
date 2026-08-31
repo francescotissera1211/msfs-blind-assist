@@ -762,6 +762,8 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Anything doable inside a G1000 display (MFD pages, the checklist, softkeys) does NOT get a panel — it belongs in a display window reached by a hotkey. → [da40.md](docs/da40.md)
 - A `CoherentDisplayClient` agent MUST return a string containing `MSFSBA_DISP_INSTALLED` — the client tests for that token, and any other return leaves it retrying for ever with NO error and no rows (a window stuck on "Connecting..."). The client now reports that once per socket; never remove the report. → [da40.md](docs/da40.md)
 - DA40 radio tuning uses TWO different encodings: NAV takes `NAV{n}_STBY_SET_HZ` in RAW HERTZ, COM takes `COM{n}_STBY_RADIO_SET` in BCD16 and ignores `COM1_STBY_RADIO_SET_HZ` entirely. BCD16 is four digits, so COM is 25 kHz only — an 8.33 channel cannot be typed. → [da40.md](docs/da40.md)
+- `SimVarDefinition.ValueDescriptions` is NEVER null — it initialises to an EMPTY dictionary — so any test for "has no descriptions" must check `Count`, not null. A `== null` test is always false: the DA40's unit-rendering fallback was written that way and was dead from the day it was added. → [da40.md](docs/da40.md)
+- A G1000 popout dialog is OPEN iff its `opacity` is non-zero; all four stay `display:block`, `visibility:visible`, full-size and classed `quickclosed` whether open or shut. → [da40.md](docs/da40.md)
 - The DA40 has 34 circuit breakers across six panels, read from the model's own `CircuitBreakers.xml`; `(L:CB_XXX)` is 0 IN / 1 PULLED and they genuinely gate systems (pulling `CB_FLP` extinguishes `FLAP_LIGHT:1`, verified live). There is no Copilot breaker set. → [da40.md](docs/da40.md)
 
 ### Gemini AI (→ [gemini.md](docs/gemini.md))

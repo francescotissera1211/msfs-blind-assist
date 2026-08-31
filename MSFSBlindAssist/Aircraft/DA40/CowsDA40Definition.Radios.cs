@@ -172,6 +172,17 @@ public partial class CowsDA40Definition
         return (d1 << 12) | (d2 << 8) | (d3 << 4) | d4;
     }
 
+    private static void AnnounceSwap(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string swapEvent, string standbyKey, string radio, string format)
+    {
+        double? becomingActive = simConnect.GetCachedVariableValue(standbyKey);
+        simConnect.ExecuteCalculatorCode($"1 (>K:{swapEvent})");
+
+        announcer.AnnounceImmediate(becomingActive is null
+            ? $"{radio} swapped"
+            : $"{radio} active {becomingActive.Value.ToString(format)}");
+    }
+
     private bool HandleRadioSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
@@ -199,20 +210,29 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // A swap is silent in the cockpit - the numbers just exchange places on a
+            // screen - so it has to speak here, and the useful half is what is now ACTIVE.
+            // That is the value the standby held a moment ago, read from the cache before
+            // the write, which avoids waiting on a round trip to say something the pilot
+            // needs immediately.
             case "DA40_RADIO_COM1_SWAP":
-                simConnect.ExecuteCalculatorCode("1 (>K:COM_STBY_RADIO_SWAP)");
+                AnnounceSwap(simConnect, announcer, "COM_STBY_RADIO_SWAP",
+                    "DA40_RADIO_COM1_SET", "COM 1", "0.000");
                 return true;
 
             case "DA40_RADIO_COM2_SWAP":
-                simConnect.ExecuteCalculatorCode("1 (>K:COM2_RADIO_SWAP)");
+                AnnounceSwap(simConnect, announcer, "COM2_RADIO_SWAP",
+                    "DA40_RADIO_COM2_SET", "COM 2", "0.000");
                 return true;
 
             case "DA40_RADIO_NAV1_SWAP":
-                simConnect.ExecuteCalculatorCode("1 (>K:NAV1_RADIO_SWAP)");
+                AnnounceSwap(simConnect, announcer, "NAV1_RADIO_SWAP",
+                    "DA40_RADIO_NAV1_SET", "NAV 1", "0.00");
                 return true;
 
             case "DA40_RADIO_NAV2_SWAP":
-                simConnect.ExecuteCalculatorCode("1 (>K:NAV2_RADIO_SWAP)");
+                AnnounceSwap(simConnect, announcer, "NAV2_RADIO_SWAP",
+                    "DA40_RADIO_NAV2_SET", "NAV 2", "0.00");
                 return true;
 
             case "DA40_RADIO_CRS1_SET":

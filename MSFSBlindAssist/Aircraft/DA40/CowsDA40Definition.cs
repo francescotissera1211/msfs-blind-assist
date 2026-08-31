@@ -484,7 +484,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (varKey.StartsWith("DA40_")
             && GetVariables().TryGetValue(varKey, out var readout)
             && readout.RenderAsReadOnlyStatus
-            && readout.ValueDescriptions == null
+            // ValueDescriptions is NEVER null - SimVarDefinition initialises it to an empty
+            // dictionary - so this must test COUNT. Written as "== null" it is always
+            // false, and this whole fallback was dead from the day it was added: every
+            // readout without its own override kept rendering as a bare whole number, which
+            // is exactly how "COM 1 Active: 133" was reported.
+            && readout.ValueDescriptions is not { Count: > 0 }
             && !string.IsNullOrWhiteSpace(readout.Units))
         {
             displayText = $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}";

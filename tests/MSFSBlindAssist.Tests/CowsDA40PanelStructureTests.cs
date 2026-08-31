@@ -1881,4 +1881,38 @@ public class CowsDA40PanelStructureTests
         // 25 kHz rather than pretending 8.33 channels can be typed.
         Assert.Equal(expected, CowsDA40Definition.ComBcd16(mhz));
     }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryPlainReadoutCarriesItsUnit(DA40Variant variant)
+    {
+        // MainForm's numeric branch renders anything outside its own little unit switch as
+        // a bare whole number, so the DA40 formats its own readouts. That fallback tested
+        // ValueDescriptions == null, which is NEVER true - SimVarDefinition initialises it
+        // to an EMPTY DICTIONARY - so it was dead from the day it was written and every
+        // readout without its own override rendered as a bare integer ("COM 1 Active: 133").
+        //
+        // This pins the shape the fallback depends on rather than the fallback itself: a
+        // readout with units and no descriptions must be reachable by a Count test.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        var plain = vars.Where(kv => kv.Key.StartsWith("DA40_")
+                                  && kv.Value.RenderAsReadOnlyStatus
+                                  && !string.IsNullOrWhiteSpace(kv.Value.Units))
+                        .Where(kv => kv.Value.ValueDescriptions is not { Count: > 0 })
+                        .ToList();
+
+        Assert.NotEmpty(plain);
+        Assert.All(plain, kv => Assert.NotNull(kv.Value.ValueDescriptions));
+    }
+
+    [Fact]
+    public void ValueDescriptionsIsNeverNull()
+    {
+        // The trap behind the bug above, pinned on its own: every definition has a
+        // dictionary, so "is it empty" is the only meaningful question. Anything testing
+        // for null is testing something that cannot happen.
+        Assert.All(Ng().GetVariables().Values, v => Assert.NotNull(v.ValueDescriptions));
+    }
 }
