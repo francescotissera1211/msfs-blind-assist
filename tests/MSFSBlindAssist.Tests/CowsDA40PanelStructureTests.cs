@@ -349,4 +349,75 @@ public class CowsDA40PanelStructureTests
 
         Assert.True(dupes.Count == 0, $"{variant}: duplicated controls — {string.Join("; ", dupes)}");
     }
+
+    // ==============================================================================
+    // ECU panel (NG)
+    // ==============================================================================
+
+    [Fact]
+    public void EcuPanelHasTheVoterAndTheTest()
+    {
+        var controls = Ng().GetPanelControls()["ECU"];
+
+        Assert.Contains("DA40_ECU_VOTER", controls);
+        Assert.Contains("DA40_ECU_TEST", controls);
+        Assert.Equal(2, controls.Count);
+    }
+
+    [Fact]
+    public void EcuVoterUsesTheModelsOwnLabelOrder_NotTheIntuitiveOne()
+    {
+        // The obvious guess is A / AUTO / B. The model's ANIMTIPs say otherwise, and the
+        // tooltips are what a sighted pilot actually reads off the switch.
+        var v = Ng().GetVariables()["DA40_ECU_VOTER"];
+
+        Assert.Equal("ECU B", v.ValueDescriptions[0]);
+        Assert.Equal("Auto",  v.ValueDescriptions[1]);
+        Assert.Equal("ECU A", v.ValueDescriptions[2]);
+    }
+
+    [Fact]
+    public void EcuTestIsAButtonAndNotAToggle()
+    {
+        // ECU_TEST:1 is a *_Held button the airframe zeroes every frame; a combo would
+        // write once and the test would never run.
+        var v = Ng().GetVariables()["DA40_ECU_TEST"];
+
+        Assert.True(v.RenderAsButton);
+        Assert.True(v.SuppressRestingButtonState);
+        Assert.Empty(v.ValueDescriptions);
+    }
+
+    [Fact]
+    public void EcuScanShowsAllFiveAfmPreconditions()
+    {
+        var display = Ng().GetPanelDisplayVariables()["ECU"];
+
+        Assert.Contains("DA40_ECU_PRE_POWER_LEVER", display);
+        Assert.Contains("DA40_ECU_PRE_PROP_RPM", display);
+        Assert.Contains("DA40_ECU_PRE_GEARBOX", display);
+        Assert.Contains("DA40_ECU_PRE_ON_GROUND", display);
+        // The fifth (voter in Auto) is the control itself, on the same panel.
+        Assert.Contains("DA40_ECU_VOTER", Ng().GetPanelControls()["ECU"]);
+    }
+
+    [Fact]
+    public void EcuScanDistinguishesLatchedFromUnlatchedFaults()
+    {
+        // The POH's whole ECU-failure procedure turns on this distinction: an unlatched
+        // error clears with a voter cycle, a latched one only via the MFD Reset: ECU.
+        var display = Ng().GetPanelDisplayVariables()["ECU"];
+
+        Assert.Contains("DA40_ECU_FAIL_A", display);
+        Assert.Contains("DA40_ECU_FAIL_B", display);
+        Assert.Contains("DA40_ECU_LATCH_A", display);
+        Assert.Contains("DA40_ECU_LATCH_B", display);
+    }
+
+    [Fact]
+    public void XlsHasNoEcuPanelOrVariables()
+    {
+        Assert.DoesNotContain("ECU", Xls().GetPanelStructure()["Instrument Panel"]);
+        Assert.DoesNotContain("DA40_ECU_VOTER", Xls().GetVariables().Keys);
+    }
 }

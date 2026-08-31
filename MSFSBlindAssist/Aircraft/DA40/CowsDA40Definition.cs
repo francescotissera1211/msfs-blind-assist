@@ -176,6 +176,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // Populated panels override their empty placeholder.
         controls[ElectricalPanel] = new List<string>(ElectricalControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
+        if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
         return controls;
     }
@@ -192,6 +193,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG)
         {
             foreach (var kv in BuildEngineStartVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+
+            foreach (var kv in BuildEcuVariables())
             {
                 vars[kv.Key] = kv.Value;
             }
@@ -215,6 +221,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         };
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
+        if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
 
         return d;
     }
@@ -233,6 +240,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     {
         if (HandleElectricalSet(varKey, value, simConnect)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
+        if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
