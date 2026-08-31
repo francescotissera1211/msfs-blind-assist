@@ -192,6 +192,12 @@ public sealed class CowsDA40DisplayForm : Form
             {
                 if (_disposed) return;
                 _text.SetLines(rows.Count > 0 ? rows : new List<string> { "No data from the display." });
+
+                // This window holds the PFD socket, so the always-on CAS watcher cannot.
+                // Feed it what we just read instead of leaving it blind - a caution
+                // arriving while the pilot is reading some other part of the display is
+                // exactly the one that has to speak.
+                if (_side == "PFD") _owner?.ProcessCasRows(rows);
             }));
         }
         catch (InvalidOperationException)

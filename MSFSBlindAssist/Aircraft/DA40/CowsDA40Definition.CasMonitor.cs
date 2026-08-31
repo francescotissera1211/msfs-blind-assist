@@ -17,11 +17,18 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// absorbed silently: reconnecting mid-flight must not re-read every message that was
 /// already standing, which is exactly what the A380 EWD monitor had to learn.
 ///
-/// It shares no socket with the display window. Coherent GT allows only ONE inspector
-/// connection per view, so this client and the window's client would fight over
-/// AS1000_PFD — the monitor therefore SUSPENDS itself while the window is open and
-/// resumes when it closes, and the window is the one that wins, because a pilot who has
-/// deliberately opened the display is already reading it.
+/// ONE INSPECTOR SOCKET PER VIEW, so this client and the PFD window cannot both hold
+/// AS1000_PFD. The window therefore takes the socket — but it FEEDS THIS DETECTOR with
+/// the rows it reads rather than silencing it.
+///
+/// The first version suspended the announcements outright, on the reasoning that a pilot
+/// who opened the display is already reading it. That was wrong, and it showed up
+/// immediately: four CAS messages raised by cycling the engine master appeared in the
+/// window and none of them spoke. Having the window open does not mean the pilot is
+/// looking at the CAS block at that moment, and a caution that arrives while they are
+/// reading something else is exactly the one they need told about. One detector, two
+/// sources, and the known-message set carries across the handover in both directions so
+/// nothing is announced twice.
 /// </summary>
 public partial class CowsDA40Definition
 {
@@ -32,8 +39,11 @@ public partial class CowsDA40Definition
     private string _lastFma = "";
     private bool _casBaselined;
 
-    /// <summary>Set by the PFD window while it holds the socket.</summary>
-    private bool _casSuspended;
+    /// <summary>
+    /// The PFD window's own rows, fed in while it holds the socket. Same detector, so a
+    /// message seen through the window is not announced again when the monitor resumes.
+    /// </summary>
+    public void ProcessCasRows(List<string> rows) => OnCasRows(rows);
 
     public void StartCasMonitor(ScreenReaderAnnouncer announcer)
     {
@@ -62,24 +72,21 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
-    /// The PFD window calls this while it is open. One inspector socket per view means the
-    /// two clients cannot both hold AS1000_PFD, and the window wins: a pilot reading the
-    /// display does not also need it announced at them.
+    /// The PFD window calls this while it is open, to hand over the SOCKET only. The
+    /// announcements do not stop - the window feeds <see cref="ProcessCasRows"/> instead.
     /// </summary>
     public void SuspendCasMonitor(bool suspended)
     {
-        _casSuspended = suspended;
+        // Only the SOCKET is handed over. The detector keeps running on the window's rows,
+        // so there is no gap in coverage and deliberately NO re-baseline: the known set is
+        // continuous across the handover, which is what stops a message that appeared
+        // while the window was open being re-announced when the monitor takes back over.
         _casClient?.SetActive(!suspended);
-
-        // Coming back from suspension, re-baseline: the window may have acknowledged
-        // messages or the aeroplane moved on while this was not watching, and announcing
-        // the difference as though it just happened would be a lie about when.
-        if (!suspended) _casBaselined = false;
     }
 
     private void OnCasRows(List<string> rows)
     {
-        if (_casSuspended || _casAnnouncer == null) return;
+        if (_casAnnouncer == null) return;
 
         var cas = new List<string>();
         string fma = "";
