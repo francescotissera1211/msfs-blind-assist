@@ -403,7 +403,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             hotkeyManager?.ExitOutputHotkeyMode();
             ShowTrackedWindow(
                 () => new Forms.DA40.CowsDA40DisplayForm(
-                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer),
+                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer, this),
                 w => w.Show());
             return true;
         }
@@ -413,7 +413,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             hotkeyManager?.ExitOutputHotkeyMode();
             ShowTrackedWindow(
                 () => new Forms.DA40.CowsDA40DisplayForm(
-                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer),
+                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer, this),
                 w => w.Show());
             return true;
         }

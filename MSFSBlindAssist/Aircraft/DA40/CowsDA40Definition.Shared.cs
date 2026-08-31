@@ -92,6 +92,41 @@ public partial class CowsDA40Definition
             ExcludeFromMonitorManager = true
         },
 
+        // THE TRANSPONDER, announced. It is tuned on the G1000 and nowhere else, so
+        // without this the only way to know a squawk changed is to have the PFD window
+        // open on the right page. A code is not a continuously-varying quantity - it
+        // changes when someone sets it, and ATC assigning one is exactly the background
+        // change worth hearing - so it announces, like the standby subscale and unlike the
+        // power lever.
+        ["DA40_XPDR_CODE"] = new SimVarDefinition
+        {
+            Name = "TRANSPONDER CODE:1",
+            DisplayName = "Squawk",
+            Type = SimVarType.SimVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Format = "F0"
+        },
+
+        ["DA40_XPDR_MODE"] = new SimVarDefinition
+        {
+            Name = "TRANSPONDER STATE:1",
+            DisplayName = "Transponder",
+            Type = SimVarType.SimVar,
+            Units = "enum",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "Standby",
+                [2] = "Test",
+                [3] = "On",
+                [4] = "Altitude reporting"
+            }
+        },
+
         // Gross weight, for the W readout.
         ["DA40_GROSS_WEIGHT"] = new SimVarDefinition
         {

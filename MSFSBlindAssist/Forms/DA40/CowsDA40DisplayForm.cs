@@ -46,12 +46,15 @@ public sealed class CowsDA40DisplayForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly string _side;
     private readonly System.Windows.Forms.Timer _connectWatchdog;
+    private readonly Aircraft.DA40.CowsDA40Definition? _owner;
     private bool _gotRows;
     private bool _disposed;
 
     public CowsDA40DisplayForm(string title, string coherentViewNeedle, string side,
-        SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+        SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        Aircraft.DA40.CowsDA40Definition? owner = null)
     {
+        _owner = owner;
         _simConnect = simConnect;
         _announcer = announcer;
         _side = side;
@@ -139,6 +142,11 @@ public sealed class CowsDA40DisplayForm : Form
             BringToFront();
             Activate();
             _text.Focus();
+            // ONE INSPECTOR SOCKET PER VIEW. The background CAS watcher holds AS1000_PFD,
+            // so it has to let go before this window can read the same screen - and the
+            // window wins, because a pilot who deliberately opened the display is already
+            // reading it.
+            if (_side == "PFD") _owner?.SuspendCasMonitor(true);
             _client.Start();
             _connectWatchdog.Start();
         };
@@ -151,6 +159,7 @@ public sealed class CowsDA40DisplayForm : Form
             _client.Error -= OnClientError;
             _client.Stop();
             _client.Dispose();
+            if (_side == "PFD") _owner?.SuspendCasMonitor(false);
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
         };
     }

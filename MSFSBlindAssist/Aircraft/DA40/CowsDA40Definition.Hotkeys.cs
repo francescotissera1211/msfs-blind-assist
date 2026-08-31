@@ -238,6 +238,30 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // ---------- X: squawk ----------
+            case HotkeyAction.ReadSquawkCode:
+            {
+                double? code = ReadNow(simConnect, "DA40_XPDR_CODE");
+                double? mode = ReadNow(simConnect, "DA40_XPDR_MODE");
+                if (code is null)
+                {
+                    announcer.AnnounceImmediate("Squawk not available yet");
+                    return true;
+                }
+
+                string modeText = mode switch
+                {
+                    0 => "off",
+                    1 => "standby",
+                    2 => "test",
+                    3 => "on",
+                    4 => "altitude reporting",
+                    _ => "unknown mode"
+                };
+                announcer.AnnounceImmediate($"Squawk {code.Value:0000}, {modeText}");
+                return true;
+            }
+
             // ---------- W: weight ----------
             case HotkeyAction.ReadGrossWeightKg:
             {
