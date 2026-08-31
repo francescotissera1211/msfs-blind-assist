@@ -126,6 +126,31 @@
         return out;
     };
 
+    // ---------------------------------------------------------------- pressing
+    //
+    // ONE SOFTKEY IS ONE BUTTON. There is no such thing as several items behind one key.
+    // What a press does is either CYCLE A VALUE in place (CDI steps GPS, VOR1, VOR2, and
+    // the current one shows in softkey-tab-value) or REPLACE ALL TWELVE KEYS with a
+    // sub-menu — verified live: pressing 4, "PFD Opt", turned the row into
+    // SVT / blank / Wind / DME / Bearing 1 / blank / Bearing 2 / blank / ALT Units /
+    // STD Baro / Back / Alerts, and pressing 11, "Back", restored it. So the menu is a
+    // TREE, and the way out is always a Back key somewhere in the row rather than a
+    // separate gesture.
+    //
+    // Blank slots are real and are reported as blank: on that sub-page keys 2, 6 and 8 do
+    // nothing, and a pilot needs to know that rather than wonder whether the key is
+    // missing.
+    A.press = function (index, side) {
+        if (!(index >= 1 && index <= 12)) return "range";
+        var evt = "H:AS1000_" + (side === "MFD" ? "MFD" : "PFD") + "_SOFTKEYS_" + index;
+        try {
+            SimVar.SetSimVarValue(evt, "number", 1);
+            return "ok";
+        } catch (e) {
+            return "error " + e;
+        }
+    };
+
     A.snapshot = function () {
         return JSON.stringify({
             v: A.VERSION,
@@ -166,6 +191,9 @@
         if (n.crossTrack) rows.push("Cross track: " + n.crossTrack);
         if (n.message) rows.push("GPS message: " + n.message);
 
+        // "Softkey N:" is a CONTRACT with CowsDA40DisplayForm, which matches that prefix
+        // to know which rows can be pressed and which key each one is. Change the wording
+        // here and Enter stops working there.
         var keys = A.softkeys();
         for (var k = 0; k < keys.length; k++) {
             var key = keys[k];

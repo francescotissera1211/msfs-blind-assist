@@ -394,12 +394,26 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         if (HandleDA40Readout(action, simConnect, announcer)) return true;
 
+        // Alt+P and Alt+N. The display windows are DIRECT Alt keys app-wide - the A380
+        // uses Alt+E, Alt+S, Alt+N, Alt+P and Alt+I for exactly this - so the DA40 follows
+        // the same convention rather than inventing a parallel output-mode chord. The MFD
+        // borrows the ND key, which this aeroplane has no other use for.
         if (action == Hotkeys.HotkeyAction.ReadDisplayPFD)
         {
             hotkeyManager?.ExitOutputHotkeyMode();
             ShowTrackedWindow(
                 () => new Forms.DA40.CowsDA40DisplayForm(
-                    "G1000 PFD", "AS1000_PFD", announcer),
+                    "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer),
+                w => w.Show());
+            return true;
+        }
+
+        if (action == Hotkeys.HotkeyAction.ReadDisplayND)
+        {
+            hotkeyManager?.ExitOutputHotkeyMode();
+            ShowTrackedWindow(
+                () => new Forms.DA40.CowsDA40DisplayForm(
+                    "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer),
                 w => w.Show());
             return true;
         }
