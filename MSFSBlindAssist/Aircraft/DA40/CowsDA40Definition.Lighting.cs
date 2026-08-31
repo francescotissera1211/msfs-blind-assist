@@ -1,0 +1,217 @@
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Aircraft.DA40;
+
+/// <summary>
+/// Instrument Panel → Lighting Switches.
+///
+/// The AFM's abbreviation list names the switch bank exactly: LANDING, TAXI/MAP,
+/// POSITION, STROBE (= anti-collision), INST. LT and FLOOD. Legend item 10 is
+/// "Rotary buttons for instrument lighting and flood light" and item 11 "Light
+/// switches", so those two are BRIGHTNESS KNOBS, not on/off toggles — which is how
+/// they are exposed here.
+///
+/// The knob wiring is read straight out of the model's Logic.xml rather than guessed:
+///
+///   L:STATE_LIGHT_INS  &lt;-&gt;  A:LIGHT POTENTIOMETER:3   (+ K:PANEL_LIGHTS_SET)
+///   L:STATE_LIGHT_FLD  &lt;-&gt;  A:LIGHT POTENTIOMETER:5   (+ K:GLARESHIELD_LIGHTS_SET)
+///
+/// Both STATE_ vars are percentages, not booleans — INST. LT read 100 with the panel
+/// lit. Toggling GLARESHIELD_LIGHTS_SET alone did NOT move STATE_LIGHT_FLD, which is
+/// what sent me to the XML: the potentiometer is the real control and the bool is only
+/// a companion.
+///
+/// The three cabin lights are individually switched overhead (right, left, baggage) as
+/// A:LIGHT CABIN:1/2/3. All three are exposed separately — a pilot can switch any one
+/// of them in the real aeroplane. The POH's convenience clickspot on the standby
+/// airspeed needle toggles all three at once, and that is offered as an extra control,
+/// never as a replacement for the individual switches.
+///
+/// The pilot's flood light is wired directly to the main battery and works with the
+/// electric master off (POH), which is why the Emergency-procedures checklist reaches
+/// for it after an electrical failure.
+///
+/// There is no ice/wing-inspection light SWITCH on this airframe — L:STATE_LIGHT_ICE is
+/// a state only, so it appears on the scan and not among the controls.
+/// </summary>
+public partial class CowsDA40Definition
+{
+    private const string LightingPanel = "Lighting Switches";
+
+    private static Dictionary<string, SimVarDefinition> BuildLightingVariables()
+    {
+        var v = new Dictionary<string, SimVarDefinition>();
+
+        AddLightSwitch(v, "DA40_LIGHT_LANDING", "LIGHT LANDING", "Landing Light");
+        AddLightSwitch(v, "DA40_LIGHT_TAXI", "LIGHT TAXI", "Taxi and Map Light");
+        AddLightSwitch(v, "DA40_LIGHT_POSITION", "LIGHT NAV", "Position Lights");
+        AddLightSwitch(v, "DA40_LIGHT_STROBE", "LIGHT STROBE", "Strobe Lights");
+
+        // Brightness knobs, 0-100 %.
+        AddBrightness(v, "DA40_LIGHT_INSTRUMENT", "LIGHT POTENTIOMETER:3", "Instrument Lights",
+            "Rotary knob. Sets instrument panel brightness from 0 to 100 percent.");
+        AddBrightness(v, "DA40_LIGHT_FLOOD", "LIGHT POTENTIOMETER:5", "Flood Light",
+            "Rotary knob, 0 to 100 percent. The pilot's flood light is wired straight to " +
+            "the main battery and works with the electric master off.");
+
+        // Overhead cabin lights — individually switched, as on the aeroplane.
+        AddLightSwitch(v, "DA40_LIGHT_CABIN_RIGHT", "LIGHT CABIN:1", "Cabin Light Right");
+        AddLightSwitch(v, "DA40_LIGHT_CABIN_LEFT", "LIGHT CABIN:2", "Cabin Light Left");
+        AddLightSwitch(v, "DA40_LIGHT_CABIN_BAGGAGE", "LIGHT CABIN:3", "Cabin Light Baggage");
+
+        v["DA40_LIGHT_CABIN_ALL"] = new SimVarDefinition
+        {
+            Name = "DA40_LIGHT_CABIN_ALL",
+            DisplayName = "All Cabin Lights",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Toggles all three cabin lights together — the same shortcut the POH " +
+                       "puts on the standby airspeed indicator needle."
+        };
+
+        // ---------- Status ----------
+
+        AddReadout(v, "DA40_LIGHT_INS_LEVEL", "STATE_LIGHT_INS", "Instrument Brightness", "percent", "F0");
+        AddReadout(v, "DA40_LIGHT_FLD_LEVEL", "STATE_LIGHT_FLD", "Flood Brightness", "percent", "F0");
+        AddFlag(v, "DA40_LIGHT_ICE_STATE", "STATE_LIGHT_ICE", "Ice Inspection Light", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_LGN_STATE", "STATE_LIGHT_LGN", "Landing Light State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_TXI_STATE", "STATE_LIGHT_TXI", "Taxi Light State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_POS_STATE", "STATE_LIGHT_POS", "Position Light State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_STB_STATE", "STATE_LIGHT_STB", "Strobe Light State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_CBN1_STATE", "STATE_LIGHT_CBN1", "Cabin Right State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_CBN2_STATE", "STATE_LIGHT_CBN2", "Cabin Left State", "Off", "On");
+        AddFlag(v, "DA40_LIGHT_CBN3_STATE", "STATE_LIGHT_CBN3", "Cabin Baggage State", "Off", "On");
+
+        return v;
+    }
+
+    private static void AddLightSwitch(Dictionary<string, SimVarDefinition> v, string key,
+        string simvar, string display)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = simvar,
+            DisplayName = display,
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+    }
+
+    private static void AddBrightness(Dictionary<string, SimVarDefinition> v, string key,
+        string simvar, string display, string help)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = simvar,
+            DisplayName = display,
+            Type = SimVarType.SimVar,
+            Units = "percent",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsSlider = true,
+            SliderMin = 0,
+            SliderMax = 100,
+            HelpText = help
+        };
+    }
+
+    private static readonly List<string> LightingControls = new()
+    {
+        "DA40_LIGHT_LANDING",
+        "DA40_LIGHT_TAXI",
+        "DA40_LIGHT_POSITION",
+        "DA40_LIGHT_STROBE",
+        "DA40_LIGHT_INSTRUMENT",
+        "DA40_LIGHT_FLOOD",
+        "DA40_LIGHT_CABIN_RIGHT",
+        "DA40_LIGHT_CABIN_LEFT",
+        "DA40_LIGHT_CABIN_BAGGAGE",
+        "DA40_LIGHT_CABIN_ALL"
+    };
+
+    private static readonly List<string> LightingDisplay = new()
+    {
+        "DA40_LIGHT_LGN_STATE",
+        "DA40_LIGHT_TXI_STATE",
+        "DA40_LIGHT_POS_STATE",
+        "DA40_LIGHT_STB_STATE",
+        "DA40_LIGHT_INS_LEVEL",
+        "DA40_LIGHT_FLD_LEVEL",
+        "DA40_LIGHT_CBN1_STATE",
+        "DA40_LIGHT_CBN2_STATE",
+        "DA40_LIGHT_CBN3_STATE",
+        "DA40_LIGHT_ICE_STATE"
+    };
+
+    /// <summary>
+    /// Lighting writes. The four exterior lights only expose TOGGLE events, so each is a
+    /// conditional toggle — picking the value a light is already at must not flip it off.
+    /// The two knobs go through their potentiometer SET events, which take a percentage.
+    /// </summary>
+    private bool HandleLightingSet(string varKey, double value, SimConnectManager simConnect)
+    {
+        int on = value >= 0.5 ? 1 : 0;
+
+        switch (varKey)
+        {
+            case "DA40_LIGHT_LANDING":
+                simConnect.ExecuteCalculatorCode(
+                    $"(A:LIGHT LANDING, Bool) {1 - on} == if{{ (>K:LANDING_LIGHTS_TOGGLE) }}");
+                return true;
+
+            case "DA40_LIGHT_TAXI":
+                simConnect.ExecuteCalculatorCode(
+                    $"(A:LIGHT TAXI, Bool) {1 - on} == if{{ (>K:TOGGLE_TAXI_LIGHTS) }}");
+                return true;
+
+            case "DA40_LIGHT_POSITION":
+                simConnect.ExecuteCalculatorCode(
+                    $"(A:LIGHT NAV, Bool) {1 - on} == if{{ (>K:TOGGLE_NAV_LIGHTS) }}");
+                return true;
+
+            case "DA40_LIGHT_STROBE":
+                simConnect.ExecuteCalculatorCode(
+                    $"(A:LIGHT STROBE, Bool) {1 - on} == if{{ (>K:STROBES_TOGGLE) }}");
+                return true;
+
+            // Percentage knobs. PANEL_LIGHTS_SET / GLARESHIELD_LIGHTS_SET are written
+            // alongside so the boolean companion the model also reads stays consistent.
+            case "DA40_LIGHT_INSTRUMENT":
+                simConnect.ExecuteCalculatorCode(
+                    $"{value:0} (>K:LIGHT_POTENTIOMETER_3_SET) " +
+                    $"{(value > 0 ? 1 : 0)} (>K:PANEL_LIGHTS_SET)");
+                return true;
+
+            case "DA40_LIGHT_FLOOD":
+                simConnect.ExecuteCalculatorCode(
+                    $"{value:0} (>K:LIGHT_POTENTIOMETER_5_SET) " +
+                    $"{(value > 0 ? 1 : 0)} (>K:GLARESHIELD_LIGHTS_SET)");
+                return true;
+
+            // Indexed cabin lights: the event takes index then value.
+            case "DA40_LIGHT_CABIN_RIGHT":
+                simConnect.ExecuteCalculatorCode($"1 {on} (>K:2:CABIN_LIGHTS_SET)");
+                return true;
+
+            case "DA40_LIGHT_CABIN_LEFT":
+                simConnect.ExecuteCalculatorCode($"2 {on} (>K:2:CABIN_LIGHTS_SET)");
+                return true;
+
+            case "DA40_LIGHT_CABIN_BAGGAGE":
+                simConnect.ExecuteCalculatorCode($"3 {on} (>K:2:CABIN_LIGHTS_SET)");
+                return true;
+
+            case "DA40_LIGHT_CABIN_ALL":
+                simConnect.ExecuteCalculatorCode("(>K:TOGGLE_CABIN_LIGHTS)");
+                return true;
+        }
+
+        return false;
+    }
+}

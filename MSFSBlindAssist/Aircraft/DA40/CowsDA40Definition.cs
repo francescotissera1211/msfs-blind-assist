@@ -175,6 +175,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         // Populated panels override their empty placeholder.
         controls[ElectricalPanel] = new List<string>(ElectricalControls);
+        controls[LightingPanel] = new List<string>(LightingControls);
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
 
@@ -186,6 +187,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         var vars = GetBaseVariables();
 
         foreach (var kv in BuildElectricalVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildLightingVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -217,7 +223,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     {
         var d = new Dictionary<string, List<string>>
         {
-            [ElectricalPanel] = new List<string>(ElectricalDisplay)
+            [ElectricalPanel] = new List<string>(ElectricalDisplay),
+            [LightingPanel] = new List<string>(LightingDisplay)
         };
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
@@ -249,6 +256,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (HandleElectricalSet(varKey, value, simConnect)) return true;
+        if (HandleLightingSet(varKey, value, simConnect)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

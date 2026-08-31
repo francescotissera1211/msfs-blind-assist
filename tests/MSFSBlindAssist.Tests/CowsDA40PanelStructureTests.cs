@@ -420,4 +420,64 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("ECU", Xls().GetPanelStructure()["Instrument Panel"]);
         Assert.DoesNotContain("DA40_ECU_VOTER", Xls().GetVariables().Keys);
     }
+
+    // ==============================================================================
+    // Lighting Switches panel
+    // ==============================================================================
+
+    [Fact]
+    public void LightingCoversEverySwitchTheAfmNames()
+    {
+        // AFM abbreviation list: LANDING, TAXI/MAP, POSITION, STROBE, INST. LT, FLOOD.
+        var controls = Ng().GetPanelControls()["Lighting Switches"];
+
+        Assert.Contains("DA40_LIGHT_LANDING", controls);
+        Assert.Contains("DA40_LIGHT_TAXI", controls);
+        Assert.Contains("DA40_LIGHT_POSITION", controls);
+        Assert.Contains("DA40_LIGHT_STROBE", controls);
+        Assert.Contains("DA40_LIGHT_INSTRUMENT", controls);
+        Assert.Contains("DA40_LIGHT_FLOOD", controls);
+    }
+
+    [Fact]
+    public void EachCabinLightIsIndividuallySwitchable()
+    {
+        // Three overhead switches on the aeroplane, so three controls here. The
+        // all-at-once shortcut is an extra, never a replacement.
+        var controls = Ng().GetPanelControls()["Lighting Switches"];
+
+        Assert.Contains("DA40_LIGHT_CABIN_RIGHT", controls);
+        Assert.Contains("DA40_LIGHT_CABIN_LEFT", controls);
+        Assert.Contains("DA40_LIGHT_CABIN_BAGGAGE", controls);
+        Assert.Contains("DA40_LIGHT_CABIN_ALL", controls);
+    }
+
+    [Fact]
+    public void InstrumentAndFloodAreBrightnessKnobs_NotOnOffSwitches()
+    {
+        // AFM legend item 10 is "Rotary buttons for instrument lighting and flood light",
+        // and the model drives them from LIGHT POTENTIOMETER:3 and :5 as percentages.
+        var vars = Ng().GetVariables();
+
+        foreach (var key in new[] { "DA40_LIGHT_INSTRUMENT", "DA40_LIGHT_FLOOD" })
+        {
+            var v = vars[key];
+            Assert.True(v.RenderAsSlider, $"{key} should be a brightness slider");
+            Assert.Equal(0, v.SliderMin);
+            Assert.Equal(100, v.SliderMax);
+            Assert.Empty(v.ValueDescriptions);
+        }
+
+        Assert.Equal("LIGHT POTENTIOMETER:3", vars["DA40_LIGHT_INSTRUMENT"].Name);
+        Assert.Equal("LIGHT POTENTIOMETER:5", vars["DA40_LIGHT_FLOOD"].Name);
+    }
+
+    [Fact]
+    public void IceLightIsStatusOnly_ThereIsNoSwitchForIt()
+    {
+        var def = Ng();
+
+        Assert.Contains("DA40_LIGHT_ICE_STATE", def.GetPanelDisplayVariables()["Lighting Switches"]);
+        Assert.DoesNotContain("DA40_LIGHT_ICE_STATE", def.GetPanelControls()["Lighting Switches"]);
+    }
 }
