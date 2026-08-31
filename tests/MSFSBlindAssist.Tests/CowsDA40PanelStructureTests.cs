@@ -509,4 +509,37 @@ public class CowsDA40PanelStructureTests
             Assert.Equal(2, v.ValueDescriptions.Count);
         }
     }
+
+    // ==============================================================================
+    // Ice and Pitot panel
+    // ==============================================================================
+
+    [Fact]
+    public void IceAndPitotHasAllThreeControls()
+    {
+        var controls = Ng().GetPanelControls()["Ice and Pitot"];
+
+        Assert.Contains("DA40_ICE_PITOT_HEAT", controls);
+        // Not on the AFM legend, but an OPEN/CLOSED item throughout the procedures.
+        Assert.Contains("DA40_ICE_ALTERNATE_AIR", controls);
+        Assert.Contains("DA40_ICE_ALTERNATE_STATIC", controls);
+        Assert.Equal(3, controls.Count);
+    }
+
+    [Fact]
+    public void IceLightStaysOnLighting_NotDuplicatedHere()
+    {
+        var def = Ng();
+
+        Assert.Contains("DA40_LIGHT_ICE_STATE", def.GetPanelDisplayVariables()["Lighting Switches"]);
+        Assert.DoesNotContain("DA40_LIGHT_ICE_STATE", def.GetPanelDisplayVariables()["Ice and Pitot"]);
+    }
+
+    [Fact]
+    public void InductionAirFactorIsOnTheScan_SoTheDoorCanBeSeenWorking()
+    {
+        // Opening alternate air moved ENG_ALT_AIR_FACTOR from 1.00 to 0.98 live; without
+        // it there is no way to tell the door did anything.
+        Assert.Contains("DA40_ICE_ALT_AIR_FACTOR", Ng().GetPanelDisplayVariables()["Ice and Pitot"]);
+    }
 }
