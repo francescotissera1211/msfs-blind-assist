@@ -137,6 +137,36 @@ namespace MSFSBlindAssist.SimConnect
             return _lastRows;
         }
 
+        /// <summary>
+        /// Runs one expression in the page and returns what it evaluated to.
+        ///
+        /// This is the WRITE path for controls SimConnect cannot reach. It exists because
+        /// the DA40's G1000 answers its softkeys over SimConnect but ignores the rest of
+        /// its bezel there — the FMS knob, MENU, ENT, CLR, Direct-To, FPL, PROC, the range
+        /// knob and the map joystick all arrive only through the instrument's own
+        /// onInteractionEvent, measured both plainly and with a uniquifying calculator
+        /// prefix. Everything that CAN go over SimConnect still does; this is for the
+        /// keys that have no other road.
+        ///
+        /// Serialised behind the same connect lock as the poll, so a key press and a
+        /// scrape can never interleave on one socket.
+        /// </summary>
+        public async Task<string> InvokeAsync(string expression)
+        {
+            if (_disposed) return "";
+            try
+            {
+                var ct = _cts?.Token ?? CancellationToken.None;
+                if (!await EnsureConnected(ct)) return "";
+                return await EvalAsync(expression, ct);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("SimConnect", $"CoherentDisplayClient[{_titleNeedle}] invoke: {ex.Message}");
+                return "";
+            }
+        }
+
         // ---- connection + poll loop -------------------------------------
 
         private async Task RunLoop(CancellationToken ct)

@@ -409,7 +409,9 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (action == Hotkeys.HotkeyAction.ReadDisplayPFD)
         {
             hotkeyManager?.ExitOutputHotkeyMode();
-            ShowTrackedWindow(
+            // KEYED BY DISPLAY, not by form type: both windows are the same class, so
+            // the type-keyed tracker handed Alt+N the PFD window it had already opened.
+            ShowTrackedWindow("DA40_PFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
                     "G1000 PFD", "AS1000_PFD", "PFD", simConnect, announcer, this),
                 w => w.Show());
@@ -419,7 +421,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (action == Hotkeys.HotkeyAction.ReadDisplayND)
         {
             hotkeyManager?.ExitOutputHotkeyMode();
-            ShowTrackedWindow(
+            ShowTrackedWindow("DA40_MFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
                     "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer, this),
                 w => w.Show());

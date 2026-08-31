@@ -1,4 +1,4 @@
-// MSFSBA in-page agent for the COWS DA40's Working Title G1000 PFD.
+// MSFSBA in-page agent for the COWS DA40's Working Title G1000 - BOTH displays.
 //
 // SCOPE, deliberately narrow: this scrapes ONLY what the display alone knows — the CAS
 // window, the FMA, the navigation source and the softkey labels. Airspeed, altitude,
@@ -8,11 +8,16 @@
 // ("210987654321 123456789012-2109876543210...") rather than the value. Scraping a number
 // that SimConnect already answers correctly would be choosing the fragile source.
 //
+// ONE agent file serves the PFD and the MFD, because CoherentDisplayClient installs one
+// agent per view and the two displays are the same instrument with different pages up.
+// A.side() decides which by what is in the DOM, and A.rows() renders the half that view
+// actually has - so neither window ever reports the other's empty selectors as missing.
+//
 // Installed once per connection under window.__MSFSBA_DA40G1000.
 (function () {
     var A = {};
 
-    A.VERSION = 1;
+    A.VERSION = 3;
 
     function visible(el) {
         if (!el) return false;
@@ -49,13 +54,37 @@
             if (!out) { out = parts[i]; continue; }
             var a = out.charAt(out.length - 1);
             var b = parts[i].charAt(0);
-            var glue = /[0-9.:]/.test(a) && /[0-9.:]/.test(b);
+            // Two adjacent digit-ish characters belong to one value. Punctuation binds
+            // too: the G1000 renders a unit list, a date and a co-ordinate one span per
+            // token, so a blanket space produced "Feet( FT,FPM )" and "31 - AUG - 26"
+            // where the screen says "Feet(FT,FPM)" and "31-AUG-26".
+            //
+            // A DASH IS NOT GLUE, however date-like it looks. Binding it closed
+            // "31 - AUG - 26" into a tidier date and, in the same stroke, closed the CAS
+            // alert window's "PITOT HT OFF - Pitot heat is off." into
+            // "PITOT HT OFF-Pitot heat is off." - the dash there separates the
+            // abbreviation from its meaning, and running them together is a real loss on
+            // the one pane whose whole job is spelling an abbreviation out. The date
+            // reads perfectly well spaced; the alert does not read well closed up.
+            var glue = (/[0-9.:]/.test(a) && /[0-9.:]/.test(b)) ||
+                       /[([]/.test(a) || /[)\],.]/.test(b) ||
+                       /[\u00B0]/.test(a) || /[\u00B0]/.test(b);
             out += (glue ? "" : " ") + parts[i];
         }
 
         // A field the pilot has not filled in renders as a row of underscores. "blank"
-        // is what that means, and it is one word instead of five.
-        return out.replace(/(?:_\s*){2,}/g, "blank ").replace(/\s+/g, " ").trim();
+        // is what that means, and it is one word instead of five. An unset TIME is
+        // "__:__" - underscore runs with a separator BETWEEN them - and matching the runs
+        // alone turned that into "blank :blank", which reads as two empty fields with a
+        // colon between rather than as one empty time. The separators are swallowed into
+        // the same match.
+        // The same field can be blanked with DASHES instead ("--:--" for an unset time
+        // offset), so both placeholder characters are collapsed. A single dash between
+        // two words is not a placeholder and must survive - "31-AUG-26" is a date - which
+        // is why each alternative needs a RUN of at least two of its own character.
+        return out.replace(/_(?:[\s:.\/-]*_)+/g, "blank")
+                  .replace(/-(?:[\s:.\/]*-)+/g, "blank")
+                  .replace(/\s+/g, " ").trim();
     }
 
     function classList(el) {
@@ -63,6 +92,20 @@
         if (cn && cn.baseVal !== undefined) cn = cn.baseVal;
         return typeof cn === "string" ? cn.split(/\s+/) : [];
     }
+
+    // ---------------------------------------------------------------- which display
+    //
+    // The MFD carries the engine strip and a paged content area; the PFD carries the CAS
+    // window and the HSI. Detecting by CONTENT rather than by a name passed in from
+    // outside means the agent cannot be told the wrong thing, and a view that somehow has
+    // both would still render both halves rather than half a screen.
+    // ASK THE INSTRUMENT, NOT THE PAGE. Detecting by content (".eis" / ".mfd-page") read
+    // the PFD as an MFD - both views carry some of the other's markup, unused and
+    // invisible - and the whole PFD then rendered as MFD rows: no CAS, no FMA, no
+    // navigation source, on the one display where those are the point.
+    A.side = function () {
+        return document.querySelector("wtg1000-mfd") ? "MFD" : "PFD";
+    };
 
     // ---------------------------------------------------------------- CAS
     //
@@ -185,12 +228,70 @@
                         (/nearest-airport/.test(cls) ? "Nearest Airports" : "");
             var lines = [];
 
+            // THE PAGE SELECTOR. What the FMS knob opens: the six page GROUPS across the
+            // bottom and the PAGES of whichever group is current. Read as its own shape
+            // because run together it is the useless "MapWPTAuxFPLNRSTEIS" - and because
+            // this window is the only way a blind pilot can see where the knob is about
+            // to take them. The selector closes itself a second or so after the last
+            // turn, so what it says is genuinely transient.
+            if (/mfd-pageselect/.test(cls)) {
+                var tabs = d.querySelectorAll(".mfd-pageselect-tabs > *");
+                var groups = [];
+                for (var g = 0; g < tabs.length; g++) {
+                    var gt = text(tabs[g]);
+                    if (!gt) continue;
+                    groups.push(gt + (classList(tabs[g]).indexOf("active-tab") >= 0 ? " (current)" : ""));
+                }
+                if (groups.length) lines.push("Groups: " + groups.join(", "));
+
+                var pgs = d.querySelectorAll(".mfd-pageselect-group .popout-menu-item");
+                for (var q = 0; q < pgs.length; q++) {
+                    var pt = text(pgs[q]);
+                    if (!pt) continue;
+                    var cur = classList(pgs[q]).indexOf("highlight-select") >= 0 ||
+                              !!pgs[q].querySelector(".highlight-select");
+                    lines.push("  " + pt + (cur ? " (current)" : ""));
+                }
+                out.push({ title: "Page selector", lines: lines });
+                continue;
+            }
+
+            // THE PAGE MENU. The MENU key's options for whatever page is up. An entry the
+            // page cannot offer right now is CLASSED disabled rather than removed, and
+            // saying so is the point: a pilot who cannot see it greyed out would otherwise
+            // select it and get silence.
+            if (/mfd-pagemenu/.test(cls)) {
+                var items = d.querySelectorAll(".popout-menu-item");
+                for (var m = 0; m < items.length; m++) {
+                    var mt = text(items[m]);
+                    if (!mt) continue;
+                    var mc = classList(items[m]);
+                    var selected = mc.indexOf("highlight-select") >= 0 ||
+                                   !!items[m].querySelector(".highlight-select");
+                    lines.push(mt
+                        + (mc.indexOf("text-disabled") >= 0 ? ", not available" : "")
+                        + (selected ? ", selected" : ""));
+                }
+                var back = text(d.querySelector(".mfd-pagemenu-backmessage"));
+                if (back) lines.push(back);
+                out.push({ title: "Page menu", lines: lines });
+                continue;
+            }
+
             // The nearest-airport list has NAMED fields, so it is read as fields rather
             // than as its own textContent - which runs together into "VCBI0200.4 NMILS".
             var items = d.querySelectorAll(".nearest-airport-item");
             if (items.length) {
                 for (var k = 0; k < items.length; k++) {
                     var it = items[k];
+
+                    // The list PRE-ALLOCATES its rows exactly like the CAS window does -
+                    // an unused slot renders as "____, 359, __._ NM, VFR, _____ FT", which
+                    // is four empty aerodromes read out after the real ones. A row counts
+                    // only when its identifier is a real one.
+                    var ident = text(it.querySelector(".nearest-airport-name"));
+                    if (!ident || /^_+$/.test(ident)) continue;
+
                     var parts = [
                         text(it.querySelector(".nearest-airport-name")),
                         text(it.querySelector(".nearest-airport-bearing")),
@@ -226,6 +327,428 @@
         return out;
     };
 
+    // =========================================================== the MFD
+    //
+    // Everything below belongs to the multi-function display. It is a different SHAPE of
+    // screen from the PFD: a permanent engine strip down the left, a NAV/COM box and a
+    // navigation data bar across the top, and one PAGE in the middle that the FMS knob
+    // steps through. The softkey row is shared and is read by the same A.softkeys().
+
+    // ------------------------------------------------------------ power-up screen
+    //
+    // The MFD comes up on a confirmation screen carrying the NAVIGATION DATA CYCLE and
+    // its expiry, and nothing else on the aeroplane says when the database runs out - a
+    // real airworthiness item for IFR, and the one thing a sighted pilot reads there
+    // before pressing ENT. Reported as its own rows, because until it is acknowledged the
+    // MFD shows no pages at all and every other selector below is empty: without this the
+    // window would read as broken rather than as waiting.
+    A.startup = function () {
+        var sc = document.querySelector(".startup-confirm-screen");
+        if (!sc || !visible(sc)) return null;
+        return spacedText(sc);
+    };
+
+    // ------------------------------------------------------------- NAV/COM box
+    //
+    // Two radios per side, each rendering ACTIVE and STANDBY in one container whose
+    // textContent runs them together with the tuning scroller between them
+    // ("110.30100.12110.50"). The frequencies themselves are stock SimVars MSFSBA already
+    // reads on the Radios panel, so what is taken here is what the DISPLAY alone knows:
+    // which radio the tuning cursor is on, and which one is transmitting.
+    A.navcom = function () {
+        function oneSide(rootSel, kind) {
+            var root = document.querySelector(rootSel);
+            if (!root) return null;
+            var containers = root.querySelectorAll(".navcom-frequencyelement-container");
+            var selected = 0;
+            for (var i = 0; i < containers.length; i++) {
+                if (classList(containers[i]).indexOf("selected") >= 0) selected = i + 1;
+            }
+            var border = root.querySelector(".radio-armed-border");
+            var state = "";
+            if (border) {
+                var bc = classList(border);
+                if (bc.indexOf("standby") >= 0) state = "standby";
+                else if (bc.indexOf("inactive") >= 0) state = "inactive";
+                else if (bc.indexOf("active") >= 0) state = "transmitting";
+            }
+            return { kind: kind, selected: selected, state: state };
+        }
+        var sides = [oneSide("#NavComBox #Left", "NAV"), oneSide("#NavComBox #Right", "COM")];
+        var out = [];
+        for (var i = 0; i < sides.length; i++) if (sides[i]) out.push(sides[i]);
+        return out;
+    };
+
+    // ------------------------------------------------------- navigation data bar
+    //
+    // Four PILOT-CONFIGURABLE slots (GS, DTK, TRK and ETE by default, changed on the AUX
+    // system-setup page), so they are read as whatever they currently are rather than
+    // against a fixed list - a fixed list would silently report the wrong label for a
+    // pilot who reconfigured them.
+    A.navDataBar = function () {
+        var out = [];
+        var slots = document.querySelectorAll(".nav-data-bar-field-slot");
+        for (var i = 0; i < slots.length; i++) {
+            var t = spacedText(slots[i]);
+            if (t) out.push(t);
+        }
+        return out;
+    };
+
+    // The page's name. Most pages put it in the data bar, but SOME LEAVE IT BLANK - every
+    // NRST page does - and a window that answers "not shown" when the pilot has just
+    // navigated somewhere is reporting a fault it does not have.
+    //
+    // The page selector is the fallback, and it works while CLOSED: it keeps its active
+    // tab and highlighted entry in the DOM, so it can still say which group and page are
+    // current long after it has faded out.
+    A.pageTitle = function () {
+        var shown = text(document.querySelector(".nav-data-bar-page-title"));
+        if (shown) return shown;
+
+        var d = document.querySelector(".mfd-pageselect");
+        if (!d) return "";
+
+        var group = "";
+        var tabs = d.querySelectorAll(".mfd-pageselect-tabs > *");
+        for (var i = 0; i < tabs.length; i++) {
+            if (classList(tabs[i]).indexOf("active-tab") >= 0) { group = text(tabs[i]); break; }
+        }
+
+        var page = "";
+        var pgs = d.querySelectorAll(".mfd-pageselect-group .popout-menu-item");
+        for (var q = 0; q < pgs.length; q++) {
+            if (classList(pgs[q]).indexOf("highlight-select") >= 0 ||
+                pgs[q].querySelector(".highlight-select")) { page = text(pgs[q]); break; }
+        }
+
+        return (group && page) ? (group + " - " + page) : (group || page);
+    };
+
+    // ------------------------------------------------------------------- the EIS
+    //
+    // The engine strip. THREE gauge shapes, and the readable content differs by shape:
+    //
+    //   dial        Load % and RPM        - carry a NUMBER (.eis-dial-gauge-value)
+    //   text        Fuel Flow             - carries a number (.ff-text)
+    //   horizontal  Oil Temp, Oil Press, Coolant Temp, Fuel Temp, Fuel Qty - NO NUMBER
+    //
+    // The horizontal gauges are the interesting case: the real G1000 draws them as a
+    // needle against a coloured scale with no digits at all, so "what does the MFD say
+    // the oil pressure is" has no numeric answer - the answer is WHERE THE NEEDLE IS.
+    // That is read here as the colour band the needle sits in plus how far along the
+    // scale it has travelled, which is the same information a sighted pilot takes off the
+    // strip at a glance.
+    //
+    // Numbers for these quantities exist on MSFSBA's own Engine panel, read from the
+    // aircraft's sensor L:vars at full resolution. This is deliberately NOT that: it is
+    // what the SCREEN shows, which is a different question and the one this window
+    // answers. Keeping both is not a duplicate control - the panel is where the pilot
+    // reads the engine, this is where they read the display.
+    A.eis = function () {
+        var host = document.querySelector(".eis");
+        if (!host) return [];
+
+        var out = [];
+        var gauges = host.querySelectorAll(".eis-gauge");
+
+        for (var i = 0; i < gauges.length; i++) {
+            var g = gauges[i];
+            if (!visible(g)) continue;
+
+            var labelEl = g.querySelector(".gauge-label") ||
+                          g.querySelector(".eis-dial-gauge-label") ||
+                          g.querySelector(".ff-label");
+            var label = text(labelEl);
+            if (!label) continue;
+
+            var lcls = labelEl ? classList(labelEl) : [];
+            var alert = lcls.indexOf("warning") >= 0 ? "warning"
+                      : lcls.indexOf("caution") >= 0 ? "caution" : "";
+
+            var value = text(g.querySelector(".eis-dial-gauge-value")) ||
+                        text(g.querySelector(".ff-text"));
+
+            out.push({
+                label: label,
+                value: value,
+                bands: A.gaugeBands(g),
+                scale: A.gaugeScale(g),
+                alert: alert
+            });
+        }
+
+        return out;
+    };
+
+    // Where each needle sits on its coloured scale. Returns ONE ENTRY PER NEEDLE, so the
+    // two-sided fuel gauges report both tanks instead of collapsing to one reading.
+    A.gaugeBands = function (g) {
+        var barHost = g.querySelector(".color-bars");
+        if (!barHost) return [];
+
+        var barEls = barHost.querySelectorAll(".eis-gauge-bar");
+        var bars = [];
+        for (var i = 0; i < barEls.length; i++) {
+            var r = barEls[i].getBoundingClientRect();
+            if (r.width <= 0) continue;
+            var c = classList(barEls[i]);
+            var colour = c.indexOf("red-bar") >= 0 ? "red"
+                       : c.indexOf("yellow-bar") >= 0 ? "yellow"
+                       : c.indexOf("green-bar") >= 0 ? "green"
+                       : c.indexOf("white-bar") >= 0 ? "white" : "";
+            bars.push({ left: r.left, right: r.left + r.width, colour: colour });
+        }
+        if (!bars.length) return [];
+
+        var scaleLeft = bars[0].left;
+        var scaleRight = bars[bars.length - 1].right;
+        var span = scaleRight - scaleLeft;
+
+        // The needle is an svg TRANSLATED along the scale. Its bounding box is as wide as
+        // the whole gauge, so the box tells you nothing about where the needle points -
+        // the offset inside the transform is what locates it, measured from the same
+        // origin the bars start at.
+        // ASK FOR THE TRANSFORM, NOT FOR A CLASS NAME. A single-needle gauge wraps its
+        // svg in ".pointer"; the two-needle fuel gauges wrap theirs in ".pointers >
+        // .pointer-one-div" / ".pointer-two-div", which a ".pointer" lookup does not match
+        // at all - so both fuel gauges read "no reading" while every other gauge worked.
+        // The one thing every needle on every shape of gauge has is the translateX that
+        // positions it, so that is what is selected on.
+        var out = [];
+        var pointers = g.querySelectorAll("svg[style*='translateX']");
+        for (var p = 0; p < pointers.length; p++) {
+            var svg = pointers[p];
+            var m = /translateX\(\s*(-?[\d.]+)px/.exec(svg.getAttribute("style") || "");
+            if (!m) continue;
+
+            var x = scaleLeft + parseFloat(m[1]);
+            var colour = "";
+            for (var b = 0; b < bars.length; b++) {
+                if (x >= bars[b].left && x < bars[b].right) { colour = bars[b].colour; break; }
+            }
+            if (!colour) colour = (x < scaleLeft) ? "below the scale" : "above the scale";
+
+            out.push({
+                colour: colour,
+                percent: span > 0 ? Math.round(((x - scaleLeft) / span) * 100) : -1
+            });
+        }
+
+        return out;
+    };
+
+    // Some gauges print their scale as tick labels ("0 5 10 14" on the fuel quantity).
+    // Where they do, the ends of that scale turn a percentage along the bar into a
+    // quantity, which is the difference between "93 percent along" and "about 13 gallons".
+    A.gaugeScale = function (g) {
+        var host = g.querySelector(".min-max");
+        if (!host) return null;
+        var marks = [];
+        for (var i = 0; i < host.children.length; i++) {
+            var t = text(host.children[i]);
+            if (t) marks.push(t);
+        }
+        return marks.length >= 2 ? { low: marks[0], high: marks[marks.length - 1] } : null;
+    };
+
+    // ---------------------------------------------------------------- the page
+    //
+    // The middle of the screen. Its content is entirely page-dependent - a map, a flight
+    // plan, an airport record, a checklist - so it is read by STRUCTURE rather than
+    // against a per-page selector list: a per-page list renders nothing at all on any
+    // page nobody wrote a branch for, and the pilot cannot tell that from an empty page.
+    // The labelled rows inside one box, as "setting: value".
+    //
+    // A row's own class tokens are whole words, so ".mfd-system-setup-row" selects the
+    // ROWS and never their ".mfd-system-setup-row-title" / "-left" / "-right" parts -
+    // which is what keeps every field from being emitted three times over.
+    // One list row as "field, field, field".
+    //
+    // A row's fields are separate elements ("VCBI", "020" + the degree sign, "0.4 NM"),
+    // and running them through spacedText welds the first two together: the last digit of
+    // an identifier and the first of a bearing are both digits, so the rule that keeps a
+    // clock from becoming "0 : 0 0" also turns VCBI 020 into one token. Reading the
+    // FIELDS instead of the text keeps every boundary the screen draws.
+    A.fieldsOf = function (row) {
+        var parts = [];
+        for (var i = 0; i < row.children.length; i++) {
+            if (!visible(row.children[i])) continue;
+            var t = spacedText(row.children[i]);
+            if (t) parts.push(t);
+        }
+        return parts.length ? parts.join(", ") : spacedText(row);
+    };
+
+    A.rowsOf = function (box) {
+        var out = [];
+
+        // Every scrollable G1000 list - nearest airports, intersections, VORs, NDBs, the
+        // flight plan - is built the same way, so ONE generic selector serves all of them
+        // and a page nobody anticipated still reads as a list rather than a paragraph.
+        var listHost = box.querySelector(".ui-control-list-content");
+        if (listHost) {
+            for (var L = 0; L < listHost.children.length; L++) {
+                var item = listHost.children[L];
+                if (!visible(item)) continue;
+                var line = A.fieldsOf(item);
+                if (!line) continue;
+                if (classList(item).indexOf("highlight-select") >= 0 ||
+                    item.querySelector(".highlight-select")) line += ", selected";
+                out.push(line);
+            }
+            if (out.length) return out;
+        }
+
+        var rows = box.querySelectorAll(".mfd-system-setup-row, .mfd-setup-row, " +
+                                        ".popout-menu-item, .mfd-status-row");
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i];
+            if (!visible(row)) continue;
+
+            // A row is up to THREE things: a left-hand toggle, a title, and the value
+            // that follows the title inside the same container. Reading the toggle as
+            // the value put "Altitude: Off" where the screen says the transition alert
+            // is set to 18000 FT and is switched off - two facts, and the wrong one won.
+            var titleEl = row.querySelector(".mfd-system-setup-row-title");
+            var title = text(titleEl);
+
+            var value = spacedText(row.querySelector(".mfd-system-setup-row-right"));
+            if (!value && titleEl && titleEl.parentElement) {
+                // The value has no element of its own; it is whatever the title's own
+                // container says after the title.
+                var whole = spacedText(titleEl.parentElement);
+                if (title && whole.indexOf(title) === 0) value = whole.substring(title.length).trim();
+            }
+
+            var toggle = spacedText(row.querySelector(".arrow-toggle-value")) ||
+                         spacedText(row.querySelector(".mfd-system-setup-row-left"));
+
+            var line = (title && value) ? (title + ": " + value)
+                     : (title && toggle) ? (title + ": " + toggle)
+                     : spacedText(row);
+            if (!line) continue;
+            if (title && value && toggle && toggle !== value) line += ", " + toggle;
+
+            var cls = classList(row);
+            if (cls.indexOf("text-disabled") >= 0) line += ", not available";
+            if (cls.indexOf("highlight-select") >= 0 ||
+                row.querySelector(".highlight-select")) line += ", selected";
+
+            out.push(line);
+        }
+
+        // A box with no rows of its own still has content worth reading - render it as
+        // one line rather than dropping the box on the floor.
+        if (!out.length) {
+            var whole = spacedText(box);
+            var t = text(box.querySelector(".groupbox-title"));
+            if (whole && t && whole.indexOf(t) === 0) whole = whole.substring(t.length).trim();
+            if (whole) out.push(whole);
+        }
+
+        return out;
+    };
+
+    A.page = function () {
+        var p = document.querySelector(".mfd-page.open");
+        if (!p || !visible(p)) return [];
+
+        var lines = [];
+
+        // THE EIS PAGE. The MFD's own full engine page draws DIALS, and it is the one
+        // place on the aeroplane that prints the numbers the strip only gestures at -
+        // oil pressure in bar, oil, coolant and gearbox temperatures, volts, amps and the
+        // service hours. It uses a DIFFERENT markup from the strip beside it
+        // (".dial-gauge-parent" with centred label and value elements, not ".eis-gauge"),
+        // so the strip's reader finds nothing here and the page fell through to raw text:
+        // "0100 Load % 303000 RPM 7000" - three gauges, their scale ends, and their values
+        // welded into one token.
+        var dials = p.querySelectorAll(".dial-gauge-parent");
+        if (dials.length) {
+            for (var g = 0; g < dials.length; g++) {
+                if (!visible(dials[g])) continue;
+                var dl = text(dials[g].querySelector(".dial-gauge-label-center")) ||
+                         text(dials[g].querySelector(".eis-dial-gauge-label"));
+                var dv = text(dials[g].querySelector(".dial-gauge-value-center")) ||
+                         text(dials[g].querySelector(".eis-dial-gauge-value"));
+                if (!dl && !dv) continue;
+                lines.push(dl ? (dl + ": " + (dv || "no reading")) : dv);
+            }
+
+            // The rest of the page - the labelled blocks the dials sit among - read one
+            // level down, skipping anything a dial has already answered for.
+            var host = p.children.length === 1 ? p.children[0] : p;
+            for (var k = 0; k < host.children.length; k++) {
+                var kid = host.children[k];
+                if (!visible(kid)) continue;
+                if (kid.querySelector(".dial-gauge-parent") ||
+                    classList(kid).indexOf("dial-gauge-parent") >= 0) continue;
+                var kl = spacedText(kid);
+                if (kl) lines.push(kl);
+            }
+            if (lines.length) return lines;
+        }
+
+        // GROUPED PAGES FIRST. The setup, status and utility pages are built as boxes of
+        // labelled rows, and the generic one-level walk renders each COLUMN as a single
+        // paragraph - "Date 31-AUG-26 Time 21:24:35 UTC Time Format UTC Time Offset..." -
+        // in which no individual setting can be arrowed to or read on its own. These are
+        // the pages a pilot CHANGES things on, so they are the ones that most need to be
+        // read a field at a time.
+        var boxes = p.querySelectorAll(".groupbox");
+        if (boxes.length) {
+            for (var b = 0; b < boxes.length; b++) {
+                var box = boxes[b];
+                if (!visible(box)) continue;
+
+                var boxTitle = text(box.querySelector(".groupbox-title"));
+                var boxLines = A.rowsOf(box);
+                if (!boxLines.length) continue;
+
+                if (boxTitle) lines.push(boxTitle + ":");
+                for (var r = 0; r < boxLines.length; r++) {
+                    lines.push((boxTitle ? "  " : "") + boxLines[r]);
+                }
+            }
+            if (lines.length) return lines;
+        }
+
+        // Prefer the page's own row-like structures where it has them: a flight plan and
+        // a nearest list ARE lists, and reading them as one blob loses every boundary.
+        var rowSel = ".fpl-list-item, .mfd-fpl-row, .checklist-item, .nearest-list-item, " +
+                     ".mfd-list-item, .selectable-item";
+        var rows = p.querySelectorAll(rowSel);
+        if (rows.length) {
+            for (var i = 0; i < rows.length; i++) {
+                if (!visible(rows[i])) continue;
+                var t = spacedText(rows[i]);
+                if (!t) continue;
+                var cls = classList(rows[i]);
+                if (cls.indexOf("selected") >= 0 || cls.indexOf("highlight-select") >= 0) {
+                    t += " (selected)";
+                }
+                lines.push(t);
+            }
+            if (lines.length) return lines;
+        }
+
+        // Otherwise walk one level of children, which keeps a form's fields on separate
+        // rows instead of welding them into a paragraph.
+        var host = p.children.length === 1 ? p.children[0] : p;
+        for (var c = 0; c < host.children.length; c++) {
+            if (!visible(host.children[c])) continue;
+            var line = spacedText(host.children[c]);
+            if (line) lines.push(line);
+        }
+        if (!lines.length) {
+            var whole = spacedText(p);
+            if (whole) lines.push(whole);
+        }
+        return lines;
+    };
+
     // ---------------------------------------------------------------- pressing
     //
     // ONE SOFTKEY IS ONE BUTTON. There is no such thing as several items behind one key.
@@ -242,13 +765,89 @@
     // missing.
     A.press = function (index, side) {
         if (!(index >= 1 && index <= 12)) return "range";
-        var evt = "H:AS1000_" + (side === "MFD" ? "MFD" : "PFD") + "_SOFTKEYS_" + index;
+        return A.key("AS1000_" + (side === "MFD" ? "MFD" : "PFD") + "_SOFTKEYS_" + index);
+    };
+
+    // ---------------------------------------------------- the BEZEL, not the keys
+    //
+    // Everything on the bezel that is NOT a softkey: the FMS knob, MENU, ENT, CLR,
+    // Direct-To, FPL, PROC, the range knob and the map joystick.
+    //
+    // THESE DO NOT ARRIVE OVER SIMCONNECT AND THE SOFTKEYS DO. Measured both ways, twice:
+    // `1 (>H:AS1000_MFD_SOFTKEYS_11)` through the ordinary calculator path exits the
+    // checklist, while `1 (>H:AS1000_MFD_FMS_Lower_DEC)` down the same path changes
+    // nothing at all — and it is not the MobiFlight duplicate-command trap either, because
+    // the same write carrying a `901 0 *` uniquifying prefix is equally inert. Fired
+    // in-page through the instrument's own onInteractionEvent they all work.
+    //
+    // So this is a deliberate, MEASURED exception to "read over Coherent, write over
+    // SimConnect": the softkeys keep the SimConnect path, and the rest of the bezel goes
+    // down the socket, because for these keys there is no other road. It is the same
+    // shape of finding as the A380's KCCU keys, which reach the MFD only when published
+    // on the display's own event bus.
+    //
+    // The instrument element is the one custom tag that carries the handler —
+    // wtg1000-pfd on one screen, wtg1000-mfd on the other — so the lookup asks for the
+    // handler rather than for a name, and this agent stays identical on both displays.
+    A.key = function (name) {
+        var el = document.querySelector("wtg1000-mfd") || document.querySelector("wtg1000-pfd");
+        if (!el || typeof el.onInteractionEvent !== "function") return "no instrument";
         try {
-            SimVar.SetSimVarValue(evt, "number", 1);
+            el.onInteractionEvent([name]);
             return "ok";
         } catch (e) {
             return "error " + e;
         }
+    };
+
+    // ------------------------------------------------- what to say after a key
+    //
+    // THE FIRST TURN OF THE FMS KNOB DOES NOT CHANGE THE PAGE. It opens the page
+    // SELECTOR, showing where you are; the next turn moves. That is how the real G1000
+    // behaves and it is deliberately not smoothed over here — a sighted pilot gets the
+    // same two-step, and quietly sending a second turn would make the knob skip a page
+    // every time the selector had closed.
+    //
+    // But it does mean that reading back the page TITLE after a turn reports the page the
+    // pilot is still on, which sounds exactly like a key that did nothing. So while the
+    // selector is up, what gets spoken is the SELECTOR: the group and page it is offering.
+    A.summary = function () {
+        var d = document.querySelector(".mfd-pageselect");
+        if (d && visible(d) && parseFloat(window.getComputedStyle(d).opacity || "1") >= 0.05) {
+            var group = "";
+            var tabs = d.querySelectorAll(".mfd-pageselect-tabs > *");
+            for (var i = 0; i < tabs.length; i++) {
+                if (classList(tabs[i]).indexOf("active-tab") >= 0) { group = text(tabs[i]); break; }
+            }
+
+            var page = "";
+            var pgs = d.querySelectorAll(".mfd-pageselect-group .popout-menu-item");
+            for (var q = 0; q < pgs.length; q++) {
+                if (classList(pgs[q]).indexOf("highlight-select") >= 0 ||
+                    pgs[q].querySelector(".highlight-select")) { page = text(pgs[q]); break; }
+            }
+
+            var bits = [];
+            if (group) bits.push(group);
+            if (page) bits.push(page);
+            return "Page selector" + (bits.length ? ", " + bits.join(", ") : "");
+        }
+
+        // A page menu is the other window a bezel key opens, and its selected entry is
+        // the thing the pilot is about to press ENT on.
+        var pm = document.querySelector(".mfd-pagemenu");
+        if (pm && visible(pm) && parseFloat(window.getComputedStyle(pm).opacity || "1") >= 0.05) {
+            var items = pm.querySelectorAll(".popout-menu-item");
+            for (var m = 0; m < items.length; m++) {
+                if (classList(items[m]).indexOf("highlight-select") >= 0 ||
+                    items[m].querySelector(".highlight-select")) {
+                    return "Page menu, " + text(items[m]);
+                }
+            }
+            return "Page menu";
+        }
+
+        return A.pageTitle();
     };
 
     A.snapshot = function () {
@@ -256,8 +855,11 @@
             v: A.VERSION,
             cas: A.cas(),
             panes: A.panes(),
+            side: A.side(),
             fma: A.fma(),
             nav: A.nav(),
+            eis: A.eis(),
+            page: A.pageTitle(),
             softkeys: A.softkeys()
         });
     };
@@ -270,6 +872,85 @@
     // connection handling that client already gets right - re-installing on a still-open
     // socket, the connect lock, the reconnect backoff.
     A.rows = function () {
+        return A.side() === "MFD" ? A.mfdRows() : A.pfdRows();
+    };
+
+    // ---------------------------------------------------------------- MFD rows
+    //
+    // Ordered the way the screen is: what page you are on, the radios and data bar across
+    // the top, the engine strip down the side, the page itself, then any window that is
+    // open over it, then the softkeys under your fingers.
+    A.mfdRows = function () {
+        var rows = [];
+
+        // Before the database is acknowledged the MFD has no pages at all, so this comes
+        // first and alone - anything else would be reporting empty selectors as facts.
+        var startup = A.startup();
+        if (startup) {
+            rows.push("Display starting up:");
+            rows.push("  " + startup);
+            var startKeys = A.softkeys();
+            for (var z = 0; z < startKeys.length; z++) {
+                rows.push("Softkey " + startKeys[z].index + ": " +
+                    (startKeys[z].label || "blank"));
+            }
+            return rows;
+        }
+
+        rows.push("Page: " + (A.pageTitle() || "not shown"));
+
+        var bar = A.navDataBar();
+        if (bar.length) rows.push("Data bar: " + bar.join(", "));
+
+        var nc = A.navcom();
+        for (var r = 0; r < nc.length; r++) {
+            var bits = [];
+            if (nc[r].selected) bits.push("tuning " + nc[r].kind + " " + nc[r].selected);
+            if (nc[r].state) bits.push(nc[r].state);
+            if (bits.length) rows.push(nc[r].kind + " radios: " + bits.join(", "));
+        }
+
+        var eis = A.eis();
+        if (eis.length) {
+            rows.push("Engine strip:");
+            for (var e = 0; e < eis.length; e++) rows.push("  " + A.describeGauge(eis[e]));
+        }
+
+        var page = A.page();
+        if (page.length) {
+            rows.push("Page content:");
+            for (var g = 0; g < page.length; g++) rows.push("  " + page[g]);
+        }
+
+        A.pushPanes(rows);
+        A.pushSoftkeys(rows);
+        return rows;
+    };
+
+    // One gauge as one sentence. A gauge that prints a number says the number; a gauge
+    // that only draws a needle says where the needle is, which is all the screen shows.
+    A.describeGauge = function (g) {
+        var parts = [];
+
+        if (g.value) parts.push(g.value);
+
+        for (var i = 0; i < g.bands.length; i++) {
+            var b = g.bands[i];
+            var where = b.colour + (b.percent >= 0 ? " " + b.percent + " percent along" : "");
+            // Two needles on one scale are the two fuel tanks, left then right, and
+            // saying which is which is the whole value of reading that gauge.
+            parts.push(g.bands.length > 1 ? (i === 0 ? "left " : "right ") + where : where);
+        }
+
+        if (!g.value && !g.bands.length) parts.push("no reading");
+        if (g.scale && g.bands.length) parts.push("scale " + g.scale.low + " to " + g.scale.high);
+        if (g.alert) parts.push(g.alert);
+
+        return g.label + ": " + parts.join(", ");
+    };
+
+    // ---------------------------------------------------------------- PFD rows
+    A.pfdRows = function () {
         var rows = [];
 
         var cas = A.cas();
@@ -292,15 +973,23 @@
         if (n.crossTrack) rows.push("Cross track: " + n.crossTrack);
         if (n.message) rows.push("GPS message: " + n.message);
 
+        A.pushPanes(rows);
+        A.pushSoftkeys(rows);
+        return rows;
+    };
+
+    A.pushPanes = function (rows) {
         var panes = A.panes();
         for (var p = 0; p < panes.length; p++) {
             rows.push(panes[p].title + ":");
             for (var q = 0; q < panes[p].lines.length; q++) rows.push("  " + panes[p].lines[q]);
         }
+    };
 
-        // "Softkey N:" is a CONTRACT with CowsDA40DisplayForm, which matches that prefix
-        // to know which rows can be pressed and which key each one is. Change the wording
-        // here and Enter stops working there.
+    // "Softkey N:" is a CONTRACT with CowsDA40DisplayForm, which matches that prefix to
+    // know which rows can be pressed and which key each one is. Change the wording here
+    // and Enter stops working there.
+    A.pushSoftkeys = function (rows) {
         var keys = A.softkeys();
         for (var k = 0; k < keys.length; k++) {
             var key = keys[k];
@@ -309,8 +998,6 @@
                 + (key.value ? " " + key.value : "")
                 + (key.active ? ", selected" : ""));
         }
-
-        return rows;
     };
 
     window.__MSFSBA_DISP = {

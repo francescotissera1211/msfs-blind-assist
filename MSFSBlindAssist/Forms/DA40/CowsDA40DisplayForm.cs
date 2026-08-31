@@ -26,6 +26,19 @@ namespace MSFSBlindAssist.Forms.DA40;
 /// keys with a sub-menu whose own row carries a Back key — so after every press the window
 /// re-reads immediately and speaks the new row, because the keys under the pilot's fingers
 /// have just changed.
+///
+/// THE REST OF THE BEZEL GOES DOWN THE SOCKET, and that split is measured rather than
+/// chosen: the softkeys answer over SimConnect, the FMS knob, MENU, ENT, CLR, Direct-To,
+/// FPL, PROC, the range knob and the map joystick do not — not plainly, and not with the
+/// `901 0 *` uniquifying prefix that defeats MobiFlight's duplicate-command dedup either.
+/// Fired through the instrument's own onInteractionEvent they all work. So `A.key(...)`
+/// over the debugger is the only road for those, exactly as the A380's KCCU keys reach
+/// its MFD only on the display's own event bus.
+///
+/// THE KEY MAP AVOIDS EVERYTHING THE LIST ITSELF USES. The window is read with the arrow
+/// keys, Home, End, Page Up and Page Down, and first-letter type-ahead — so none of those
+/// may be taken, or reading the display would cost the pilot the ability to move around
+/// it. The bezel therefore sits on Ctrl+arrows and the function keys.
 /// </summary>
 public sealed class CowsDA40DisplayForm : Form
 {
@@ -75,7 +88,11 @@ public sealed class CowsDA40DisplayForm : Form
             TabIndex = 0,
             AccessibleName = title,
             AccessibleDescription = title +
-                ". Read with the arrow keys. Press Enter on a softkey to press it. " +
+                ". Read with the arrow keys. Enter presses the selected softkey. " +
+                "Control with left and right steps the page group, control with up and " +
+                "down steps the page. F2 menu, F3 enter, F4 clear, F6 direct to, " +
+                "F7 flight plan, F8 procedures, control with Enter is the cursor knob, " +
+                "control with Page Up and Page Down is the map range. " +
                 "F5 refreshes; Escape closes. Auto-updates."
         };
         _text.SetText("Connecting to the display...");
@@ -206,6 +223,29 @@ public sealed class CowsDA40DisplayForm : Form
         }
     }
 
+    /// <summary>
+    /// The bezel, keyed. Every entry is an H-event this build of the G1000 actually
+    /// declares — the map was read out of the instrument's own event table rather than
+    /// guessed, so a key here cannot be one the display silently discards. The joystick
+    /// pan is MFD-only, which is why it is not in this shared table.
+    /// </summary>
+    private static readonly Dictionary<Keys, (string Event, string Spoken)> BezelKeys = new()
+    {
+        [Keys.Control | Keys.Right] = ("FMS_Lower_INC", "next page group"),
+        [Keys.Control | Keys.Left]  = ("FMS_Lower_DEC", "previous page group"),
+        [Keys.Control | Keys.Down]  = ("FMS_Upper_INC", "next page"),
+        [Keys.Control | Keys.Up]    = ("FMS_Upper_DEC", "previous page"),
+        [Keys.Control | Keys.Enter] = ("FMS_Upper_PUSH", "cursor"),
+        [Keys.F2]                   = ("MENU_Push", "menu"),
+        [Keys.F3]                   = ("ENT_Push", "enter"),
+        [Keys.F4]                   = ("CLR", "clear"),
+        [Keys.F6]                   = ("DIRECTTO", "direct to"),
+        [Keys.F7]                   = ("FPL_Push", "flight plan"),
+        [Keys.F8]                   = ("PROC_Push", "procedures"),
+        [Keys.Control | Keys.PageUp]   = ("RANGE_INC", "range out"),
+        [Keys.Control | Keys.PageDown] = ("RANGE_DEC", "range in")
+    };
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.F5)
@@ -219,8 +259,74 @@ public sealed class CowsDA40DisplayForm : Form
             return TryPressSelectedSoftkey();
         }
 
+        if (BezelKeys.TryGetValue(keyData, out var bezel))
+        {
+            _ = PressBezel(bezel.Event, bezel.Spoken);
+            return true;
+        }
+
         return base.ProcessCmdKey(ref msg, keyData);
     }
+
+    /// <summary>
+    /// Fires one bezel key in the page and reads the result back.
+    ///
+    /// The settle is longer than a softkey's because the FMS knob opens a SELECTOR that
+    /// commits about a second after the last turn — read too early and the window reports
+    /// the page the pilot has just left. What it speaks is the page TITLE rather than a
+    /// confirmation of the keystroke: "Aux - System Setup 1" is the answer to what the
+    /// knob did, and "next page group" is only what was asked for.
+    /// </summary>
+    private async Task PressBezel(string eventSuffix, string spoken)
+    {
+        string name = $"AS1000_{_side}_{eventSuffix}";
+        string result = await _client.InvokeAsync(
+            $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.key('{name}')");
+        if (_disposed) return;
+
+        // A.key answers "no instrument" when the view has no G1000 element to drive, which
+        // is the one failure a pilot could otherwise mistake for a dead key.
+        if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
+        {
+            _announcer.AnnounceImmediate("The display did not accept that key.");
+            return;
+        }
+
+        await Task.Delay(BezelSettleMs);
+        if (_disposed) return;
+
+        // Refresh the window's own text first, then ask the display what to SAY. The two
+        // are different questions: the list wants everything on screen, the pilot who just
+        // turned a knob wants the one line that answers what the knob did.
+        await _client.ScrapeNowAsync();
+        if (_disposed) return;
+
+        string summary = Unquote(await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()"));
+        _announcer.AnnounceImmediate(summary.Length > 0 ? summary : spoken);
+    }
+
+    /// <summary>
+    /// Runtime.evaluate hands a string result back still wrapped in its JSON quotes. Only
+    /// a genuinely quoted value is unwrapped, so a bare word survives untouched.
+    /// </summary>
+    private static string Unquote(string value)
+    {
+        string v = (value ?? "").Trim();
+        if (v.Length >= 2 && v[0] == '"' && v[^1] == '"')
+        {
+            try { return System.Text.Json.JsonSerializer.Deserialize<string>(v) ?? ""; }
+            catch (System.Text.Json.JsonException) { return v.Substring(1, v.Length - 2); }
+        }
+        return v;
+    }
+
+    /// <summary>
+    /// How long to wait before reading back a bezel press. The page selector the FMS knob
+    /// opens holds its choice for about a second before committing, so a shorter wait
+    /// reads the OLD page and reports the knob as having done nothing.
+    /// </summary>
+    private const int BezelSettleMs = 1200;
 
     /// <summary>
     /// Presses the softkey on the selected row, if it is one. Returns false for any other
