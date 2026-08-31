@@ -549,14 +549,25 @@ public class CowsDA40PanelStructureTests
     // ==============================================================================
 
     /// <summary>
-    /// Controls that are a continuously-swept analogue quantity rather than a switch.
-    /// Adding one here is a deliberate decision that its value is a NUMBER, to be read,
-    /// not an event to be announced.
+    /// Controls whose value is a CONTINUOUSLY VARYING QUANTITY rather than a setting.
+    /// Adding one here is a deliberate decision that its value is a NUMBER to be read, not
+    /// an event to be announced.
+    ///
+    /// The line is not "is it numeric" — the standby altimeter subscale is numeric and DOES
+    /// announce, because it is DIALLED to discrete settings and each change is one
+    /// deliberate act. These are different: the lever and the trim are swept by hardware,
+    /// and a payload station runs continuously while GSX boards passengers. Announcing any
+    /// of them would speak a new number several times a second over everything else.
     /// </summary>
-    private static readonly string[] AnalogueAxes =
+    private static readonly string[] ContinuouslyVaryingNumbers =
     {
         "DA40_POWER_LEVER_SET",
-        "DA40_TRIM_SET"
+        "DA40_TRIM_SET",
+        "DA40_PAYLOAD_PILOT_SET",
+        "DA40_PAYLOAD_FRONT_PAX_SET",
+        "DA40_PAYLOAD_REAR_LEFT_SET",
+        "DA40_PAYLOAD_REAR_RIGHT_SET",
+        "DA40_PAYLOAD_BAGGAGE_SET"
     };
 
     [Theory]
@@ -578,13 +589,9 @@ public class CowsDA40PanelStructureTests
             .Select(k => new { Key = k, Def = vars[k] })
             // Buttons are momentary and have no state to announce; sliders are numeric.
             .Where(x => !x.Def.RenderAsButton && !x.Def.RenderAsSlider)
-            // ANALOGUE AXES are not switches. Both of these are swept continuously by
-            // real hardware - a throttle quadrant, a trim wheel or a stick switch - so
-            // announcing them would speak a new number several times a second over
-            // everything else. They are read from the scan, like every other number.
-            // (The standby altimeter subscale stays announced: it is DIALLED to discrete
-            // settings, not swept, so each change is one deliberate act.)
-            .Where(x => !AnalogueAxes.Contains(x.Key))
+            // A CONTINUOUSLY VARYING QUANTITY is not a switch - see the list for where
+            // that line falls and why the standby subscale is on the other side of it.
+            .Where(x => !ContinuouslyVaryingNumbers.Contains(x.Key))
             .Where(x => !x.Def.IsAnnounced
                      || x.Def.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous)
             .Select(x => x.Key)
@@ -1082,7 +1089,6 @@ public class CowsDA40PanelStructureTests
                 // Autopilot
         "GFC 700", "Flight Director",
         // Cabin
-        "Seating and Payload",
         // Simulation
         "Failures", "Reset", "Engine Damage"
     };
@@ -1650,5 +1656,67 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_CABIN_OAT", display);
         Assert.Contains("DA40_CABIN_HEAT_SOURCE", display);
+    }
+
+    // ==============================================================================
+    // Seating and Payload (both variants)
+    // ==============================================================================
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void PayloadPanelHasTheFiveStationsAndBothCrewFigures(DA40Variant variant)
+    {
+        // Five stations is what the aeroplane declares in flight_model.cfg - not a
+        // curated subset - plus the two crew figures the cockpit can toggle.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Seating and Payload"];
+
+        Assert.Equal(new[]
+        {
+            "DA40_PAYLOAD_PILOT_SET",
+            "DA40_PAYLOAD_FRONT_PAX_SET",
+            "DA40_PAYLOAD_REAR_LEFT_SET",
+            "DA40_PAYLOAD_REAR_RIGHT_SET",
+            "DA40_PAYLOAD_BAGGAGE_SET",
+            "DA40_PAYLOAD_PILOT_FIGURE",
+            "DA40_PAYLOAD_COPILOT_FIGURE"
+        }, controls.ToArray());
+    }
+
+    [Fact]
+    public void CrewFiguresAreTriStateNotOnOff()
+    {
+        // L:FORCE_PILOT runs -1 / 0 / +1 and the model's own tooltip spells them
+        // "Pilot OFF" / "Pilot Normal" / "Pilot ON". A two-position control would throw
+        // the middle position - the aeroplane deciding for itself - away.
+        var v = Ng().GetVariables()["DA40_PAYLOAD_PILOT_FIGURE"];
+
+        Assert.Equal("Off", v.ValueDescriptions![-1]);
+        Assert.Equal("Normal", v.ValueDescriptions[0]);
+        Assert.Equal("On", v.ValueDescriptions[1]);
+    }
+
+    [Fact]
+    public void PayloadScanIsTheLoadingSheet()
+    {
+        // A blind pilot cannot read the AFM's loading envelope. This is the part of it the
+        // simulation actually computes: weight against the maximum, what is left, the CG,
+        // and whether the baggage is legal.
+        var display = Ng().GetPanelDisplayVariables()["Seating and Payload"];
+
+        Assert.Contains("DA40_GROSS_WEIGHT", display);
+        Assert.Contains("DA40_PAYLOAD_MARGIN", display);
+        Assert.Contains("DA40_PAYLOAD_CG", display);
+        Assert.Contains("DA40_PAYLOAD_BAGGAGE_CHECK", display);
+    }
+
+    [Fact]
+    public void StationIndicesAreOneBasedAgainstTheZeroBasedConfig()
+    {
+        // flight_model.cfg's station_load.0 is SimConnect's PAYLOAD STATION WEIGHT:1.
+        var vars = Ng().GetVariables();
+
+        Assert.Equal("PAYLOAD STATION WEIGHT:1", vars["DA40_PAYLOAD_PILOT_SET"].Name);
+        Assert.Equal("PAYLOAD STATION WEIGHT:5", vars["DA40_PAYLOAD_BAGGAGE_SET"].Name);
     }
 }

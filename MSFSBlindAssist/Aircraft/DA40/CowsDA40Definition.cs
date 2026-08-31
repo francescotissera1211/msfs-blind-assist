@@ -186,6 +186,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[DoorsPanel] = new List<string>(DoorControls);
         controls[EltPanel] = new List<string>(EltControls);
         controls[CabinAirPanel] = new List<string>(CabinAirControls);
+        controls[PayloadPanel] = new List<string>(PayloadControls);
 
         foreach (var kv in BreakerPanels)
         {
@@ -271,6 +272,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildPayloadVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         if (IsNG)
         {
             foreach (var kv in BuildPowerVariables())
@@ -333,6 +339,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
         d[DoorsPanel] = new List<string>(DoorDisplay);
         d[CabinAirPanel] = new List<string>(CabinAirDisplay);
+        d[PayloadPanel] = new List<string>(PayloadDisplay);
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
@@ -390,6 +397,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetAudioDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBreakerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetDoorDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetPayloadDisplayOverride(varKey, value, out displayText)) return true;
 
         // Gauges with published arcs report the arc alongside the number. A sighted pilot
         // does not read "87 degrees" off the oil temperature gauge — they see the needle in
@@ -452,6 +460,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleDoorSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
         if (HandleCabinAirSet(varKey, value, simConnect, announcer)) return true;
+        if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 
