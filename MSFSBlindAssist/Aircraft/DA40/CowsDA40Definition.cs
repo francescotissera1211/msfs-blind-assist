@@ -79,10 +79,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Flaps",
                 "Elevator Trim",
                 "Brakes",
-                // No "Cabin Heat and Vent". The AFM legend has movable ventilation
-                // nozzles and the aeroplane has cabin heat, but COWS models NEITHER as a
-                // control: no component in the interaction XML, no L:var, no simvar. A
-                // panel for it could never be filled, and an empty panel reads as broken.
+                "Cabin Heat and Vent",
                 "Audio"
             },
             // The section already says "Circuit Breakers"; repeating "CB" on every panel
@@ -188,6 +185,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         controls[DoorsPanel] = new List<string>(DoorControls);
         controls[EltPanel] = new List<string>(EltControls);
+        controls[CabinAirPanel] = new List<string>(CabinAirControls);
 
         foreach (var kv in BreakerPanels)
         {
@@ -264,6 +262,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildEltVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildCabinAirVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -447,6 +450,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleBreakerSet(varKey, value, simConnect, announcer)) return true;
         if (HandleDoorSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleCabinAirSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

@@ -55,6 +55,16 @@ public partial class CowsDA40Definition
 
         // ---------- Status ----------
 
+        // Where each opening ACTUALLY is. The control is a two-state combo, so it can only
+        // ever say Closed or Open; a door that is travelling is neither, and rounding it
+        // to an end would be a lie at exactly the moment the pilot is listening. These are
+        // OnRequest deliberately: two CONTINUOUS variables sharing one SimVar name would
+        // collide in the continuous batch and shift every later variable's slot.
+        AddDoorPosition(v, "DA40_DOOR_CANOPY_POS", 2, "Front Canopy");
+        AddDoorPosition(v, "DA40_DOOR_REAR_POS", 3, "Rear Door");
+        AddDoorPosition(v, "DA40_DOOR_STORM_L_POS", 6, "Storm Window Left");
+        AddDoorPosition(v, "DA40_DOOR_STORM_R_POS", 7, "Storm Window Right");
+
         // Why a door will not open, and why an open one just shut itself.
         v["DA40_DOOR_WIND"] = new SimVarDefinition
         {
@@ -102,8 +112,28 @@ public partial class CowsDA40Definition
         "DA40_DOOR_STORM_R"
     };
 
+    private static void AddDoorPosition(Dictionary<string, SimVarDefinition> v, string key,
+        int simvarIndex, string display)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = $"INTERACTIVE POINT OPEN:{simvarIndex}",
+            DisplayName = display,
+            Type = SimVarType.SimVar,
+            Units = "percent",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            Format = "F0"
+        };
+    }
+
     private static readonly List<string> DoorDisplay = new()
     {
+        "DA40_DOOR_CANOPY_POS",
+        "DA40_DOOR_REAR_POS",
+        "DA40_DOOR_STORM_L_POS",
+        "DA40_DOOR_STORM_R_POS",
         "DA40_DOOR_WIND"
     };
 
@@ -112,38 +142,58 @@ public partial class CowsDA40Definition
     {
         if (!DoorExitIndex.TryGetValue(varKey, out int exit)) return false;
 
-        double wind = Math.Abs(simConnect.GetCachedVariableValue("DA40_AIRSPEED") ?? 0);
-        double current = simConnect.GetCachedVariableValue(varKey) ?? 0;
+        double wind = Math.Abs(simConnect.GetCachedVariableValue("DA40_DOOR_WIND") ?? 0);
         bool wantOpen = value >= 50;
 
         // The aeroplane refuses above 30 knots. Say so rather than letting the control
         // appear to do nothing - a refusal and a broken button sound identical otherwise.
-        if (wantOpen && current < 50 && wind > DoorWindLimitKts)
+        if (wantOpen && wind > DoorWindLimitKts)
         {
             announcer.AnnounceImmediate(
                 $"Will not open at {wind:0} knots. The limit is {DoorWindLimitKts:0}.");
             return true;
         }
 
-        // One event, and it TOGGLES - so it is only sent when the door is not already
-        // where the pilot asked for it, or picking "Open" on an open door would shut it.
-        if (wantOpen != current >= 50)
-        {
-            simConnect.ExecuteCalculatorCode($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)");
-        }
-
+        // FIRE THE TOGGLE UNCONDITIONALLY. A two-state combo only reaches this method when
+        // the SELECTION CHANGED, so the pilot has by definition asked for the state the
+        // door is not in, and a toggle is always the right action.
+        //
+        // The first version compared the request against the door's cached position first,
+        // and that is exactly what broke closing: every door opened and none would shut.
+        // A comparison here can only ever be wrong in one of two ways - the cache misses
+        // and the door looks closed when it is open, or the position is mid-travel and
+        // neither branch describes it - and both failures are silent.
+        simConnect.ExecuteCalculatorCode($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)");
         return true;
     }
 
-    /// <summary>Mid-travel needs a word: a door at 45 % is neither open nor closed.</summary>
+    /// <summary>
+    /// Mid-travel needs a word: a door at 45 % is neither open nor closed. And the wind
+    /// needs a MEANING - RELATIVE WIND VELOCITY BODY Z is signed, so it reads "-4" sitting
+    /// still, which is both alarming and useless. The model compares its ABSOLUTE value
+    /// against 30, so that is what is reported, with what it implies for the doors.
+    /// </summary>
     private bool TryGetDoorDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
-        if (!DoorExitIndex.ContainsKey(varKey)) return false;
 
-        displayText = value <= 0.5 ? "Closed"
-            : value >= 99.5 ? "Open"
-            : $"Moving, {value:0} percent";
-        return true;
+        if (varKey.StartsWith("DA40_DOOR_") && varKey.EndsWith("_POS"))
+        {
+            displayText = value <= 0.5 ? "Closed"
+                : value >= 99.5 ? "Open"
+                : $"Moving, {value:0} percent";
+            return true;
+        }
+
+        if (varKey == "DA40_DOOR_WIND")
+        {
+            double knots = Math.Abs(value);
+            displayText = knots > DoorWindLimitKts
+                ? $"{knots:0} knots — too fast to open a door"
+                : $"{knots:0} knots — doors free";
+            return true;
+        }
+
+        return false;
     }
 }

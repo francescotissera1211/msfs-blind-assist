@@ -1391,16 +1391,46 @@ public class CowsDA40PanelStructureTests
     [Theory]
     [InlineData(DA40Variant.NG)]
     [InlineData(DA40Variant.XLS)]
-    public void ThereIsNoCabinHeatOrVentilationPanel(DA40Variant variant)
+    public void CabinHeatAndVentHasItsTwoLevers(DA40Variant variant)
     {
-        // The AFM legend has movable ventilation nozzles and the aeroplane has cabin
-        // heat, but COWS models neither as a control - no component, no L:var, no simvar.
-        // A panel for it could never be filled, and an empty panel reads as broken.
-        var panels = new CowsDA40Definition(variant).GetPanelStructure()
-            .SelectMany(section => section.Value)
-            .ToList();
+        // This panel was WRONGLY DELETED once, on a sweep that concluded COWS modelled
+        // neither. Both are there, inside Component ID="PASSENGER" - named after the
+        // occupants rather than the system - and the air lever's node is called
+        // PRESSURIZATION_Switch_Bleed on an aeroplane with no pressurization at all.
+        // Searching for the system found nothing; the Asobo templates are what name it.
+        var controls = new CowsDA40Definition(variant).GetPanelControls()["Cabin Heat and Vent"];
 
-        Assert.DoesNotContain("Cabin Heat and Vent", panels);
+        Assert.Equal(new[] { "DA40_CABIN_HEAT", "DA40_CABIN_AIR" }, controls.ToArray());
+    }
+
+    [Fact]
+    public void CabinLeversAreSlidersBecauseTheyReallyArePercentages()
+    {
+        // The one place a slider is right: MainForm's TrackBar maps the value as a
+        // percentage of 0-100, which is exactly what these are. The trim and the standby
+        // subscale are not, which is why they are typed entries.
+        foreach (var key in new[] { "DA40_CABIN_HEAT", "DA40_CABIN_AIR" })
+        {
+            Assert.True(Ng().GetVariables()[key].RenderAsSlider);
+        }
+    }
+
+    [Fact]
+    public void EachDoorHasItsOwnPositionRow()
+    {
+        // The control is a two-state combo and can only say Closed or Open; a travelling
+        // door is neither. The position rows are OnRequest on purpose - two CONTINUOUS
+        // variables sharing one SimVar name would collide in the continuous batch.
+        var def = Ng();
+        var display = def.GetPanelDisplayVariables()["Doors and Windows"];
+
+        foreach (var key in new[] { "DA40_DOOR_CANOPY_POS", "DA40_DOOR_REAR_POS",
+                                    "DA40_DOOR_STORM_L_POS", "DA40_DOOR_STORM_R_POS" })
+        {
+            Assert.Contains(key, display);
+            Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.OnRequest,
+                         def.GetVariables()[key].UpdateFrequency);
+        }
     }
 
     [Theory]
