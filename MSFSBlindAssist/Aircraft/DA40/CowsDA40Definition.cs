@@ -230,6 +230,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         => new Dictionary<string, string>();
 
     /// <summary>
+    /// Per-panel display text overrides, for fields MSFSBA computes rather than reads.
+    /// </summary>
+    public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
+    {
+        if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
+
+        return base.TryGetDisplayOverride(varKey, value, out displayText);
+    }
+
+    /// <summary>
     /// Panel writes that need more than a plain set — chiefly the switches that expose
     /// only a toggle event and must be written conditionally so a combo is idempotent.
     /// Each panel adds its own handler; anything unclaimed falls through to the generic path.

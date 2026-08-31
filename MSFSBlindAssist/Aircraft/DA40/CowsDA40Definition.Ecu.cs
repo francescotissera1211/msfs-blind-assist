@@ -22,6 +22,17 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// i.e. the propeller cycled twice, once per ECU, exactly as the POH describes, then
 /// settled back to idle.
 ///
+/// Two things measured while proving the hold:
+///   - Hold quality at 40 ms is 99% (178 of 179 samples read back pressed), so the
+///     cadence is comfortably fast enough.
+///   - ECU_TEST:1 reads back about 0.67, never exactly 1 — the model RAMPS the button
+///     value like an animation. Any "is it pressed" test must therefore be a threshold,
+///     not an equality against 1.
+///
+/// The stage machine advances only when the SENSED propeller speed (PROP_RPM_SENS:1)
+/// reaches 1890 rpm. If the engine cannot reach it the test loops between the first two
+/// stages instead of progressing — seen live — which is why that value is on the scan.
+///
 /// THE VOTER. L:ECU_VOTER:1 is 0 = ECU B, 1 = AUTO, 2 = ECU A. That ordering is NOT a
 /// guess and NOT the obvious A/AUTO/B — it is read from the model's own tooltips
 /// (ANIMTIP_0 "ECU B", ANIMTIP_1 "AUTO", ANIMTIP_2 "ECU A"), which are the labels a
@@ -116,8 +127,61 @@ public partial class CowsDA40Definition
             }
         };
 
-        AddReadout(v, "DA40_ECU_TEST_STEP", "FADEC_ECUTEST_STEP:1", "ECU Test Step", "", "F0");
-        AddReadout(v, "DA40_ECU_TEST_TIMER", "FADEC_ECUTEST_TIMER:1", "ECU Test Timer", "seconds", "F0");
+        // Decoded from the model's ECUTEST1 macro rather than shown as a bare number.
+        // The sequence swaps to the other ECU, drives the propeller up and down twice,
+        // then restores the original ECU and repeats — hence "once per ECU" in the POH.
+        v["DA40_ECU_TEST_STEP"] = new SimVarDefinition
+        {
+            Name = "FADEC_ECUTEST_STEP:1",
+            DisplayName = "ECU Test Stage",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0]   = "Not running",
+                [0.5] = "Starting, spinning up",
+                [1]   = "Checking governor, first ECU",
+                [2]   = "Spinning up",
+                [3]   = "Winding down",
+                [4]   = "Changing over",
+                [5]   = "Spinning up, second ECU",
+                [6]   = "Checking governor, second ECU"
+            }
+        };
+
+        // NOT an elapsed-test timer. In the model this counts up only during stages 1
+        // and 6, half a unit per tick, and RESETS when the stage advances — so it reads
+        // zero for most of the test, which is correct. It is a governor-response
+        // watchdog: reaching 4 is what LATCHES an ECU fail. Labelled for what it is.
+        v["DA40_ECU_TEST_WATCHDOG"] = new SimVarDefinition
+        {
+            Name = "FADEC_ECUTEST_TIMER:1",
+            DisplayName = "Governor Watchdog",
+            Type = SimVarType.LVar,
+            Units = "count of 4",
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true,
+            Format = "F1",
+            HelpText = "Counts only while a governor stage is running, and resets between " +
+                       "stages. Zero for most of the test is normal. Reaching four is what " +
+                       "latches an ECU fault."
+        };
+
+        // MSFSBA's own elapsed timer for the press — the thing a pilot actually wants,
+        // since the airframe exposes no whole-test clock. Bound to the active flag so it
+        // refreshes with the rest of the panel; the text comes from TryGetDisplayOverride.
+        v["DA40_ECU_TEST_ELAPSED"] = new SimVarDefinition
+        {
+            Name = "FADEC_ECUTEST_ACTIVE:1",
+            DisplayName = "ECU Test Elapsed",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.OnRequest,
+            IsAnnounced = false,
+            RenderAsReadOnlyStatus = true
+        };
 
         AddFlag(v, "DA40_ECU_TEST_FAIL_A", "FADEC_ECUTEST_FAIL_A:1", "ECU A Test Result", "Pass", "Fail");
         AddFlag(v, "DA40_ECU_TEST_FAIL_B", "FADEC_ECUTEST_FAIL_B:1", "ECU B Test Result", "Pass", "Fail");
@@ -132,6 +196,12 @@ public partial class CowsDA40Definition
 
         // The five AFM preconditions, each shown with its live value so the pilot can see
         // which one is short rather than being told "not ready".
+        // The stage machine gates on the SENSED propeller speed reaching 1890 rpm before
+        // it will advance out of the spin-up stages. If the engine cannot get there the
+        // test loops instead of progressing — observed live — so the pilot needs to see
+        // this number, not just the commanded RPM.
+        AddReadout(v, "DA40_ECU_PROP_SENSED", "PROP_RPM_SENS:1", "Sensed Propeller RPM", "rpm", "F0");
+
         AddReadout(v, "DA40_ECU_PRE_GEARBOX", "DISP_GT", "Gearbox Temperature", "celsius", "F0");
         AddReadout(v, "DA40_ECU_PRE_PROP_RPM", "DISP_PROP_RPM", "Propeller RPM", "rpm", "F0");
         AddReadout(v, "DA40_ECU_PRE_POWER_LEVER", "FADEC_POWER_LEVER:1", "Power Lever", "percent", "F0");
@@ -177,7 +247,9 @@ public partial class CowsDA40Definition
     {
         "DA40_ECU_TEST_ACTIVE",
         "DA40_ECU_TEST_STEP",
-        "DA40_ECU_TEST_TIMER",
+        "DA40_ECU_TEST_ELAPSED",
+        "DA40_ECU_TEST_WATCHDOG",
+        "DA40_ECU_PROP_SENSED",
         "DA40_ECU_TEST_FAIL_A",
         "DA40_ECU_TEST_FAIL_B",
         "DA40_ECU_FAIL_A",
@@ -196,6 +268,9 @@ public partial class CowsDA40Definition
     // ==================================================================================
     // Held L-var writer
     // ==================================================================================
+
+    /// <summary>When the ECU test button was pressed, for the elapsed readout.</summary>
+    private long _ecuTestStartedTicks;
 
     private System.Windows.Forms.Timer? _holdTimer;
     private string _holdVar = "";
@@ -307,11 +382,37 @@ public partial class CowsDA40Definition
                     ? "ECU test running."
                     : "ECU test running. " + string.Join(", ", blockers) + ".");
 
+                _ecuTestStartedTicks = Environment.TickCount64;
                 HoldLVar("ECU_TEST:1", EcuTestHoldMs, simConnect);
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Renders the ECU-test elapsed field. The airframe has no whole-test clock — its
+    /// only timer is the per-stage governor watchdog — so MSFSBA times the press itself
+    /// and reports how far through the POH's 20-25 second test the pilot is.
+    /// </summary>
+    private bool TryGetEcuDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = "";
+        if (varKey != "DA40_ECU_TEST_ELAPSED") return false;
+
+        if (_ecuTestStartedTicks == 0)
+        {
+            displayText = "not run yet";
+            return true;
+        }
+
+        double seconds = (Environment.TickCount64 - _ecuTestStartedTicks) / 1000.0;
+
+        displayText = value >= 0.5
+            ? $"{seconds:0} s of about {EcuTestHoldMs / 1000} s"
+            : $"finished, {seconds:0} s ago";
+
+        return true;
     }
 }
