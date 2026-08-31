@@ -279,6 +279,12 @@ public partial class CowsDA40Definition
     private long _holdUntilTicks;
 
     /// <summary>
+    /// Run when a hold reaches its full duration — NOT when one hold pre-empts another,
+    /// because a cancelled press did not complete the action.
+    /// </summary>
+    private Action? _holdOnComplete;
+
+    /// <summary>
     /// Holds an L:var at 1 for <paramref name="holdMs"/> by re-writing it every ~40 ms,
     /// then releases it to 0.
     ///
@@ -293,12 +299,14 @@ public partial class CowsDA40Definition
     /// One hold at a time: a second call releases the first, so a stray double-press
     /// cannot leave a control stuck down.
     /// </summary>
-    private void HoldLVar(string lvar, int holdMs, SimConnectManager simConnect)
+    private void HoldLVar(string lvar, int holdMs, SimConnectManager simConnect,
+        Action? onComplete = null)
     {
         ReleaseHeldLVar(simConnect);
 
         _holdVar = lvar;
         _holdUntilTicks = Environment.TickCount64 + holdMs;
+        _holdOnComplete = onComplete;
 
         simConnect.SetLVar(lvar, 1);
 
@@ -309,7 +317,11 @@ public partial class CowsDA40Definition
             {
                 if (Environment.TickCount64 >= _holdUntilTicks || !simConnect.IsConnected)
                 {
+                    // Capture before releasing — ReleaseHeldLVar clears it so a
+                    // pre-empted hold cannot fire someone else's completion.
+                    var done = _holdOnComplete;
                     ReleaseHeldLVar(simConnect);
+                    if (simConnect.IsConnected) done?.Invoke();
                     return;
                 }
                 simConnect.SetLVar(_holdVar, 1);
@@ -332,6 +344,7 @@ public partial class CowsDA40Definition
         _holdTimer.Stop();
         _holdTimer.Dispose();
         _holdTimer = null;
+        _holdOnComplete = null;
 
         if (_holdVar == "ECU_TEST:1") _ecuTestEndedTicks = Environment.TickCount64;
 

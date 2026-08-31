@@ -100,7 +100,12 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             HelpText = "Turns the key to START and holds it. The starter releases itself " +
                        "once the engine catches. AFM limit: do not crank for more than 10 " +
-                       "seconds, and wait 60 seconds between attempts."
+                       "seconds, and wait 60 seconds between attempts. On a cold engine " +
+                       "WAIT for the glow plugs to go off first — the checklist order is " +
+                       "engine master on, annunciations checked, glow indication off, then " +
+                       "start. There is nothing to switch on: the ECU preheats by itself, " +
+                       "and cranking before it finishes is why a cold engine turns and " +
+                       "turns without catching."
         };
 
         v["DA40_START_STARTER_RELEASE"] = new SimVarDefinition

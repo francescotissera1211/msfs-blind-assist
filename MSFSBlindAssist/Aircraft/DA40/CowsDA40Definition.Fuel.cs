@@ -30,6 +30,13 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// could not break the wire could not fight a fire, so the wire gets its own control.
 /// Breaking it is ONE-WAY, exactly as on the aeroplane.
 ///
+/// BREAKING THE WIRE CANNOT BE DONE BY HOLDING ALONE. The model watches for
+/// `(L:FUEL_WIRE) 1 ==` on a 1 Hz Update, and the held-button template zeroes FUEL_WIRE
+/// every frame — measured directly: written 1, read back 0 on the very next request. So
+/// the variable equals 1 only in the gap between our write and the next frame, and a
+/// once-per-second sampler almost never lands in it. The button looked dead. See
+/// HandleFuelSet for what is done instead and why it is not a shortcut.
+///
 /// THE GAUGE LIES ABOVE 14 GALLONS, by design, and the AFM says so. The capacitance
 /// probe indication is capped: measured live, the left tank held 18.78 US gal while both
 /// the probe and the G1000 read exactly 14.0. The AFM's instruction is that at an
@@ -58,8 +65,10 @@ public partial class CowsDA40Definition
     private const double FuelMaxTankDifferenceGal = 9.0;
 
     /// <summary>
-    /// The wire is read by a 1 Hz Update in the model, so the hold has to be long enough
-    /// to be certain of spanning a tick. Everything shorter is a coin toss.
+    /// How long the latch is held. This is the duration of the GESTURE, not a wait for
+    /// the model to notice — see HandleFuelSet for why holding alone cannot break the
+    /// wire. Long enough to read as a deliberate pull, short enough not to become a
+    /// burst of clicking.
     /// </summary>
     private const int FuelWireHoldMs = 1500;
 
@@ -298,11 +307,33 @@ public partial class CowsDA40Definition
             }
 
             case "DA40_FUEL_WIRE":
-                // A held latch, like the ECU test and the gyro cage. The model samples it
-                // at 1 Hz, so the hold has to outlast a tick.
-                HoldLVar("FUEL_WIRE", FuelWireHoldMs, simConnect);
+            {
+                // A held latch, like the ECU test and the gyro cage — but this one cannot
+                // be finished by holding alone, and that took a live report to find.
+                //
+                // The model breaks the wire from a 1 Hz Update reading
+                // `(L:FUEL_WIRE) 1 ==` — an EXACT equality. The held-button template
+                // zeroes FUEL_WIRE every frame (measured: written 1, read back 0 on the
+                // very next request), so from outside the cockpit the variable is only
+                // equal to 1 in the sliver between our write and the next frame. Winning
+                // that sliver with a once-per-second sampler is a coin toss, and in
+                // practice it never came up — the button appeared to do nothing.
+                //
+                // So the hold still runs, because it is the real gesture and it plays the
+                // animation and the sound; and when it COMPLETES we make the same write
+                // the model's own Update would have made. That is not a shortcut around
+                // the interlock: it is the identical assignment, from the identical
+                // trigger, on a path that cannot lose a frame race.
+                HoldLVar("FUEL_WIRE", FuelWireHoldMs, simConnect, () =>
+                {
+                    simConnect.SetLVar("FUEL_SELECTOR_WIRE_CUT", 1);
+                    announcer.AnnounceImmediate(
+                        "Fuel valve safety wire broken. The valve is free.");
+                });
+
                 announcer.AnnounceImmediate("Breaking fuel valve safety wire");
                 return true;
+            }
 
             case "DA40_FUEL_PUMPS":
             {
