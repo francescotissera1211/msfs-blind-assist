@@ -170,7 +170,13 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = units,
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            // ⚠️ REQUIRED, and it is not about announcing. Batch membership is
+            // Continuous AND IsAnnounced, so with this false the selected values never
+            // reached the cache at all: output mode + A answered "Selected not available",
+            // and the settle announcer never saw a knob move because ProcessSimVarUpdate
+            // was never called for them. Exactly the fault the radios had. The generic
+            // announcer is kept out by NoteRadioChange returning true, not by this flag.
+            IsAnnounced = true,
             Format = format,
             HelpText = help
         };

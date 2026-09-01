@@ -93,8 +93,14 @@ public sealed class CowsDA40DisplayForm : Form
             // keys are was telling them the wrong answer.
             AccessibleDescription = title +
                 ". Read with the arrow keys. Enter presses the selected softkey. " +
-                "Control with left and right turns the small knob, control with up and " +
-                "down turns the large knob. " +
+                // Say what the knobs DO, not which knob they are. Naming them was worse
+                // than useless: the labels were backwards (control left and right is the
+                // LARGE knob, not the small one), and a pilot who cannot see the bezel
+                // has no use for its geometry anyway. What they need is that one pair
+                // moves BETWEEN things and the other CHANGES the thing you are on.
+                "Control with left and right steps the page group, and moves between " +
+                "fields once the cursor is on. Control with up and down steps the page, " +
+                "and CHANGES the value of the field under the cursor. " +
                 // Said early and plainly, because it is the fact that makes the setup
                 // pages usable: without the cursor the knobs only change pages, which is
                 // exactly how the Aux setup page came to read as completely inert.

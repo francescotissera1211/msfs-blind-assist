@@ -219,7 +219,14 @@ public partial class CowsDA40Definition
         "DA40_HEADING",
         "DA40_VERTICAL_SPEED",
         "DA40_TRIM_SET",
-        "DA40_POWER_LEVER_SET"
+        "DA40_POWER_LEVER_SET",
+
+        // The flight director bars. They carry IsAnnounced only to reach the batch cache
+        // - the whole AP value family does - but the commanded attitude moves continuously
+        // in flight, and a pilot flying the bars reads them from the scan, not from a
+        // running commentary of every tenth of a degree.
+        "DA40_AP_FD_PITCH",
+        "DA40_AP_FD_BANK"
     };
 
     /// <summary>
