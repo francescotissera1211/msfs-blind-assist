@@ -1215,6 +1215,54 @@
     /// - once in the EIS strip and once in the page body - and a screen reader reading
     /// "Load %: 4  Load %: 4" sounds like a stutter or a fault rather than two gauges.
     /// Adjacent only: two identical values far apart on a page are two real readings.
+    /// WHERE THE G1000 CURSOR IS, which is the single fact that makes the setup pages
+    /// usable and the one nothing was reporting.
+    ///
+    /// On a real G1000 the knobs change PAGES until you push the FMS knob to turn the
+    /// cursor ON; only then do they move between fields and change values. That is why the
+    /// Aux setup page read as completely inert - the knobs were paging (to Navigraph one
+    /// way, the flight plan catalogue the other) and ENT had nothing focused to act on.
+    /// The behaviour was correct; it was simply invisible, and a sighted pilot sees a cyan
+    /// box that a blind one had no equivalent for.
+    ///
+    /// The cursor is the element carrying BOTH "cyan" and "highlight-select". Requiring
+    /// cyan is what separates it from the page selector and the checklist lists, which use
+    /// highlight-select on its own.
+    A.cursorField = function () {
+        var all = document.querySelectorAll(".highlight-select");
+
+        for (var i = 0; i < all.length; i++) {
+            if (classList(all[i]).indexOf("cyan") < 0) continue;
+            if (!visible(all[i])) continue;
+
+            var value = text(all[i]);
+            var label = "";
+
+            // The row above carries label AND value run together ("Time FormatUTC"), so
+            // the label is what is left once the value is taken off the end.
+            // ⚠️ Do NOT stop at the first ancestor whose class mentions "row". The setup
+            // page nests three of them - row-right inside row-title-right inside row - and
+            // the innermost holds ONLY the value, so stopping there yields no label at all
+            // ("Cursor on. UTC" rather than "Cursor on. Time Format: UTC"). Keep climbing
+            // until a row is found that carries MORE than the value.
+            var e = all[i].parentElement;
+            for (var d = 0; d < 6 && e; d++) {
+                var whole = text(e);
+                if (classList(e).indexOf("row") >= 0 &&
+                    whole.length > value.length &&
+                    whole.lastIndexOf(value) === whole.length - value.length) {
+                    label = whole.substring(0, whole.length - value.length).trim();
+                    break;
+                }
+                e = e.parentElement;
+            }
+
+            return label ? label + ": " + value : value;
+        }
+
+        return "";
+    };
+
     A.dedupeAdjacent = function (lines) {
         var out = [];
         for (var i = 0; i < lines.length; i++) {
@@ -1470,6 +1518,11 @@
         // through to the page TITLE and said "CHKLST - Checklist" after every press. The
         // pilot heard the same four words whichever way they turned, so the page looked
         // frozen when it was working perfectly.
+        // THE CURSOR OUTRANKS EVERYTHING. If it is on, the pilot is editing a field and
+        // the only thing a keystroke has to answer is which field and what it now says.
+        var cursor = A.cursorField();
+        if (cursor) return "Cursor on. " + cursor;
+
         var picking = A.checklistSelection();
         if (picking.length) {
             // Lead with the item under the knob. The whole list is still available from

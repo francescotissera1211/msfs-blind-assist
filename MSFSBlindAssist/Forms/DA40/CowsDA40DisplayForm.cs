@@ -87,12 +87,21 @@ public sealed class CowsDA40DisplayForm : Form
             Font = new Font("Consolas", 11, FontStyle.Regular),
             TabIndex = 0,
             AccessibleName = title,
+            // ⚠️ KEEP THIS IN STEP WITH BezelKeys. It was left advertising F2, F3, F6, F7
+            // and F8 after those were removed, and calling Control Enter the cursor knob
+            // after it became ENT - so the one place a pilot goes to find out what the
+            // keys are was telling them the wrong answer.
             AccessibleDescription = title +
                 ". Read with the arrow keys. Enter presses the selected softkey. " +
-                "Control with left and right steps the page group, control with up and " +
-                "down steps the page. F2 menu, F3 enter, F4 clear, F6 direct to, " +
-                "F7 flight plan, F8 procedures, control with Enter is the cursor knob, " +
-                "control with Page Up and Page Down is the map range. " +
+                "Control with left and right turns the small knob, control with up and " +
+                "down turns the large knob. " +
+                // Said early and plainly, because it is the fact that makes the setup
+                // pages usable: without the cursor the knobs only change pages, which is
+                // exactly how the Aux setup page came to read as completely inert.
+                "Shift with Enter pushes the cursor, which you need before you can move " +
+                "between fields on a setup page. Control with Enter is enter. " +
+                "Control with D direct to, F flight plan, P procedures, E menu, L clear. " +
+                "Control with Page Up and Page Down is the map range. " +
                 "F5 refreshes; Escape closes. Auto-updates."
         };
         _text.SetText("Connecting to the display...");
