@@ -1490,6 +1490,29 @@
     // The instrument element is the one custom tag that carries the handler —
     // wtg1000-pfd on one screen, wtg1000-mfd on the other — so the lookup asks for the
     // handler rather than for a name, and this agent stays identical on both displays.
+    /// Fire a bezel key AND answer what the display now says, in ONE round trip.
+    ///
+    /// The window used to spend FOUR round trips on a single arrow key - read the summary
+    /// before, fire the key, wait, read the summary again, then scrape - and each one is a
+    /// full socket exchange with the Coherent debugger. Four of those per keystroke is
+    /// what made the whole window feel slow, and no amount of shortening the settle could
+    /// fix it because the round trips, not the wait, were the cost.
+    ///
+    /// Fired and read in the same call, the answer is occasionally the state from just
+    /// BEFORE the key - the page needs a frame. That is why the caller compares it with
+    /// what it last spoke and only then pays for a second look. In the common case, a
+    /// highlight moving inside a list, the value has already changed and one trip is all
+    /// it costs.
+    A.press = function (name) {
+        var fired = A.key(name);
+        if (fired !== "ok") return fired;
+        try {
+            return "ok|" + A.summary();
+        } catch (e) {
+            return "ok|";
+        }
+    };
+
     A.key = function (name) {
         var el = document.querySelector("wtg1000-mfd") || document.querySelector("wtg1000-pfd");
         if (!el || typeof el.onInteractionEvent !== "function") return "no instrument";

@@ -216,6 +216,8 @@ public partial class CowsDA40Definition
     /// on settle when anything moves them, and output mode + A, H, S and V answer with the
     /// current value AND the selected one together.
     /// </summary>
+    // Kept as a named empty list so the reasoning above has something to hang on, but
+    // the panel no longer registers a display entry at all - see CowsDA40Definition.cs.
     private static readonly List<string> AutopilotDisplay = new();
 
     private static readonly List<string> FlightDirectorControls = new() { "DA40_AP_FD" };

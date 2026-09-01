@@ -387,7 +387,9 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
         d[FlightControlsPanel] = new List<string>(FlightControlDisplay);
-        d[AutopilotPanel] = new List<string>(AutopilotDisplay);
+        // The GFC 700 gets NO display entry at all, rather than an empty one. Every item
+        // on that panel is a control, so there is no read-only state to sweep, and a
+        // Status Display field with nothing in it reads as broken rather than as absent.
         d[FlightDirectorPanel] = new List<string>(FlightDirectorDisplay);
         d[BrakesPanel] = new List<string>(BrakeDisplay);
         d[AudioPanel] = new List<string>(AudioDisplay);

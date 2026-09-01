@@ -102,6 +102,11 @@ public sealed class CowsDA40DisplayForm : Form
                 "between fields on a setup page. Control with Enter is enter. " +
                 "Control with D direct to, F flight plan, P procedures, E menu, L clear. " +
                 "Control with Page Up and Page Down is the map range. " +
+                // Radios are a PFD bezel, so this line is only true there. Said anyway:
+                // a pilot who reads it on the MFD learns where the knobs actually live.
+                "On the PFD, Alt with the arrows turns the COM knob and control with Alt " +
+                "turns the NAV knob; up and down are megahertz, left and right kilohertz, " +
+                "and Enter moves the tuning box between radio one and two. " +
                 "F5 refreshes; Escape closes. Auto-updates."
         };
         _text.SetText("Connecting to the display...");
@@ -262,6 +267,33 @@ public sealed class CowsDA40DisplayForm : Form
         // and two things to document, and the F-keys were never mnemonic. F5 survives
         // elsewhere in this form, but that is the house-wide REFRESH key every MSFSBA
         // status display uses - it is not a bezel button.
+        // THE RADIO KNOBS. PFD ONLY - the G1000 tunes its radios on the PFD and the MFD has
+        // no COM or NAV knob at all, which is the answer to "can I even tune them from the
+        // MFD": no, and neither can a sighted pilot. Nothing in MSFSBA could drive them
+        // before this, so the Radios panel was the only way to tune, and the bezel a
+        // sighted pilot uses was simply unavailable.
+        //
+        // Verified live rather than guessed, one event at a time against the real radio:
+        // COM small stepped standby 127.200 to 127.205 (8.33 kHz spacing, as the setup
+        // page has it), COM large stepped 127.205 to 128.205, and the NAV knob moved NAV 2
+        // - not NAV 1 - because NAV 2 held the tuning box, exactly as the PFD reported.
+        //
+        // Alt is COM, Control+Alt is NAV. Up and Down are the LARGE knob (MHz), Left and
+        // Right the SMALL one (kHz), and Enter is the knob PUSH, which moves the tuning
+        // box between radio 1 and 2 - it does NOT swap. Swapping stays on the Radios
+        // panel's own buttons, which drive the stock events and are already proven.
+        [Keys.Alt | Keys.Up]                 = ("COM_Large_INC", "COM megahertz up"),
+        [Keys.Alt | Keys.Down]               = ("COM_Large_DEC", "COM megahertz down"),
+        [Keys.Alt | Keys.Right]              = ("COM_Small_INC", "COM kilohertz up"),
+        [Keys.Alt | Keys.Left]               = ("COM_Small_DEC", "COM kilohertz down"),
+        [Keys.Alt | Keys.Enter]              = ("COM_Push", "COM tuning box"),
+
+        [Keys.Control | Keys.Alt | Keys.Up]    = ("NAV_Large_INC", "NAV megahertz up"),
+        [Keys.Control | Keys.Alt | Keys.Down]  = ("NAV_Large_DEC", "NAV megahertz down"),
+        [Keys.Control | Keys.Alt | Keys.Right] = ("NAV_Small_INC", "NAV kilohertz up"),
+        [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down"),
+        [Keys.Control | Keys.Alt | Keys.Enter] = ("NAV_Push", "NAV tuning box"),
+
         [Keys.Control | Keys.PageUp]   = ("RANGE_INC", "range out"),
         [Keys.Control | Keys.PageDown] = ("RANGE_DEC", "range in")
     };
@@ -299,14 +331,15 @@ public sealed class CowsDA40DisplayForm : Form
     /// </summary>
     private async Task PressBezel(string eventSuffix, string spoken)
     {
-        // What the display said BEFORE the key, so the readback can tell "the knob moved"
-        // from "the knob has not committed yet" without guessing from a clock.
-        string before = (await _client.InvokeAsync(
-            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
-
         string name = $"AS1000_{_side}_{eventSuffix}";
+
+        // ONE round trip: fire the key and get the read-back together. This used to be
+        // four - summary before, key, wait, summary again, scrape - and each is a full
+        // socket exchange with the Coherent debugger. Four per arrow key is what made the
+        // window feel slow; the round trips were the cost, not the wait, which is why
+        // shortening the settle had barely helped.
         string result = await _client.InvokeAsync(
-            $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.key('{name}')");
+            $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')");
         if (_disposed) return;
 
         // A.key answers "no instrument" when the view has no G1000 element to drive, which
@@ -317,32 +350,16 @@ public sealed class CowsDA40DisplayForm : Form
             return;
         }
 
-        // Read the quick answer first. A list highlight moves on the frame it is asked
-        // to, so for the case the pilot spends most of their time in this is instant.
-        await Task.Delay(BezelQuickSettleMs);
-        if (_disposed) return;
+        int bar = result.IndexOf('|');
+        string summary = bar >= 0 ? result.Substring(bar + 1).Trim() : "";
 
-        // SPEAK FIRST, scrape after. This used to wait 1200 ms, then make a full scrape
-        // round trip, and only then a second round trip for the summary - three waits
-        // before the pilot heard anything, on EVERY press of an arrow key. The window's
-        // own text is not what the pilot is waiting for after a keystroke; the one line
-        // that says where the knob landed is. So the summary is fetched first and the
-        // scrape follows, off the critical path.
-        //
-        // InvokeAsync returns the value already unwrapped - CoherentDisplayClient's
-        // ExtractValue calls GetString() on a string result - so there is no JSON quoting
-        // to strip here.
-        string summary = (await _client.InvokeAsync(
-            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
-        if (_disposed) return;
-
-        // NOTHING CHANGED YET is the only case that earns the long wait, and only for the
-        // knob, because the page SELECTOR it opens commits about a second after the last
-        // turn. Paying that on every press is what made the window feel broken; paying it
-        // only when the quick read came back identical costs nothing in the common case.
-        if (summary == before && eventSuffix.StartsWith("FMS_", StringComparison.Ordinal))
+        // Fired and read in the same breath, the answer is occasionally the state from
+        // just BEFORE the key - the page needs a frame. Comparing against what was last
+        // SPOKEN is what tells the two apart, and it costs a second look only when the
+        // display genuinely has not moved yet.
+        if (summary.Length == 0 || summary == _lastSpokenSummary)
         {
-            await Task.Delay(BezelSettleMs - BezelQuickSettleMs);
+            await Task.Delay(BezelSettleMs);
             if (_disposed) return;
 
             summary = (await _client.InvokeAsync(
@@ -350,10 +367,16 @@ public sealed class CowsDA40DisplayForm : Form
             if (_disposed) return;
         }
 
+        _lastSpokenSummary = summary;
         _announcer.AnnounceImmediate(summary.Length > 0 ? summary : spoken);
 
+        // The window's own text last, off the critical path: it is not what a pilot is
+        // waiting on after a keystroke.
         await _client.ScrapeNowAsync();
     }
+
+    /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
+    private string _lastSpokenSummary = "";
 
     /// <summary>
     /// How long to wait before reading back a bezel press.
@@ -368,10 +391,8 @@ public sealed class CowsDA40DisplayForm : Form
     /// selector pay it; everything else - ENT, CLR, MENU, the direct keys - reads back
     /// almost at once.
     /// </summary>
-    private const int BezelSettleMs = 1200;
+    private const int BezelSettleMs = 500;
 
-    /// <summary>The short settle, enough for the page to re-render but not felt.</summary>
-    private const int BezelQuickSettleMs = 180;
 
 
     /// <summary>
