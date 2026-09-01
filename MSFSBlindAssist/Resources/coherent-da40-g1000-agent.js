@@ -218,6 +218,37 @@
     //
     // Every one is reported only while VISIBLE, which is the same rule the popout panes
     // use, and for the same reason - the markup is permanent and the visibility is not.
+    /// THE WIND BOX, which nothing read at all.
+    ///
+    /// The PFD draws it and MSFSBA never looked, so a pilot had no way to know what the
+    /// aeroplane thought the wind was - or, on the ground, that it thought nothing yet.
+    /// The G1000's own words there are "NO WIND DATA"; that text is the AEROPLANE's, not
+    /// something MSFSBA invented, and it is correct until the air data has a valid wind.
+    ///
+    /// ⚠️ The overlay holds several alternative LAYOUTS at once - opt1, opt2 - and the
+    /// unused ones are classed hide-element. Their CHILDREN still pass an offsetParent
+    /// visibility test, because hide-element does not use display:none, so reading the
+    /// overlay's textContent yields "NO WIND DATA000360°0KT": the live text with two dead
+    /// layouts welded onto it. Skip any child carrying hide-element, and check that class
+    /// rather than trusting the visibility of what is inside it. Fourth time on this
+    /// aeroplane that hide-element has had to be handled by name.
+    A.wind = function () {
+        var w = firstVisible(".wind-overlay");
+        if (!w) return "";
+
+        var parts = [];
+        for (var i = 0; i < w.children.length; i++) {
+            var c = w.children[i];
+            if (classList(c).indexOf("hide-element") >= 0) continue;
+            if (!visible(c)) continue;
+
+            var t = text(c);
+            if (t && parts.indexOf(t) < 0) parts.push(t);
+        }
+
+        return parts.join(" ");
+    };
+
     A.pfdWindows = function () {
         var out = [];
 
@@ -231,6 +262,9 @@
         // all readable as SimVars, but the SELECTED ones are the targets, and on a display
         // that is where they live. Altitude is always on the screen; heading and course
         // sit in their own boxes; the selected vertical speed appears only in VS mode.
+        var wind = A.wind();
+        if (wind) out.push("Wind: " + wind);
+
         var pre = shown(".preselect-box");
         if (pre) {
             var alt = spacedText(pre);
