@@ -334,15 +334,35 @@ public sealed class CowsDA40DisplayForm : Form
             return true;
         }
 
+        // What the display said BEFORE the press, so the read-back can say what the press
+        // actually did rather than only whether the menu changed.
+        var before = new List<string>(_client.CurrentRows);
+
         _simConnect.ExecuteCalculatorCode($"1 (>H:AS1000_{_side}_SOFTKEYS_{key})");
 
         // A press can replace the whole row, so read it back at once rather than waiting
         // for the next poll - the pilot needs to know what the keys became.
-        _ = ReadBackAfterPress(key);
+        _ = ReadBackAfterPress(before);
         return true;
     }
 
-    private async Task ReadBackAfterPress(int key)
+    /// <summary>
+    /// Says what a softkey press DID.
+    ///
+    /// A press does one of two things, and only one of them used to be spoken. Replacing
+    /// the twelve keys with a sub-menu was announced; CYCLING A VALUE IN PLACE was silent,
+    /// on the reasoning that re-reading twelve unchanged labels would be noise. The
+    /// reasoning was right and the conclusion was wrong: CDI and OBS both cycle in place,
+    /// so pressing them produced no sound at all and both read as dead keys — reported as
+    /// exactly that, "the CDI page is not clickable or doesn't appear to be". They work
+    /// perfectly: CDI steps LOC1, LOC2, GPS, and OBS toggles suspend, measured live.
+    ///
+    /// So when the labels do not change, the FIRST LINE THAT DID is spoken instead. That
+    /// is the navigation source for CDI and OBS, the units row for ALT Units, the
+    /// barometric row for STD Baro — in every case the thing the key was pressed to
+    /// change, and never twelve labels the pilot already knows.
+    /// </summary>
+    private async Task ReadBackAfterPress(List<string> before)
     {
         // One short settle: the display rebuilds its softkey row over a frame or two.
         await Task.Delay(250);
@@ -351,22 +371,57 @@ public sealed class CowsDA40DisplayForm : Form
         var rows = await _client.ScrapeNowAsync();
         if (_disposed) return;
 
-        var labels = rows.Where(r => SoftkeyRow.IsMatch(r))
-                         .Select(r => r.Substring(r.IndexOf(':') + 1).Trim())
-                         .ToList();
-
-        // Only speak when the row actually CHANGED into a different menu. A key that
-        // cycles a value in place leaves the labels alone, and re-reading twelve unchanged
-        // keys over the pilot would be noise.
-        string joined = string.Join(", ", labels);
-        if (joined != _lastSoftkeyLine)
+        string joined = string.Join(", ", SoftkeyLabels(rows));
+        if (joined != string.Join(", ", SoftkeyLabels(before)))
         {
-            _lastSoftkeyLine = joined;
             _announcer.AnnounceImmediate("Softkeys now: " + joined);
+            return;
         }
+
+        // Softkey rows are excluded on purpose: the labels are identical by the branch
+        // above, and a key's own VALUE field rides on its row, so including them would
+        // announce "Softkey 6: CDI GPS" where the pilot wants "Navigation source: GPS".
+        string changed = FirstChangedRow(before, rows);
+        if (changed.Length > 0) _announcer.AnnounceImmediate(changed);
     }
 
-    private string _lastSoftkeyLine = "";
+    private static List<string> SoftkeyLabels(IEnumerable<string> rows) =>
+        rows.Where(r => SoftkeyRow.IsMatch(r))
+            .Select(r => r.Substring(r.IndexOf(':') + 1).Trim())
+            .ToList();
+
+    /// <summary>
+    /// The first non-softkey row that differs, compared BY LABEL rather than by position:
+    /// a press can add or remove a row (a window opening, a caution clearing), and a
+    /// positional compare would then report every row after it as changed.
+    /// </summary>
+    private static string FirstChangedRow(List<string> before, List<string> after)
+    {
+        var old = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string row in before)
+        {
+            if (SoftkeyRow.IsMatch(row)) continue;
+            string key = RowLabel(row);
+            if (key.Length > 0 && !old.ContainsKey(key)) old[key] = row.Trim();
+        }
+
+        foreach (string row in after)
+        {
+            if (SoftkeyRow.IsMatch(row)) continue;
+            string key = RowLabel(row);
+            if (key.Length == 0) continue;
+            if (old.TryGetValue(key, out string? was) && was != row.Trim()) return row.Trim();
+        }
+
+        return "";
+    }
+
+    /// <summary>The part before the colon, which is the row's stable identity.</summary>
+    private static string RowLabel(string row)
+    {
+        int colon = row.IndexOf(':');
+        return colon <= 0 ? "" : row.Substring(0, colon).Trim();
+    }
 
     protected override void Dispose(bool disposing)
     {

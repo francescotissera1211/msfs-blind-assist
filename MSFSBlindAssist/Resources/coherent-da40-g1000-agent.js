@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 5;
+    A.VERSION = 6;
 
     function visible(el) {
         if (!el) return false;
@@ -226,13 +226,62 @@
             return e && visible(e) ? e : null;
         }
 
-        // The altitude preselect - the bug the pilot sets before a climb or descent. It
-        // is always on the display, so it is always reported.
+        // THE THREE SELECTED VALUES, which are what the pilot has ASKED FOR rather than
+        // what the aeroplane is doing. Airspeed, altitude, heading and vertical speed are
+        // all readable as SimVars, but the SELECTED ones are the targets, and on a display
+        // that is where they live. Altitude is always on the screen; heading and course
+        // sit in their own boxes; the selected vertical speed appears only in VS mode.
         var pre = shown(".preselect-box");
         if (pre) {
             var alt = spacedText(pre);
             if (alt) out.push("Selected altitude: " + alt + " feet");
         }
+
+        // The boxes carry their own abbreviation ("HDG 006"), so the label is stripped
+        // rather than lower-cased - "Selected hdg 006" reads as a typo, not a heading.
+        function selected(sel, label) {
+            var e = shown(sel);
+            if (!e) return;
+            var v = spacedText(e).replace(/^(HDG|CRS|DTK)\s*/i, "").trim();
+            if (v) out.push("Selected " + label + ": " + v);
+        }
+        selected(".hdg-box", "heading");
+        selected(".dtk-box", "course");
+
+        var svs = shown(".vsi-selected-vs");
+        if (svs) {
+            var vs = spacedText(svs);
+            if (vs) out.push("Selected vertical speed: " + vs + " feet per minute");
+        }
+
+        // WHERE THE NEXT WAYPOINT IS. Bearing and distance to the active fix - the two
+        // numbers a pilot navigating by the flight plan looks at most, and neither is a
+        // SimVar MSFSBA reads elsewhere.
+        var brg = shown(".FixBrgValue");
+        var dis = shown(".FixDistValue");
+        if (brg || dis) {
+            var bits = [];
+            if (brg) bits.push("bearing " + spacedText(brg));
+            if (dis) bits.push("distance " + spacedText(dis));
+            out.push("Active waypoint: " + bits.join(", "));
+        }
+
+        // Vertical deviation - the glideslope or glidepath needle, and whether there is
+        // one at all. Read field-wise: run together it says "GNOGS" for "G, NO GS".
+        var vdev = shown(".verticaldev-box");
+        if (vdev) {
+            var v = A.fieldsOf(vdev);
+            // "G, NO, GS" is the fields of "G" and "NO GS" - the scale letter and the
+            // flag saying there is no signal behind it. Said plainly it is one fact.
+            if (/NO,?\s*GS/i.test(v)) v = "no glideslope signal";
+            else if (/NO,?\s*GP/i.test(v)) v = "no glidepath signal";
+            if (v) out.push("Vertical deviation: " + v);
+        }
+
+        // The transponder as the DISPLAY shows it - code, mode and whether it is
+        // identing - which is the one place the mode and the ident are visible together.
+        var xpdr = shown(".xpdr-content");
+        if (xpdr) out.push("Transponder: " + A.fieldsOf(xpdr));
 
         // Bearing pointers 1 and 2. Each carries the navaid it is pointing at, the
         // bearing to it and the distance - and an unset field renders as underscores,
@@ -261,8 +310,21 @@
         // The wind window has four settings - off and three display modes - and says so
         // itself when it has no data to show, which is worth passing on rather than
         // hiding: "no wind data" is why the number is missing.
+        // The wind window has four settings - off and three display modes - and says so
+        // itself when it has no data to show. THE THREE MODES LOOK IDENTICAL WITHOUT A
+        // WIND SOLUTION, which is why they were reported as doing nothing: each mode has
+        // its own sub-block, all three stay hidden while the G1000 has no wind, and the
+        // overlay shows its placeholder instead. Measured: Off hides the overlay and all
+        // three options show it, so the softkeys work. Saying WHY there is no number is
+        // the difference between a broken-looking control and an honest one.
         var wind = shown(".wind-overlay");
-        if (wind) out.push("Wind: " + A.fieldsOf(wind));
+        if (wind) {
+            var w = A.fieldsOf(wind);
+            if (/NO\s*WIND\s*DATA/i.test(w)) {
+                w = "no wind data - the G1000 needs a wind solution, which it computes in flight";
+            }
+            out.push("Wind: " + w);
+        }
 
         // Approach minimums, shown against the altitude tape once the pilot has set one.
         var mins = shown(".mins-temp-comp-container");
