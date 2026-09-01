@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 6;
+    A.VERSION = 7;
 
     function visible(el) {
         if (!el) return false;
@@ -261,6 +261,19 @@
         var dis = shown(".FixDistValue");
         if (brg || dis) {
             var bits = [];
+
+            // The IDENT, which was the one part missing: bearing and distance to an
+            // unnamed fix say how far without saying to WHAT. It has no class of its own -
+            // it is the plain .dataField beside the two that do - so it is found by
+            // elimination rather than by name.
+            var fields = document.querySelectorAll(".dataField");
+            for (var f = 0; f < fields.length; f++) {
+                var c = classList(fields[f]);
+                if (c.indexOf("FixBrgValue") >= 0 || c.indexOf("FixDistValue") >= 0) continue;
+                var id = text(fields[f]);
+                if (id && /^[A-Z0-9]{2,6}$/.test(id)) { bits.push(id); break; }
+            }
+
             if (brg) bits.push("bearing " + spacedText(brg));
             if (dis) bits.push("distance " + spacedText(dis));
             out.push("Active waypoint: " + bits.join(", "));
@@ -285,6 +298,60 @@
         // transponder, and STBY versus ALT is the difference between being seen by radar
         // and not. The code is spelt out so a screen reader reads four digits rather than
         // "one thousand", because a squawk is four characters and not a number.
+        // THE INFORMATION BAR along the bottom - what a sighted pilot takes in at a glance
+        // without moving their eyes. Outside air temperature, ISA deviation, true
+        // airspeed, ground speed. Some of these have SimVars MSFSBA answers elsewhere, and
+        // they are read here anyway: the point of a display window is to say what the
+        // DISPLAY says, and a pilot asking "what does the bottom of the PFD show" should
+        // not have to assemble it from four other hotkeys.
+        var info = [];
+        var bar = [[".bip-oat", ""], [".bip-isa", ""], [".airspeed-tas-display", ""],
+                   [".bip-gs", ""]];
+        for (var b = 0; b < bar.length; b++) {
+            var e = shown(bar[b][0]);
+            if (!e) continue;
+            var v = A.fieldsOf(e).replace(/,\s*/g, " ").trim();
+            if (v) info.push(v);
+        }
+        if (info.length) out.push("Information bar: " + info.join(", "));
+
+        // The timer and the clock share a box and both matter: the timer is what a pilot
+        // starts on a hold or an approach, the clock is UTC for a position report.
+        var clock = shown(".bip-time");
+        if (clock) {
+            // The box labels its clock "UTC" and the value carries the suffix too, so the
+            // fields join into "UTC 06:24:02 UTC". One is a label and one is a unit; the
+            // pilot needs to hear it once.
+            var ct = A.fieldsOf(clock).replace(/,\s*/g, " ").trim()
+                      .replace(/\s+UTC$/, "").replace(/\s+/g, " ").trim();
+            if (ct) out.push("Time: " + ct);
+        }
+
+        // THE ALTIMETER SETTING, and whether it is on STANDARD. "STD BARO" means 29.92 is
+        // set, which above the transition altitude is correct and below it is an error
+        // worth hearing about - and it is a MODE, not a number, so no barometric readout
+        // elsewhere in MSFSBA reports it.
+        var press = shown(".pressure-box");
+        if (press) {
+            var pv = spacedText(press);
+            if (pv) out.push("Altimeter setting: " + pv);
+        }
+
+        // Which V-speed bugs the airspeed tape is showing. The DA40's own references -
+        // Vne, Vg, Vy, Vx, Vr - are set on the Timer/References window, and which are
+        // ENABLED is a choice the pilot made that nothing else reports back.
+        var bugs = shown(".airspeed-vspeed-bug-container");
+        if (bugs) {
+            var names = { NE: "Vne", G: "Vg", Y: "Vy", X: "Vx", R: "Vr" };
+            var listed = [];
+            var raw = A.fieldsOf(bugs).split(/[,\s]+/);
+            for (var r2 = 0; r2 < raw.length; r2++) {
+                var n = raw[r2].trim();
+                if (n && names[n]) listed.push(names[n]);
+            }
+            if (listed.length) out.push("Speed bugs shown: " + listed.join(", "));
+        }
+
         var xpdr = shown(".xpdr-content");
         if (xpdr) {
             var parts = A.fieldsOf(xpdr).split(", ");
@@ -1318,11 +1385,21 @@
             for (var e = 0; e < eis.length; e++) rows.push("  " + A.describeGauge(eis[e]));
         }
 
+        // How the map is oriented - north up, heading up or track up - which changes what
+        // every bearing on it means and is a setting the pilot chose.
+        var orient = firstVisible(".map-orientation");
+        if (orient) rows.push("Map orientation: " + text(orient));
+
         var page = A.page();
         if (page.length) {
             rows.push("Page content:");
             for (var g = 0; g < page.length; g++) rows.push("  " + page[g]);
         }
+
+        // A page that tells you how to leave it. The flight plan page carries one, and it
+        // is the only place the gesture is written down.
+        var prompt = firstVisible(".mfd-fpl-bottom-prompt");
+        if (prompt) rows.push(text(prompt));
 
         A.pushPanes(rows);
         A.pushSoftkeys(rows);
