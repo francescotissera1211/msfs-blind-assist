@@ -713,8 +713,67 @@
         return parts.join(", ");
     };
 
+    // ------------------------------------------------------- the active flight plan
+    //
+    // THE MOST IMPORTANT PAGE ON THE AEROPLANE FOR AN IFR FLIGHT, and the one the generic
+    // readers were worst at: it is a list of lists, and read as one it came out as a
+    // single 300-character line carrying an entire approach —
+    // "BUSLI 239 9.5 NM 2500 FT ... LIKRA faf 040 1.5 NM 1500 FT RW04 map ... HOLD 220".
+    // No leg could be arrowed to, and the active waypoint was invisible.
+    //
+    // The shape is SEGMENTS, each with a header (Origin, Enroute, the loaded approach,
+    // Destination) and its own nested list of legs. Which leg is ACTIVE is the single
+    // most useful fact on the page — it is the one the aeroplane is flying to.
+    //
+    // Placeholder legs are CLASSED hide-element rather than removed, exactly like the CAS
+    // window's pre-allocated rows and the nearest list's empty slots. Same trap, third
+    // occurrence on this aircraft: what is in the DOM is not what is on the screen.
+    A.flightPlanRows = function (container) {
+        var out = [];
+        var host = container.querySelector(".ui-control-list-content");
+        if (!host) return out;
+
+        for (var i = 0; i < host.children.length; i++) {
+            var seg = host.children[i];
+            if (!visible(seg)) continue;
+
+            // spacedText, not text: an unset runway renders as underscores, and the
+            // header is where "Origin - RW ______" would otherwise reach the pilot raw.
+            var header = spacedText(seg.querySelector(".header-name"));
+            if (header) out.push(header + ":");
+
+            var legs = seg.querySelectorAll(".fix-container");
+            var any = false;
+            for (var g = 0; g < legs.length; g++) {
+                var leg = legs[g];
+                if (!visible(leg)) continue;
+                if (classList(leg).indexOf("hide-element") >= 0) continue;
+
+                // An empty segment still carries one placeholder leg whose every field
+                // is unset. spacedText has already turned those underscores into "blank",
+                // so the test is for a row that is nothing BUT blanks.
+                var line = A.fieldsOf(leg);
+                if (!line) continue;
+                if (!line.replace(/blank|[\s,_]/g, "")) continue;
+
+                if (classList(leg).indexOf("active-wpt") >= 0) line += " (active)";
+                out.push((header ? "  " : "") + line);
+                any = true;
+            }
+            if (header && !any) out.push("  empty");
+        }
+
+        return out;
+    };
+
     A.rowsOf = function (box) {
         var out = [];
+
+        var fpln = box.querySelector(".mfd-fpln-container");
+        if (fpln) {
+            var planned = A.flightPlanRows(fpln);
+            if (planned.length) return planned;
+        }
 
         // Waypoint entry fields first: they are the typed-into controls, and the generic
         // readers weld their three parts together.
