@@ -570,6 +570,11 @@ public class CowsDA40PanelStructureTests
         "DA40_PAYLOAD_REAR_LEFT_SET",
         "DA40_PAYLOAD_REAR_RIGHT_SET",
         "DA40_PAYLOAD_BAGGAGE_SET",
+        // The autopilot's selected values. Each is a NUMBER the pilot types, not a
+        // switch: the altitude preselect sweeping past on a hardware knob would otherwise
+        // announce every hundred feet, and the heading bug every degree.
+        "DA40_AP_ALT_SET", "DA40_AP_VS_SET", "DA40_AP_IAS_SET",
+        "DA40_AP_HDG_SET", "DA40_AP_CRS_SET",
         // Radio frequencies and courses: numbers, typed once.
         "DA40_RADIO_COM1_SET", "DA40_RADIO_COM2_SET",
         "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV2_SET",
@@ -1120,9 +1125,9 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYet =
     {
         // Center Console
-                // Autopilot
-        "GFC 700", "Flight Director",
         // Cabin
+        // (The Autopilot section's GFC 700 and Flight Director panels were on this list
+        // and are now BUILT - the list shrank, which is what it is for.)
     };
 
     /// <summary>
@@ -1859,6 +1864,23 @@ public class CowsDA40PanelStructureTests
     [Theory]
     [InlineData(DA40Variant.NG)]
     [InlineData(DA40Variant.XLS)]
+    public void TheAutopilotOwnsTheHeadingBugAndCourse(DA40Variant variant)
+    {
+        // They are PFD bezel knobs, which is why they began life on the Radios panel
+        // beside the radio knobs. Functionally they are what the autopilot flies, so they
+        // sit with it - and MOVED, never duplicated, which is what the second half pins.
+        var panels = new CowsDA40Definition(variant).GetPanelControls();
+
+        Assert.Contains("DA40_AP_HDG_SET", panels["GFC 700"]);
+        Assert.Contains("DA40_AP_CRS_SET", panels["GFC 700"]);
+
+        Assert.DoesNotContain("DA40_RADIO_HDG_BUG_SET", panels["Radios"]);
+        Assert.DoesNotContain("DA40_RADIO_CRS1_SET", panels["Radios"]);
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
     public void RadiosPanelTunesBothComsAndBothNavs(DA40Variant variant)
     {
         var controls = new CowsDA40Definition(variant).GetPanelControls()["Radios"];
@@ -1868,8 +1890,10 @@ public class CowsDA40PanelStructureTests
                      "DA40_RADIO_COM1_SET", "DA40_RADIO_COM1_SWAP",
                      "DA40_RADIO_COM2_SET", "DA40_RADIO_COM2_SWAP",
                      "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV1_SWAP",
-                     "DA40_RADIO_NAV2_SET", "DA40_RADIO_NAV2_SWAP",
-                     "DA40_RADIO_CRS1_SET", "DA40_RADIO_HDG_BUG_SET"
+                     "DA40_RADIO_NAV2_SET", "DA40_RADIO_NAV2_SWAP"
+                     // The heading bug and course knob are NOT here any more: they moved
+                     // to the GFC 700 panel, where a pilot selecting heading mode needs
+                     // them. See TheAutopilotOwnsTheHeadingBugAndCourse below.
                  })
         {
             Assert.Contains(key, controls);

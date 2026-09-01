@@ -146,9 +146,13 @@ public partial class CowsDA40Definition
         "DA40_RADIO_NAV1_SET",
         "DA40_RADIO_NAV1_SWAP",
         "DA40_RADIO_NAV2_SET",
-        "DA40_RADIO_NAV2_SWAP",
-        "DA40_RADIO_CRS1_SET",
-        "DA40_RADIO_HDG_BUG_SET"
+        "DA40_RADIO_NAV2_SWAP"
+        // The heading bug and the course knob MOVED to the GFC 700 panel. They are
+        // physically PFD bezel knobs, which is why they started here beside the radio
+        // knobs, but functionally they are what the autopilot flies - a pilot selecting
+        // heading mode needs the bug in the same place, not two panels away. The
+        // autopilot carries its own controls against the same SimVars, so they are
+        // MOVED and not duplicated.
     };
 
     private static readonly List<string> RadioDisplay = new()

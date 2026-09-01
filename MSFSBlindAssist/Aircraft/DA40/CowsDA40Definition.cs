@@ -204,6 +204,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[EltPanel] = new List<string>(EltControls);
         controls[CabinAirPanel] = new List<string>(CabinAirControls);
         controls[RadiosPanel] = new List<string>(RadioControls);
+        controls[AutopilotPanel] = new List<string>(AutopilotControls);
+        controls[FlightDirectorPanel] = new List<string>(FlightDirectorControls);
         controls[PayloadPanel] = new List<string>(PayloadControls);
 
         foreach (var kv in FailurePanels(IsNG))
@@ -256,6 +258,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildFlapsVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildAutopilotVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -367,6 +374,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
         d[FlightControlsPanel] = new List<string>(FlightControlDisplay);
+        d[AutopilotPanel] = new List<string>(AutopilotDisplay);
+        d[FlightDirectorPanel] = new List<string>(FlightDirectorDisplay);
         d[BrakesPanel] = new List<string>(BrakeDisplay);
         d[AudioPanel] = new List<string>(AudioDisplay);
 
@@ -537,6 +546,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleEltSet(varKey, value, simConnect, announcer)) return true;
         if (HandleCabinAirSet(varKey, value, simConnect, announcer)) return true;
         if (HandleRadioSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleAutopilotSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
