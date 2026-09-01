@@ -1834,13 +1834,20 @@ public class CowsDA40PanelStructureTests
     {
         var def = new CowsDA40Definition(variant);
 
-        // Three, not one: failures, damage, and both. And the variable behind them is
-        // RESET_FAILURES - the vendor document's FAILURES_RESET is read by nothing, which
-        // was verified live by watching a raised failure stay raised.
+        // SIX, matching the MFD's own Reset Menu one for one. The variable behind the
+        // first is RESET_FAILURES - the vendor document's FAILURES_RESET is read by
+        // nothing, which was verified live by watching a raised failure stay raised.
+        // The three added later are the ones that clear STATE rather than failures, and
+        // they are the ones that matter when the aeroplane will not start at all: a saved
+        // state restored FLAT batteries at VCBI and only "Reset: ECU" would clear an
+        // ECU A FAIL that the AFM's own clearing procedure could not.
         Assert.Equal(new[]
         {
             "DA40_FAIL_RESET",
             "DA40_FAIL_RESET_DAMAGE",
+            "DA40_FAIL_RESET_BATT",
+            "DA40_FAIL_RESET_ECU",
+            "DA40_FAIL_RESET_WIRE",
             "DA40_FAIL_RESET_ALL"
         }, def.GetPanelControls()["Reset"].ToArray());
         Assert.Contains("Reset", def.GetPanelStructure()["Simulation"]);

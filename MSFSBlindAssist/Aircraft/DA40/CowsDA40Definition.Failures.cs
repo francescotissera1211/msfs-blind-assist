@@ -186,8 +186,19 @@ public partial class CowsDA40Definition
         // reads that variable. The model's own reset writes L:RESET_FAILURES - the same
         // two words the other way round - and setting FAILURES_RESET was verified live to
         // leave a raised failure raised, while RESET_FAILURES cleared it.
+        // The MFD's own Reset Menu offers SIX resets, not three. MSFSBA shipped the three
+        // that clear FAILURES and stopped there, which left a blind pilot unable to reach
+        // the three that clear STATE - and state is what actually strands the aeroplane.
+        // Found live at VCBI: a saved state restored FLAT batteries (all three capacities
+        // at 0 against factory 230/140/20), so the ECU could never power and nothing would
+        // crank, and no amount of reloading helped because the state was reloaded with it.
+        // "Reset: ECU" then cleared an ECU A FAIL that the AFM's own clearing procedure -
+        // run twice, correctly - could not. The names come from the MFD plugin's own menu.
         AddResetButton(v, "DA40_FAIL_RESET", "Clear Failures");
         AddResetButton(v, "DA40_FAIL_RESET_DAMAGE", "Clear Engine Damage");
+        AddResetButton(v, "DA40_FAIL_RESET_BATT", "Reset Batteries");
+        AddResetButton(v, "DA40_FAIL_RESET_ECU", "Reset ECUs");
+        AddResetButton(v, "DA40_FAIL_RESET_WIRE", "Reset Fuel Valve Safety Wire");
         AddResetButton(v, "DA40_FAIL_RESET_ALL", "Clear Failures and Damage");
 
         return v;
@@ -387,6 +398,9 @@ public partial class CowsDA40Definition
     {
         "DA40_FAIL_RESET",
         "DA40_FAIL_RESET_DAMAGE",
+        "DA40_FAIL_RESET_BATT",
+        "DA40_FAIL_RESET_ECU",
+        "DA40_FAIL_RESET_WIRE",
         "DA40_FAIL_RESET_ALL"
     };
 
@@ -439,6 +453,21 @@ public partial class CowsDA40Definition
             case "DA40_FAIL_RESET_DAMAGE":
                 simConnect.SetLVar("RESET_DAMAGE", 1);
                 announcer.AnnounceImmediate("Engine damage cleared");
+                return true;
+
+            case "DA40_FAIL_RESET_BATT":
+                simConnect.SetLVar("RESET_BATT", 1);
+                announcer.AnnounceImmediate("Batteries reset to full charge");
+                return true;
+
+            case "DA40_FAIL_RESET_ECU":
+                simConnect.SetLVar("RESET_ECU", 1);
+                announcer.AnnounceImmediate("ECUs reset");
+                return true;
+
+            case "DA40_FAIL_RESET_WIRE":
+                simConnect.SetLVar("RESET_WIRE", 1);
+                announcer.AnnounceImmediate("Fuel valve safety wire restored");
                 return true;
 
             case "DA40_FAIL_RESET_ALL":
