@@ -1535,6 +1535,46 @@
     // But it does mean that reading back the page TITLE after a turn reports the page the
     // pilot is still on, which sounds exactly like a key that did nothing. So while the
     // selector is up, what gets spoken is the SELECTOR: the group and page it is offering.
+    /// The PFD's open window, which is its equivalent of the MFD's page.
+    ///
+    /// The PFD has no .nav-data-bar-page-title - that is an MFD thing - so A.summary()
+    /// fell all the way through to A.pageTitle() and answered every bezel key on the PFD
+    /// with a page name that does not exist there. Exactly the fault the MFD had when it
+    /// said "CHKLST - Checklist" to everything, one display over.
+    ///
+    /// What a PFD keystroke actually changes is which POPOUT is open - nearest airports,
+    /// the timer, the transponder - and which entry inside it is selected. A popout is
+    /// open iff its opacity is non-zero: they all stay display:block and full size whether
+    /// open or shut, which is the trap this aeroplane has sprung four times now.
+    A.pfdPopout = function () {
+        var dialogs = document.querySelectorAll(".popout-dialog");
+
+        for (var i = 0; i < dialogs.length; i++) {
+            var d = dialogs[i];
+            if (!visible(d)) continue;
+            if (parseFloat(window.getComputedStyle(d).opacity || "1") < 0.05) continue;
+
+            // The class carries the identity ("pfd-nearest-airport"); turn it into words
+            // rather than reading a CSS class name aloud.
+            var name = "";
+            var parts = classList(d).split(" ");
+            for (var c = 0; c < parts.length; c++) {
+                var t = parts[c];
+                if (!t || t === "popout-dialog" || t === "open" || t === "subview") continue;
+                name = t.replace(/^pfd-/, "").replace(/-/g, " ");
+                break;
+            }
+            if (!name) continue;
+
+            var chosen = d.querySelector(".highlight-select");
+            var entry = chosen && visible(chosen) ? text(chosen) : "";
+
+            return name + (entry ? ", " + entry : "");
+        }
+
+        return "";
+    };
+
     A.summary = function () {
         // A SELECTION POPUP outranks everything, and this is why the checklist page felt
         // like a dead end: the knob really was moving the highlight, but the readback fell
@@ -1545,6 +1585,11 @@
         // the only thing a keystroke has to answer is which field and what it now says.
         var cursor = A.cursorField();
         if (cursor) return "Cursor on. " + cursor;
+
+        // The PFD's open window, before the MFD-only branches below it - which on the PFD
+        // all miss and drop through to a page title the PFD does not have.
+        var popout = A.pfdPopout();
+        if (popout) return popout;
 
         var picking = A.checklistSelection();
         if (picking.length) {
