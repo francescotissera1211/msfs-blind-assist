@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 3;
+    A.VERSION = 4;
 
     function visible(el) {
         if (!el) return false;
@@ -170,6 +170,72 @@
         };
     };
 
+    // ------------------------------------------------- the PFD's optional windows
+    //
+    // Five things the PFD draws that NOTHING ELSE ON THE AEROPLANE ANSWERS, and that the
+    // first pass missed because they are all OFF by default - they appear only once the
+    // pilot switches them on from PFD Opt, so a scrape taken at rest finds an empty
+    // screen and concludes there is nothing there.
+    //
+    // That is exactly why they matter: a sighted pilot turns a bearing pointer on BECAUSE
+    // they want to look at it. Being able to press the softkey and then not read the
+    // result is the worst of both worlds.
+    //
+    // Every one is reported only while VISIBLE, which is the same rule the popout panes
+    // use, and for the same reason - the markup is permanent and the visibility is not.
+    A.pfdWindows = function () {
+        var out = [];
+
+        function shown(sel) {
+            var e = document.querySelector(sel);
+            return e && visible(e) ? e : null;
+        }
+
+        // The altitude preselect - the bug the pilot sets before a climb or descent. It
+        // is always on the display, so it is always reported.
+        var pre = shown(".preselect-box");
+        if (pre) {
+            var alt = spacedText(pre);
+            if (alt) out.push("Selected altitude: " + alt + " feet");
+        }
+
+        // Bearing pointers 1 and 2. Each carries the navaid it is pointing at, the
+        // bearing to it and the distance - and an unset field renders as underscores,
+        // which spacedText already turns into "blank".
+        var sides = [["left", "1"], ["right", "2"]];
+        for (var i = 0; i < sides.length; i++) {
+            var host = shown("." + sides[i][0] + "-brg-ptr-container");
+            if (!host) continue;
+            var ident = spacedText(host.querySelector("." + sides[i][0] + "-brg-ptr-ident"));
+            var crs = spacedText(host.querySelector("." + sides[i][0] + "-brg-ptr-crs"));
+            var dist = spacedText(host.querySelector("." + sides[i][0] + "-brg-ptr-dist"));
+            var bits = [];
+            if (ident) bits.push(ident);
+            if (crs) bits.push(crs);
+            if (dist) bits.push(dist);
+            if (bits.length) out.push("Bearing pointer " + sides[i][1] + ": " + bits.join(", "));
+        }
+
+        // FIELD-WISE, not as text. Both of these are little boxes of separate elements,
+        // and joined as text they close up into "DME NAV1110.50 blank NM" and
+        // "NO WIND DATA 000360 0 KT" - the source running into the frequency, the
+        // direction into the speed. Same lesson as the nearest lists.
+        var dme = shown(".DME-window");
+        if (dme) out.push("DME: " + A.fieldsOf(dme));
+
+        // The wind window has four settings - off and three display modes - and says so
+        // itself when it has no data to show, which is worth passing on rather than
+        // hiding: "no wind data" is why the number is missing.
+        var wind = shown(".wind-overlay");
+        if (wind) out.push("Wind: " + A.fieldsOf(wind));
+
+        // Approach minimums, shown against the altitude tape once the pilot has set one.
+        var mins = shown(".mins-temp-comp-container");
+        if (mins) out.push("Minimums: " + spacedText(mins));
+
+        return out;
+    };
+
     // ---------------------------------------------------------------- softkeys
     //
     // The bezel's twelve softkeys, in order, with the label the display is CURRENTLY
@@ -303,6 +369,8 @@
                     ].filter(function (x) { return x; });
                     if (parts.length) lines.push(parts.join(", "));
                 }
+            } else if (A.groupboxLines(d).length) {
+                lines = A.groupboxLines(d);
             } else {
                 // One line per row of the pane, so a reader can arrow through it, with
                 // the text nodes spaced rather than run together.
@@ -320,7 +388,21 @@
             // No dialog carries a title element, so the pane names itself with its own
             // first line - "Timer", "Alerts", "ADF/DME TUNING" - which is what a sighted
             // pilot reads at the top of it anyway.
-            if (!title && lines.length) title = lines.shift();
+            //
+            // A dialog built from GROUPBOXES needs its heading found separately: the
+            // header is a plain child that the groupbox walk skips, so shifting the first
+            // line instead stole a group heading and the Direct-To window announced itself
+            // as "Ident, Facility, City" with its own fields orphaned under it.
+            if (!title) {
+                for (var h = 0; h < d.children.length; h++) {
+                    if (classList(d.children[h]).indexOf("groupbox") >= 0) continue;
+                    var ht = text(d.children[h]);
+                    if (ht && ht.length <= 40) { title = ht; break; }
+                }
+            }
+            if (!title && lines.length && lines[0].charAt(lines[0].length - 1) !== ":") {
+                title = lines.shift();
+            }
             if (lines.length || title) out.push({ title: title || "Window", lines: lines });
         }
 
@@ -581,8 +663,70 @@
         return parts.length ? parts.join(", ") : spacedText(row);
     };
 
+    // Every box of labelled rows under one root, as "Title:" then its rows indented.
+    //
+    // SHARED between pages and dialogs, because the G1000 builds both the same way. The
+    // Direct-To dialog is the case that proved it: read as plain children its group titles
+    // came out at the END of each line ("BRG 020 DIS 0.4 NM Location") because the title
+    // element is last in the DOM, so the pilot heard every field before being told what
+    // the group was.
+    A.groupboxLines = function (root) {
+        var lines = [];
+        var boxes = root.querySelectorAll(".groupbox");
+        for (var b = 0; b < boxes.length; b++) {
+            var box = boxes[b];
+            if (!visible(box)) continue;
+
+            var boxTitle = text(box.querySelector(".groupbox-title"));
+            var boxLines = A.rowsOf(box);
+            if (!boxLines.length) continue;
+
+            if (boxTitle) lines.push(boxTitle + ":");
+            for (var r = 0; r < boxLines.length; r++) {
+                lines.push((boxTitle ? "  " : "") + boxLines[r]);
+            }
+        }
+        return lines;
+    };
+
+    // A WAYPOINT ENTRY FIELD, as "ident, place, name".
+    //
+    // This is the control the pilot TYPES A WAYPOINT INTO - Direct-To, the flight plan,
+    // every WPT page - so it is the one field on the MFD whose exact contents matter most.
+    // Read as text it comes out "VCBI__KatunayakeBandaranaike Intl Colombo": the entry
+    // box, the city and the facility name with no boundary between them.
+    //
+    // The ident lives in a SCROLLER, padded to its full width with underscores for the
+    // characters not yet entered. Those are placeholder, not content - an ident of VCBI
+    // is "VCBI", not "VCBI blank" - so they are trimmed from the end, and a field with
+    // nothing in it at all says so.
+    A.wptEntry = function (entry) {
+        var scroller = entry.querySelector(".input-component-scroller");
+        var ident = text(scroller).replace(/_+$/, "");
+        if (!ident) ident = "blank";
+
+        var parts = [ident];
+        var place = text(entry.querySelector(".wpt-entry-location"));
+        var name = text(entry.querySelector(".wpt-entry-name"));
+        if (place) parts.push(place);
+        if (name) parts.push(name);
+        return parts.join(", ");
+    };
+
     A.rowsOf = function (box) {
         var out = [];
+
+        // Waypoint entry fields first: they are the typed-into controls, and the generic
+        // readers weld their three parts together.
+        var entries = box.querySelectorAll(".wpt-entry");
+        if (entries.length) {
+            for (var e = 0; e < entries.length; e++) {
+                if (!visible(entries[e])) continue;
+                var line = A.wptEntry(entries[e]);
+                if (line) out.push(line);
+            }
+            if (out.length) return out;
+        }
 
         // Every scrollable G1000 list - nearest airports, intersections, VORs, NDBs, the
         // flight plan - is built the same way, so ONE generic selector serves all of them
@@ -641,14 +785,93 @@
 
         // A box with no rows of its own still has content worth reading - render it as
         // one line rather than dropping the box on the floor.
+        // A box with no rows of its own still has content worth reading - render it as
+        // one line rather than dropping the box on the floor. The title is stripped from
+        // EITHER end: it leads in a setup box and TRAILS in a dialog box, where the title
+        // element is the last child.
         if (!out.length) {
             var whole = spacedText(box);
-            var t = text(box.querySelector(".groupbox-title"));
-            if (whole && t && whole.indexOf(t) === 0) whole = whole.substring(t.length).trim();
+            var bt = text(box.querySelector(".groupbox-title"));
+            if (whole && bt) {
+                if (whole.indexOf(bt) === 0) whole = whole.substring(bt.length).trim();
+                else if (whole.length > bt.length &&
+                         whole.lastIndexOf(bt) === whole.length - bt.length) {
+                    whole = whole.substring(0, whole.length - bt.length).trim();
+                }
+            }
             if (whole) out.push(whole);
         }
 
         return out;
+    };
+
+    // ------------------------------------------------------ the electronic checklist
+    //
+    // The DA40's own AFM checklist, on the MFD. This is the page where "documented equals
+    // doable" is most literally true: it IS the documentation, and a blind pilot who
+    // cannot read it is flying without the checklist the aeroplane ships with.
+    //
+    // It is fully operable, verified live. The interaction is a three-step the softkey
+    // labels do not spell out:
+    //
+    //   CHECKLIST or GROUP softkey  - arms the selector
+    //   FMS knob                    - steps through the choices
+    //   ENT                         - commits
+    //
+    // and NEXT ITEM walks the items. The middle step is invisible in the DOM - the DA40's
+    // plugin does not redraw the title until ENT commits - so a pilot turning the knob
+    // hears nothing change until they press ENT. That is the aircraft's own behaviour, not
+    // a scrape limitation, and it is worth knowing rather than being surprised by.
+    //
+    // Three kinds of line, and they are not interchangeable:
+    //   .Da40-checklist-checkbox  a CHECKABLE action ("Electric master....OFF")
+    //   .Da40-checklist-text      a note or a condition ("If External Power will be used:")
+    //   .checklist-focus          the item the cursor is on
+    A.checklistPage = function (p) {
+        var host = p.querySelector(".Da40-checklist-page-container");
+        if (!host) return [];
+
+        var lines = [];
+        var category = text(host.querySelector(".checklist-category"));
+        var title = text(host.querySelector(".checklist-title"));
+        if (category) lines.push("Checklist group: " + category);
+        if (title) lines.push("Checklist: " + title);
+
+        var listHost = host.querySelector(".Da40-checklist-display-list .ui-control-list-content");
+        if (listHost) {
+            for (var i = 0; i < listHost.children.length; i++) {
+                var item = listHost.children[i];
+                if (!visible(item)) continue;
+
+                var box = item.querySelector(".Da40-checklist-checkbox");
+                var raw = text(box || item);
+                if (!raw) continue;
+
+                // The leader is a run of dots holding the action out to the right margin.
+                // Read literally a screen reader says "dot" forty times, so it collapses
+                // to the pause it is drawn to be.
+                var line = raw.replace(/\.{2,}/g, " ... ").replace(/\s+/g, " ").trim();
+
+                // A note is not an action, and saying so stops a condition being read as
+                // something to do.
+                if (!box) line = "note: " + line;
+
+                var cls = classList(item);
+                if (cls.indexOf("checklist-focus") >= 0) line += " (current)";
+                for (var c = 0; c < cls.length; c++) {
+                    if (/checked|completed|complete/i.test(cls[c])) { line += ", done"; break; }
+                }
+
+                lines.push("  " + line);
+            }
+        }
+
+        var done = host.querySelector(".Da40-checklist-completed-label");
+        if (done && visible(done)) lines.push(text(done));
+        var next = host.querySelector(".Da40-next-checklist-label");
+        if (next && visible(next)) lines.push(text(next));
+
+        return lines;
     };
 
     A.page = function () {
@@ -656,6 +879,9 @@
         if (!p || !visible(p)) return [];
 
         var lines = [];
+
+        var checklist = A.checklistPage(p);
+        if (checklist.length) return checklist;
 
         // THE EIS PAGE. The MFD's own full engine page draws DIALS, and it is the one
         // place on the aeroplane that prints the numbers the strip only gestures at -
@@ -697,23 +923,8 @@
         // in which no individual setting can be arrowed to or read on its own. These are
         // the pages a pilot CHANGES things on, so they are the ones that most need to be
         // read a field at a time.
-        var boxes = p.querySelectorAll(".groupbox");
-        if (boxes.length) {
-            for (var b = 0; b < boxes.length; b++) {
-                var box = boxes[b];
-                if (!visible(box)) continue;
-
-                var boxTitle = text(box.querySelector(".groupbox-title"));
-                var boxLines = A.rowsOf(box);
-                if (!boxLines.length) continue;
-
-                if (boxTitle) lines.push(boxTitle + ":");
-                for (var r = 0; r < boxLines.length; r++) {
-                    lines.push((boxTitle ? "  " : "") + boxLines[r]);
-                }
-            }
-            if (lines.length) return lines;
-        }
+        var boxed = A.groupboxLines(p);
+        if (boxed.length) return boxed;
 
         // Prefer the page's own row-like structures where it has them: a flight plan and
         // a nearest list ARE lists, and reading them as one blob loses every boundary.
@@ -972,6 +1183,9 @@
             + (n.suspended ? ", SUSPENDED" : ""));
         if (n.crossTrack) rows.push("Cross track: " + n.crossTrack);
         if (n.message) rows.push("GPS message: " + n.message);
+
+        var wins = A.pfdWindows();
+        for (var w = 0; w < wins.length; w++) rows.push(wins[w]);
 
         A.pushPanes(rows);
         A.pushSoftkeys(rows);

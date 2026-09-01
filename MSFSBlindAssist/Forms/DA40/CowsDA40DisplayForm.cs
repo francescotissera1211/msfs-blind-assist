@@ -301,24 +301,12 @@ public sealed class CowsDA40DisplayForm : Form
         await _client.ScrapeNowAsync();
         if (_disposed) return;
 
-        string summary = Unquote(await _client.InvokeAsync(
-            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()"));
+        // InvokeAsync returns the value already unwrapped - CoherentDisplayClient's
+        // ExtractValue calls GetString() on a string result - so there is no JSON quoting
+        // to strip here.
+        string summary = (await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
         _announcer.AnnounceImmediate(summary.Length > 0 ? summary : spoken);
-    }
-
-    /// <summary>
-    /// Runtime.evaluate hands a string result back still wrapped in its JSON quotes. Only
-    /// a genuinely quoted value is unwrapped, so a bare word survives untouched.
-    /// </summary>
-    private static string Unquote(string value)
-    {
-        string v = (value ?? "").Trim();
-        if (v.Length >= 2 && v[0] == '"' && v[^1] == '"')
-        {
-            try { return System.Text.Json.JsonSerializer.Deserialize<string>(v) ?? ""; }
-            catch (System.Text.Json.JsonException) { return v.Substring(1, v.Length - 2); }
-        }
-        return v;
     }
 
     /// <summary>
