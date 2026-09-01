@@ -93,12 +93,49 @@ public partial class CowsDA40Definition
         // The command attitude the bars are showing. A sighted pilot flies the bars by
         // matching them; a blind pilot cannot see them at all, so the numbers ARE the
         // bars - and they are what makes a hand-flown departure to an FD command possible.
+        // ⚠️ BOTH ARE RENDERED THROUGH TryGetDisplayOverride, NEVER as a raw signed number.
+        // MSFS reports pitch NEGATIVE for nose up - established here rather than assumed:
+        // the aeroplane sitting on its gear reads PLANE PITCH DEGREES -2.90 with
+        // ATTITUDE INDICATOR PITCH DEGREES agreeing at -2.90, and a DA40 on its gear sits
+        // nose UP. So a commanded -3.0 is three degrees nose UP, and the old help text
+        // saying "Positive is nose up" had it exactly backwards. That is not cosmetic: a
+        // blind pilot hand-flying to this number would push when they should pull.
         AddApValue(v, "DA40_AP_FD_PITCH", "AUTOPILOT FLIGHT DIRECTOR PITCH", "Commanded Pitch",
-            "degrees", "F1", "What the flight director is asking for. Positive is nose up.");
+            "degrees", "F1", "Spoken as nose up or nose down; MSFS reports it inverted.");
         AddApValue(v, "DA40_AP_FD_BANK", "AUTOPILOT FLIGHT DIRECTOR BANK", "Commanded Bank",
-            "degrees", "F1", "What the flight director is asking for. Positive is right.");
+            "degrees", "F1", "Spoken as left or right; MSFS reports bank left-positive.");
 
         return v;
+    }
+
+    /// <summary>
+    /// The flight director bars, as words rather than a signed number.
+    ///
+    /// SIGN. MSFS reports pitch NEGATIVE for nose up and bank LEFT-positive - the same
+    /// left-positive convention the visual-guidance tone already has to undo. Read raw,
+    /// a three-degree nose-up command was spoken as "-3", which a pilot flying the bars
+    /// would answer by pushing.
+    ///
+    /// DENORMALS. Bank was measured live at 1.43e-305, which is not a small angle, it is
+    /// floating-point dust. Anything under a twentieth of a degree is level.
+    /// </summary>
+    private static string DescribeFlightDirector(string varKey, double value)
+    {
+        // Undo the sign here, once, so everything downstream reads naturally.
+        double v = -value;
+        if (Math.Abs(v) < 0.05) v = 0;
+
+        string magnitude = Math.Abs(v).ToString("F1",
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        if (varKey == "DA40_AP_FD_PITCH")
+        {
+            if (v == 0) return "level";
+            return magnitude + " degrees nose " + (v > 0 ? "up" : "down");
+        }
+
+        if (v == 0) return "wings level";
+        return magnitude + " degrees " + (v > 0 ? "right" : "left");
     }
 
     /// <summary>An autopilot mode: a two-state combo backed by a stock SimVar.</summary>
@@ -158,9 +195,26 @@ public partial class CowsDA40Definition
     };
 
     /// <summary>
-    /// EMPTY on purpose. Every selected value is already a CONTROL on this panel and a
-    /// control shows its own value, so listing them here too would read each one twice on
-    /// the same scan - which the suite catches.
+    /// The Ctrl+3 status display.
+    ///
+    /// This was EMPTIED once, on the reasoning that every selected value is already a
+    /// control and a control shows its own value. The reasoning was wrong and the cost was
+    /// immediate: Ctrl+3 on the GFC 700 panel produced a status display with nothing in it
+    /// at all. A panel's controls and its STATUS DISPLAY answer different questions - one
+    /// is what you operate, the other is what you sweep to see where the autopilot stands -
+    /// and a pilot checking the selected altitude before a climb wants the second.
+    ///
+    /// It was then restored, and the suite objected AGAIN and was right the second time:
+    /// ScansDoNotRepeatControls exists because a control reads its own position when you
+    /// tab to it, so repeating it on the scan is duplication that also drags an announcing
+    /// variable into a list meant to be silent.
+    ///
+    /// So it stays empty, and that is the honest answer for THIS panel: every meaningful
+    /// item on the GFC 700 is something you operate, and there is no read-only state left
+    /// over to sweep. The pilot's real need - knowing what is selected without tabbing
+    /// through five controls - is met twice over instead: the values ANNOUNCE THEMSELVES
+    /// on settle when anything moves them, and output mode + A, H, S and V answer with the
+    /// current value AND the selected one together.
     /// </summary>
     private static readonly List<string> AutopilotDisplay = new();
 
@@ -216,6 +270,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_ALT_SET":
             {
+                MarkRadioSetByUs();
                 // The selected altitude is entered in FEET and the event takes feet, but
                 // the aeroplane's ceiling is the sane clamp: an entry slip of one digit
                 // would otherwise command a climb the aircraft cannot make.
@@ -227,6 +282,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_VS_SET":
             {
+                MarkRadioSetByUs();
                 int fpm = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, -2000, 2000);
                 simConnect.ExecuteCalculatorCodeUnique($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)");
                 announcer.AnnounceImmediate(fpm == 0
@@ -237,6 +293,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_IAS_SET":
             {
+                MarkRadioSetByUs();
                 // Between the flap-limit end of the envelope and Vne. Flight level change
                 // pitches for this speed, so a value outside the envelope is a command to
                 // stall or to overspeed.
@@ -248,6 +305,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_HDG_SET":
             {
+                MarkRadioSetByUs();
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:HEADING_BUG_SET)");
                 announcer.AnnounceImmediate($"Heading bug {deg:000}");
@@ -256,6 +314,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_CRS_SET":
             {
+                MarkRadioSetByUs();
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:VOR1_SET)");
                 announcer.AnnounceImmediate($"Course {deg:000}");

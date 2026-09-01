@@ -62,7 +62,18 @@ public partial class CowsDA40Definition
         ["DA40_RADIO_COM1_SET"] = "COM 1 standby",
         ["DA40_RADIO_COM2_SET"] = "COM 2 standby",
         ["DA40_RADIO_NAV1_SET"] = "NAV 1 standby",
-        ["DA40_RADIO_NAV2_SET"] = "NAV 2 standby"
+        ["DA40_RADIO_NAV2_SET"] = "NAV 2 standby",
+
+        // The autopilot's SELECTED values ride the same settle timer, and for the same
+        // reason: an altitude preselect knob steps 100 ft at a time and a heading bug one
+        // degree, so announcing every step buries the value the pilot stopped on. They had
+        // no announcement at all before this - moving a knob on real hardware, or the
+        // G1000 changing a preselect, was completely silent.
+        ["DA40_AP_ALT_SET"] = "Selected altitude",
+        ["DA40_AP_VS_SET"] = "Selected vertical speed",
+        ["DA40_AP_IAS_SET"] = "Selected airspeed",
+        ["DA40_AP_HDG_SET"] = "Heading bug",
+        ["DA40_AP_CRS_SET"] = "Course"
     };
 
     /// <summary>
@@ -154,8 +165,14 @@ public partial class CowsDA40Definition
         var parts = new List<string>();
         foreach (var kv in RadioLabels)
             if (pending.TryGetValue(kv.Key, out double f))
-                parts.Add(kv.Value + " " + f.ToString("0.000",
+            {
+                // A frequency needs three decimals; an altitude of 9000 read as "9000.000"
+                // is a different kind of wrong. Radios are the only three-decimal values
+                // here, and they are exactly the keys carrying RADIO in their name.
+                bool freq = kv.Key.IndexOf("RADIO", StringComparison.Ordinal) >= 0;
+                parts.Add(kv.Value + " " + f.ToString(freq ? "0.000" : "0",
                     System.Globalization.CultureInfo.InvariantCulture));
+            }
 
         if (parts.Count > 0) _radioAnnouncer.Announce(string.Join(". ", parts));
     }

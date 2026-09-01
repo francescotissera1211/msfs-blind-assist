@@ -189,6 +189,54 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // ---------- A, H, S, V: current AND selected ----------
+            //
+            // These four fell through to the base class, which answers with the CURRENT
+            // value only. On an aeroplane with an autopilot that is half the question: a
+            // pilot about to climb wants to know what is SELECTED as much as where they
+            // are, and on the GFC 700 the selected values are the whole reason the panel
+            // exists. Reported as "they do not give values at all when it comes to what is
+            // selected in the autopilot", which was exactly right.
+            //
+            // Both numbers in ONE utterance. Two announcements a breath apart is how a
+            // pilot loses the first, and these are read together or not at all.
+            case HotkeyAction.ReadAltitude:
+            {
+                double? now = ReadNow(simConnect, "DA40_ALTITUDE");
+                double? sel = ReadNow(simConnect, "DA40_AP_ALT_SET");
+                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
+                    "Altitude", now, "feet", "Selected", sel, "feet"));
+                return true;
+            }
+
+            case HotkeyAction.ReadHeading:
+            {
+                double? now = ReadNow(simConnect, "DA40_HEADING");
+                double? bug = ReadNow(simConnect, "DA40_AP_HDG_SET");
+                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
+                    "Heading", now, "degrees", "Bug", bug, "degrees"));
+                return true;
+            }
+
+            case HotkeyAction.ReadSpeed:
+            {
+                double? now = ReadNow(simConnect, "DA40_AIRSPEED");
+                double? sel = ReadNow(simConnect, "DA40_AP_IAS_SET");
+                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
+                    "Airspeed", now, "knots", "Selected", sel, "knots"));
+                return true;
+            }
+
+            case HotkeyAction.ReadFCUVerticalSpeedFPA:
+            {
+                double? now = ReadNow(simConnect, "DA40_VERTICAL_SPEED");
+                double? sel = ReadNow(simConnect, "DA40_AP_VS_SET");
+                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
+                    "Vertical speed", now, "feet per minute",
+                    "Selected", sel, "feet per minute"));
+                return true;
+            }
+
             // ---------- L: flaps ----------
             case HotkeyAction.ReadFlaps:
             {
@@ -354,4 +402,24 @@ public partial class CowsDA40Definition
     /// </summary>
     private static double? ReadNow(SimConnectManager simConnect, string key)
         => simConnect.GetCachedVariableValue(key);
+
+    /// <summary>
+    /// "Altitude 2,400 feet. Selected 5,000 feet." - one utterance, and honest about a
+    /// value it could not read rather than inventing a zero for it.
+    /// </summary>
+    private static string ComposeCurrentAndSelected(string nowLabel, double? now, string nowUnit,
+        string selLabel, double? sel, string selUnit)
+    {
+        string first = now is null
+            ? nowLabel + " not available"
+            : nowLabel + " " + Math.Round(now.Value).ToString("N0",
+                System.Globalization.CultureInfo.InvariantCulture) + " " + nowUnit;
+
+        string second = sel is null
+            ? selLabel + " not available"
+            : selLabel + " " + Math.Round(sel.Value).ToString("N0",
+                System.Globalization.CultureInfo.InvariantCulture) + " " + selUnit;
+
+        return first + ". " + second + ".";
+    }
 }

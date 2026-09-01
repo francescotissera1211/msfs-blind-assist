@@ -532,6 +532,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             return true;
         }
 
+        if (varKey == "DA40_AP_FD_PITCH" || varKey == "DA40_AP_FD_BANK")
+        {
+            displayText = DescribeFlightDirector(varKey, value);
+            return true;
+        }
+
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
 
