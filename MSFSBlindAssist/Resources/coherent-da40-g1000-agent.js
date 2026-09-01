@@ -118,6 +118,23 @@
     // cursor read back with no label at all, and pfdPopout called .split on an array,
     // threw, and left summary() empty so every bezel key announced its fallback text.
     // Use this when the class is a FRAGMENT.
+    /// The aeroplane marks something as not-shown under MORE THAN ONE NAME, and they
+    /// differ by a single letter: "hide-element" AND "hidden-element" both occur on the
+    /// MFD. Neither uses display:none, so their CHILDREN still pass an offsetParent
+    /// visibility test - which is how a hidden layout got welded into the wind box - and
+    /// a reader that knows only one of the two names silently reads the other aloud.
+    ///
+    /// Found by inventorying every class token the instrument uses and diffing that
+    /// against the names this agent mentions; see tools/g1000-class-inventory.js. Any new
+    /// marking should be found that way rather than by waiting for it to be reported.
+    function isMarkedHidden(el) {
+        var parts = classList(el);
+        for (var i = 0; i < parts.length; i++) {
+            if (parts[i] === "hide-element" || parts[i] === "hidden-element") return true;
+        }
+        return false;
+    }
+
     function hasClassContaining(el, fragment) {
         var parts = classList(el);
         for (var i = 0; i < parts.length; i++) {
@@ -254,7 +271,7 @@
         var parts = [];
         for (var i = 0; i < w.children.length; i++) {
             var c = w.children[i];
-            if (classList(c).indexOf("hide-element") >= 0) continue;
+            if (isMarkedHidden(c)) continue;
             if (!visible(c)) continue;
 
             var t = text(c);
@@ -983,7 +1000,7 @@
             for (var g = 0; g < legs.length; g++) {
                 var leg = legs[g];
                 if (!visible(leg)) continue;
-                if (classList(leg).indexOf("hide-element") >= 0) continue;
+                if (isMarkedHidden(leg)) continue;
 
                 // An empty segment still carries one placeholder leg whose every field
                 // is unset. spacedText has already turned those underscores into "blank",
@@ -1297,8 +1314,12 @@
 
         for (var i = 0; i < all.length; i++) {
             var cls = classList(all[i]);
+            // THREE markings, not one. The setup pages use "cyan"; the WPT pages mark an
+            // "input-component-value"; and a NUMERIC field uses "number-input-active".
+            // All three were found by class inventory rather than by being reported.
             var isCursor = cls.indexOf("cyan") >= 0 ||
-                           cls.indexOf("input-component-value") >= 0;
+                           cls.indexOf("input-component-value") >= 0 ||
+                           cls.indexOf("number-input-active") >= 0;
             if (!isCursor) continue;
             if (!hasClassContaining(all[i], "highlight")) continue;
             if (!visible(all[i])) continue;
@@ -1336,7 +1357,8 @@
             // "highlight-select", so ACTIVATING a field looked exactly like the cursor
             // being switched off, and the aeroplane appeared to fight every attempt to
             // edit anything.
-            var editing = hasClassContaining(all[i], "highlight-active");
+            var editing = hasClassContaining(all[i], "highlight-active") ||
+                          cls.indexOf("number-input-active") >= 0;
             var text0 = label ? label + ": " + value : value;
             return editing ? text0 + ", editing" : text0;
         }
