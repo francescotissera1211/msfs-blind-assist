@@ -228,10 +228,23 @@ public partial class CowsDA40Definition
     };
 
     /// <summary>
-    /// Engine Start writes. The two buttons drive K:SET_STARTER1_HELD directly — 1 to
-    /// turn the key to START, 0 to let it back. No timer, no auto-release and no crank
-    /// limit is imposed here: the AFM's 10-second limit is information the pilot acts on,
-    /// not something MSFSBA enforces.
+    /// Engine Start writes.
+    ///
+    /// ⚠️ The two buttons write <c>L:STARTER_SPAD:1</c>, NOT <c>K:SET_STARTER1_HELD</c>.
+    /// That event is INERT on this airframe — measured live: writing STARTER_SPAD:1 = 1
+    /// moves the key mirror <c>L:STARTER_SWITCH</c> to 2 (START), while firing
+    /// SET_STARTER1_HELD down the same calculator path leaves it at 1 (still just ON).
+    /// The vendor's own <c>DA40 LVAR bindings.txt</c> names STARTER_SPAD as the input;
+    /// the event was an assumption and it never worked.
+    ///
+    /// STARTER_SWITCH is a READ-ONLY MIRROR and must never be written: the model
+    /// recomputes it every frame from the electric master and the start input, so a
+    /// write to it does not even stick (0 was written and it came straight back to 1).
+    /// It is the same STATE_* mirror rule this airframe applies everywhere else, just
+    /// without the STATE_ prefix to warn you.
+    ///
+    /// No timer, no auto-release and no crank limit is imposed here: the AFM's
+    /// 10-second limit is information the pilot acts on, not something MSFSBA enforces.
     /// </summary>
     private bool HandleEngineStartSet(string varKey, double value, SimConnectManager simConnect)
     {
@@ -246,11 +259,11 @@ public partial class CowsDA40Definition
                 return true;
 
             case "DA40_START_STARTER_ENGAGE":
-                simConnect.ExecuteCalculatorCode("1 (>K:SET_STARTER1_HELD)");
+                simConnect.ExecuteCalculatorCodeUnique("1 (>L:STARTER_SPAD:1)");
                 return true;
 
             case "DA40_START_STARTER_RELEASE":
-                simConnect.ExecuteCalculatorCode("0 (>K:SET_STARTER1_HELD)");
+                simConnect.ExecuteCalculatorCodeUnique("0 (>L:STARTER_SPAD:1)");
                 return true;
         }
 
