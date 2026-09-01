@@ -1325,7 +1325,20 @@
                 e = e.parentElement;
             }
 
-            return label ? label + ": " + value : value;
+            // TWO CURSOR STATES, and telling them apart is the difference between a
+            // usable setup page and an incomprehensible one. "highlight-select" means the
+            // cursor is ON the field and the knob will move to the NEXT field;
+            // "highlight-active" means the field is OPEN FOR EDITING and the knob is
+            // meant to change it. A pilot who cannot see the box has no other way to know
+            // which of those two things the next turn will do.
+            //
+            // This is also what made the old detector lie: it matched only
+            // "highlight-select", so ACTIVATING a field looked exactly like the cursor
+            // being switched off, and the aeroplane appeared to fight every attempt to
+            // edit anything.
+            var editing = hasClassContaining(all[i], "highlight-active");
+            var text0 = label ? label + ": " + value : value;
+            return editing ? text0 + ", editing" : text0;
         }
 
         return "";
@@ -1629,6 +1642,13 @@
     /// open iff its opacity is non-zero: they all stay display:block and full size whether
     /// open or shut, which is the trap this aeroplane has sprung four times now.
     A.pfdPopout = function () {
+        // ⚠️ PFD ONLY, and this was NOT belt-and-braces - it fired on the MFD and said
+        // "mfd pageselect, System Setup" to a pilot, because the MFD's own page selector
+        // is itself a .popout-dialog. The MFD has its own, better branches for the
+        // selector and the page menu further down summary(); this one exists purely
+        // because the PFD has no page title to fall back on.
+        if (A.side() !== "PFD") return "";
+
         var dialogs = document.querySelectorAll(".popout-dialog");
 
         for (var i = 0; i < dialogs.length; i++) {
