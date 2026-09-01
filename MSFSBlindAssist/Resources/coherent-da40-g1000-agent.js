@@ -1574,11 +1574,25 @@
     A.press = function (name) {
         var fired = A.key(name);
         if (fired !== "ok") return fired;
-        try {
-            return "ok|" + A.summary();
-        } catch (e) {
-            return "ok|";
-        }
+        return A.state();
+    };
+
+    /// The display's state as ONE string: "ok|<cursor 0 or 1>|<summary>".
+    ///
+    /// The cursor flag is reported SEPARATELY rather than sniffed out of the summary text,
+    /// because the caller has to tell "the cursor just came on" from "the summary happens
+    /// to read the same as last time", and those are different questions. Inferring it
+    /// from a "Cursor on." prefix meant a cursor that armed a frame later looked identical
+    /// to a key that did nothing - which is exactly how pressing the cursor appeared to
+    /// need TWO presses before it said anything.
+    A.state = function () {
+        var cursor = "";
+        try { cursor = A.cursorField(); } catch (e) { cursor = ""; }
+
+        var summary = "";
+        try { summary = A.summary(); } catch (e) { summary = ""; }
+
+        return "ok|" + (cursor ? "1" : "0") + "|" + summary;
     };
 
     A.key = function (name) {

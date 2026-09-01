@@ -339,52 +339,36 @@ public sealed class CowsDA40DisplayForm : Form
     {
         string name = $"AS1000_{_side}_{eventSuffix}";
 
-        // ONE round trip: fire the key and get the read-back together. This used to be
-        // four - summary before, key, wait, summary again, scrape - and each is a full
-        // socket exchange with the Coherent debugger. Four per arrow key is what made the
-        // window feel slow; the round trips were the cost, not the wait, which is why
-        // shortening the settle had barely helped.
-        string result = await _client.InvokeAsync(
-            $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')");
-        if (_disposed) return;
+        // ONE round trip: fire the key and get the read-back together. This was four -
+        // summary before, key, wait, summary again, scrape - and each is a full socket
+        // exchange with the Coherent debugger.
+        var (cursorOn, summary, accepted) = await FireAndRead(name);
+        if (_disposed || !accepted) return;
 
-        // A.key answers "no instrument" when the view has no G1000 element to drive, which
-        // is the one failure a pilot could otherwise mistake for a dead key.
-        if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
-        {
-            _announcer.AnnounceImmediate("The display did not accept that key.");
-            return;
-        }
-
-        int bar = result.IndexOf('|');
-        string summary = bar >= 0 ? result.Substring(bar + 1).Trim() : "";
-
-        // Fired and read in the same breath, the answer is occasionally the state from
-        // just BEFORE the key - the page needs a frame. Comparing against what was last
-        // SPOKEN is what tells the two apart, and it costs a second look only when the
-        // display genuinely has not moved yet.
-        if (summary.Length == 0 || summary == _lastSpokenSummary)
+        // THE DISPLAY NEEDS A FRAME, and reading before it has had one is what made this
+        // window feel haunted: pressing the cursor said nothing until the SECOND press,
+        // and turning a knob "kept repeating where it was" because the answer came from
+        // before the keystroke. So a read that shows nothing NEW is retried rather than
+        // believed. What counts as new is the cursor flag OR the text - the flag matters
+        // on its own, because arming the cursor can leave the summary identical for a
+        // moment and that is precisely the case being missed.
+        if (cursorOn == _lastCursorOn && summary == _lastSpokenSummary)
         {
             await Task.Delay(BezelSettleMs);
             if (_disposed) return;
 
-            summary = (await _client.InvokeAsync(
-                "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
-            if (_disposed) return;
+            (cursorOn, summary, accepted) = await FireAndRead(null);
+            if (_disposed || !accepted) return;
         }
 
-        // CURSOR OFF has to be said, because nothing else marks it. Turning the cursor on
-        // announces itself - the readback starts "Cursor on." - but turning it off just
-        // produced the page title, which is indistinguishable from a key that did nothing.
-        // A pilot then presses the cursor again to check, which turns it back ON, and the
-        // two states become impossible to tell apart by ear.
-        const string cursorPrefix = "Cursor on.";
-        bool wasOn = _lastSpokenSummary.StartsWith(cursorPrefix, StringComparison.Ordinal);
-        bool nowOn = summary.StartsWith(cursorPrefix, StringComparison.Ordinal);
-
+        // CURSOR OFF has to be said, because nothing else marks it. Turning it on
+        // announces itself; turning it off just produced the page title, which is
+        // indistinguishable from a key that did nothing - so a pilot presses the cursor
+        // again to check, turning it back ON, and the two states cannot be told apart.
         string toSay = summary.Length > 0 ? summary : spoken;
-        if (wasOn && !nowOn) toSay = "Cursor off. " + toSay;
+        if (_lastCursorOn && !cursorOn) toSay = "Cursor off. " + toSay;
 
+        _lastCursorOn = cursorOn;
         _lastSpokenSummary = summary;
         _announcer.AnnounceImmediate(toSay);
 
@@ -393,8 +377,38 @@ public sealed class CowsDA40DisplayForm : Form
         await _client.ScrapeNowAsync();
     }
 
+    /// <summary>
+    /// Fires a bezel key (or just re-reads, when <paramref name="name"/> is null) and
+    /// unpacks the agent's "ok|cursor|summary" answer.
+    /// </summary>
+    private async Task<(bool CursorOn, string Summary, bool Accepted)> FireAndRead(string? name)
+    {
+        string call = name is null
+            ? "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.state()"
+            : $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')";
+
+        string result = await _client.InvokeAsync(call);
+        if (_disposed) return (false, "", false);
+
+        // A.key answers "no instrument" when the view has no G1000 element to drive, which
+        // is the one failure a pilot could otherwise mistake for a dead key.
+        if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
+        {
+            _announcer.AnnounceImmediate("The display did not accept that key.");
+            return (false, "", false);
+        }
+
+        var parts = result.Split('|');
+        if (parts.Length < 3) return (false, "", true);
+
+        return (parts[1] == "1", string.Join("|", parts, 2, parts.Length - 2).Trim(), true);
+    }
+
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
     private string _lastSpokenSummary = "";
+
+    /// <summary>Whether the cursor was on at the last read-back.</summary>
+    private bool _lastCursorOn;
 
     /// <summary>
     /// How long to wait before reading back a bezel press.
