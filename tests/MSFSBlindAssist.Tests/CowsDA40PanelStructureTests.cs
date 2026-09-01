@@ -1605,6 +1605,12 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("PFD Readout", panels);
         Assert.DoesNotContain("CAS Messages", panels);
         Assert.DoesNotContain("Engine Indication", panels);
+
+        // The fuel calculator stays forbidden for the same reason, and it is worth saying
+        // why out loud: it WAS added as a panel once, caught here, and removed. It is a
+        // readout the Engine page already draws and the display window already reads.
+        // "Aircraft Options" is the deliberate exception beside it - those are SETTINGS a
+        // pilot changes, not values a display shows.
         Assert.DoesNotContain("Fuel Calculator", panels);
     }
 

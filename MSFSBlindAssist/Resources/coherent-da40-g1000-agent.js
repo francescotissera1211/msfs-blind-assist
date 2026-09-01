@@ -1085,7 +1085,63 @@
     //   .Da40-checklist-checkbox  a CHECKABLE action ("Electric master....OFF")
     //   .Da40-checklist-text      a note or a condition ("If External Power will be used:")
     //   .checklist-focus          the item the cursor is on
+    // The two checklist SELECTION popups. Each is a ui-control-list whose items are
+    // separate elements, so the generic reader ran all nine categories into one token -
+    // "EMERGENCY Procedures ENGINEEMERGENCY Procedures ELECTRICAL SYSTEM..." - and, worse,
+    // never said which one the FMS knob was sitting on. The knob WAS moving; the pilot
+    // simply had no way to tell, which reads as a page you cannot leave.
+    // The selected item carries "highlight-select" (NOT "checklist-focus", which is the
+    // display list's own marker - they are different lists with different classes).
+    A.checklistSelection = function () {
+        // ORDER MATTERS, and it is the reverse of the order a pilot meets them. Choosing
+        // a GROUP opens the CHECKLIST list ON TOP of it, and both stay visible - measured
+        // live: the category list stayed visible:1 while the selection list went 0 to 1.
+        // So the deeper popup must be tested FIRST, or the pilot is read the list they
+        // have already left while the knob moves a different one.
+        var specs = [
+            [".Da40-checklist-selection-list", "checklist"],
+            [".Da40-checklist-category-selection-list", "checklist group"]
+        ];
+
+        for (var s = 0; s < specs.length; s++) {
+            var host = firstVisible(specs[s][0]);
+            if (!host) continue;
+
+            var content = host.querySelector(".ui-control-list-content");
+            if (!content) continue;
+
+            var lines = ["Select a " + specs[s][1] + ":"];
+            var selected = null;
+
+            for (var i = 0; i < content.children.length; i++) {
+                var item = content.children[i];
+                if (!visible(item)) continue;
+
+                var label = text(item);
+                if (!label) continue;
+
+                var chosen = classList(item).indexOf("highlight-select") >= 0;
+                if (chosen) selected = label;
+                lines.push(label + (chosen ? " (selected)" : ""));
+            }
+
+            if (lines.length === 1) continue;
+
+            // Lead with the selection so a pilot who only hears the first line still
+            // learns where the knob is, then let them arrow the whole list.
+            if (selected) lines.splice(1, 0, "Currently on: " + selected);
+            return lines;
+        }
+
+        return [];
+    };
+
     A.checklistPage = function (p) {
+        // A selection popup sits ON TOP of the page, so it must be answered first or the
+        // pilot is read the checklist behind the list they are actually navigating.
+        var picking = A.checklistSelection();
+        if (picking.length) return picking;
+
         var host = p.querySelector(".Da40-checklist-page-container");
         if (!host) return [];
 

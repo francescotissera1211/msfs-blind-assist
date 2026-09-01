@@ -131,7 +131,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Light Failures",
                 "Brake Failures",
                 "Engine Damage",
-                "Reset"
+                "Reset",
+                // The COWS options. They live on the MFD Engine page's own Page Menu,
+                // which no page-walk ever opens, which is how they were missed.
+                "Aircraft Options"
             }
         };
 
@@ -207,6 +210,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         controls[AutopilotPanel] = new List<string>(AutopilotControls);
         controls[FlightDirectorPanel] = new List<string>(FlightDirectorControls);
         controls[PayloadPanel] = new List<string>(PayloadControls);
+
+        foreach (var kv in OptionPanels())
+        {
+            controls[kv.Key] = kv.Value;
+        }
 
         foreach (var kv in FailurePanels(IsNG))
         {
@@ -313,6 +321,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
 
         foreach (var kv in BuildPayloadVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildOptionVariables())
         {
             vars[kv.Key] = kv.Value;
         }
@@ -550,6 +563,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect)) return true;
+        if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
