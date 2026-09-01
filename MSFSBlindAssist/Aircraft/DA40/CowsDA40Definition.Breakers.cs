@@ -103,7 +103,11 @@ public partial class CowsDA40Definition
         v[key] = new SimVarDefinition
         {
             Name = lvar,
-            DisplayName = label,
+            // " Breaker" is part of the NAME, not decoration. A breaker carries the name
+            // of the thing it feeds, so in the Monitor Manager - which is one flat list
+            // with no panel around it - "Landing Light" appeared three times over: the
+            // switch, this breaker, and the failure, with nothing to tell them apart.
+            DisplayName = label + " Breaker",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
