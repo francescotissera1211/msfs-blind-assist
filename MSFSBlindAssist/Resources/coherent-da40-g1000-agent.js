@@ -1282,10 +1282,25 @@
     /// cyan is what separates it from the page selector and the checklist lists, which use
     /// highlight-select on its own.
     A.cursorField = function () {
-        var all = document.querySelectorAll(".highlight-select");
+        // ⚠️ THE CURSOR IS NOT MARKED THE SAME WAY ON EVERY PAGE, which is why it read as
+        // absent on half of them. The setup pages put "cyan" on a "highlight-select"
+        // element; the WPT pages instead add a highlight class to an
+        // "input-component-value" and use no cyan at all - found by counting every class
+        // on the instrument before and after a cursor push and diffing the two, which is
+        // the only way to see a marking you do not already know the name of.
+        //
+        // Requiring cyan alone therefore reported "cursor off" on a page where it was
+        // plainly on. Both markings are accepted; what they have in common is a highlight
+        // class, and the two qualifiers keep the page selector and the checklist lists -
+        // which use bare "highlight-select" - from being mistaken for an edit cursor.
+        var all = document.querySelectorAll("[class*=highlight]");
 
         for (var i = 0; i < all.length; i++) {
-            if (classList(all[i]).indexOf("cyan") < 0) continue;
+            var cls = classList(all[i]);
+            var isCursor = cls.indexOf("cyan") >= 0 ||
+                           cls.indexOf("input-component-value") >= 0;
+            if (!isCursor) continue;
+            if (!hasClassContaining(all[i], "highlight")) continue;
             if (!visible(all[i])) continue;
 
             var value = text(all[i]);
