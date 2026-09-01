@@ -337,12 +337,21 @@ public sealed class CowsDA40DisplayForm : Form
         // What the display said BEFORE the press, so the read-back can say what the press
         // actually did rather than only whether the menu changed.
         var before = new List<string>(_client.CurrentRows);
+        string pressedLabel = LabelOf(_text.SelectedItem?.ToString() ?? "");
 
-        _simConnect.ExecuteCalculatorCode($"1 (>H:AS1000_{_side}_SOFTKEYS_{key})");
+        // UNIQUE, not plain. MobiFlight's command channel coalesces two consecutive
+        // byte-identical calc strings, and pressing the SAME softkey twice in a row is
+        // exactly that - so the second press was silently dropped. That is not an edge
+        // case on this display: typing a squawk of 1000 presses the "0" key three times
+        // running, and stepping the CDI past a source means pressing CDI again. Reported
+        // from the cockpit as a squawk entry that took the first digit and then nothing.
+        // The codebase's own invariant already says every valueless calc write goes
+        // through the unique form; this call was the exception that proved it.
+        _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_{_side}_SOFTKEYS_{key})");
 
         // A press can replace the whole row, so read it back at once rather than waiting
         // for the next poll - the pilot needs to know what the keys became.
-        _ = ReadBackAfterPress(before);
+        _ = ReadBackAfterPress(before, pressedLabel);
         return true;
     }
 
@@ -362,7 +371,7 @@ public sealed class CowsDA40DisplayForm : Form
     /// barometric row for STD Baro — in every case the thing the key was pressed to
     /// change, and never twelve labels the pilot already knows.
     /// </summary>
-    private async Task ReadBackAfterPress(List<string> before)
+    private async Task ReadBackAfterPress(List<string> before, string pressedLabel)
     {
         // One short settle: the display rebuilds its softkey row over a frame or two.
         await Task.Delay(250);
@@ -382,7 +391,30 @@ public sealed class CowsDA40DisplayForm : Form
         // above, and a key's own VALUE field rides on its row, so including them would
         // announce "Softkey 6: CDI GPS" where the pilot wants "Navigation source: GPS".
         string changed = FirstChangedRow(before, rows);
-        if (changed.Length > 0) _announcer.AnnounceImmediate(changed);
+        if (changed.Length > 0)
+        {
+            _announcer.AnnounceImmediate(changed);
+            return;
+        }
+
+        // A PRESS IS NEVER SILENT. If nothing on the display moved, the key itself is
+        // spoken back — otherwise the pilot cannot tell a key that did nothing from one
+        // that was not registered at all, which is the complaint that started this
+        // ("you never know when they're entered"). It costs one short word and removes a
+        // whole class of doubt.
+        if (pressedLabel.Length > 0) _announcer.AnnounceImmediate(pressedLabel);
+    }
+
+    /// <summary>
+    /// The label off a softkey row, e.g. "Softkey 3: Standby" gives "Standby". Blank rows
+    /// read as "blank", which is a real answer and is left alone.
+    /// </summary>
+    private static string LabelOf(string row)
+    {
+        var m = SoftkeyRow.Match(row);
+        if (!m.Success) return "";
+        string rest = row.Substring(row.IndexOf(':') + 1).Trim();
+        return rest;
     }
 
     private static List<string> SoftkeyLabels(IEnumerable<string> rows) =>
@@ -391,29 +423,60 @@ public sealed class CowsDA40DisplayForm : Form
             .ToList();
 
     /// <summary>
-    /// The first non-softkey row that differs, compared BY LABEL rather than by position:
-    /// a press can add or remove a row (a window opening, a caution clearing), and a
-    /// positional compare would then report every row after it as changed.
+    /// The first non-softkey row that differs.
+    ///
+    /// Compared BY LABEL rather than by position, because a press can add or remove a row
+    /// — a window opening, a caution clearing — and a positional compare would then call
+    /// every row after it changed.
+    ///
+    /// ⚠️ A LABEL IS NOT UNIQUE. The CAS block emits one row per message and they all read
+    /// "Caution: ...", so a plain label map kept only the first and then matched the
+    /// SECOND caution against it, found them different, and announced a standing caution
+    /// after every single keypress. Reported from the cockpit as exactly that: "whenever I
+    /// press enter on something, the first caution on the list gets announced". So a row's
+    /// identity is its label AND which occurrence of that label it is.
+    ///
+    /// A row that only EXISTS in the new state is not a change either — it is a window
+    /// that just opened, and the softkey branch above has already spoken for that.
     /// </summary>
     private static string FirstChangedRow(List<string> before, List<string> after)
     {
-        var old = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (string row in before)
-        {
-            if (SoftkeyRow.IsMatch(row)) continue;
-            string key = RowLabel(row);
-            if (key.Length > 0 && !old.ContainsKey(key)) old[key] = row.Trim();
-        }
+        var old = BuildRowMap(before);
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (string row in after)
         {
             if (SoftkeyRow.IsMatch(row)) continue;
-            string key = RowLabel(row);
-            if (key.Length == 0) continue;
+            string label = RowLabel(row);
+            if (label.Length == 0) continue;
+
+            seen.TryGetValue(label, out int n);
+            seen[label] = n + 1;
+
+            string key = label + "#" + n;
             if (old.TryGetValue(key, out string? was) && was != row.Trim()) return row.Trim();
         }
 
         return "";
+    }
+
+    private static Dictionary<string, string> BuildRowMap(IEnumerable<string> rows)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        foreach (string row in rows)
+        {
+            if (SoftkeyRow.IsMatch(row)) continue;
+            string label = RowLabel(row);
+            if (label.Length == 0) continue;
+
+            counts.TryGetValue(label, out int n);
+            counts[label] = n + 1;
+            map[label + "#" + n] = row.Trim();
+        }
+
+        return map;
     }
 
     /// <summary>The part before the colon, which is the row's stable identity.</summary>

@@ -280,8 +280,27 @@
 
         // The transponder as the DISPLAY shows it - code, mode and whether it is
         // identing - which is the one place the mode and the ident are visible together.
+        // The transponder in words. The display abbreviates - "XPDR 1000 STBY" - and the
+        // abbreviation is the least useful part: the pilot already knows it is the
+        // transponder, and STBY versus ALT is the difference between being seen by radar
+        // and not. The code is spelt out so a screen reader reads four digits rather than
+        // "one thousand", because a squawk is four characters and not a number.
         var xpdr = shown(".xpdr-content");
-        if (xpdr) out.push("Transponder: " + A.fieldsOf(xpdr));
+        if (xpdr) {
+            var parts = A.fieldsOf(xpdr).split(", ");
+            var bits = [];
+            for (var x = 0; x < parts.length; x++) {
+                var v = parts[x];
+                if (/^XPDR$/i.test(v)) continue;
+                if (/^\d{4}$/.test(v)) { bits.push("code " + v.split("").join(" ")); continue; }
+                if (/^STBY$/i.test(v)) { bits.push("standby"); continue; }
+                if (/^ALT$/i.test(v)) { bits.push("altitude reporting"); continue; }
+                if (/^GND$/i.test(v)) { bits.push("ground"); continue; }
+                if (/^ON$/i.test(v)) { bits.push("on"); continue; }
+                bits.push(v);
+            }
+            if (bits.length) out.push("Transponder: " + bits.join(", "));
+        }
 
         // Bearing pointers 1 and 2. Each carries the navaid it is pointing at, the
         // bearing to it and the distance - and an unset field renders as underscores,
