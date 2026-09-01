@@ -731,6 +731,22 @@
         // Every scrollable G1000 list - nearest airports, intersections, VORs, NDBs, the
         // flight plan - is built the same way, so ONE generic selector serves all of them
         // and a page nobody anticipated still reads as a list rather than a paragraph.
+        // A PROCEDURE'S LEG SEQUENCE is a list that is not built as one - the legs of a
+        // SID, STAR or approach sit in a plain container rather than a ui-control-list, so
+        // the generic reader ran the whole procedure together as
+        // "CI04 0.0 NM FI04 faf 39 2.8 NM RW04 map 38 5.8 NM". These are the legs the
+        // aeroplane is about to fly, and which one is the final approach fix and which is
+        // the missed approach point are the two facts on the page that matter most.
+        var legs = box.querySelectorAll(".proc-sequence-item");
+        if (legs.length) {
+            for (var g = 0; g < legs.length; g++) {
+                if (!visible(legs[g])) continue;
+                var leg = A.fieldsOf(legs[g]);
+                if (leg) out.push(leg);
+            }
+            if (out.length) return out;
+        }
+
         var listHost = box.querySelector(".ui-control-list-content");
         if (listHost) {
             for (var L = 0; L < listHost.children.length; L++) {

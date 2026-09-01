@@ -79,6 +79,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Fuel System",
                 "Flaps",
                 "Elevator Trim",
+                "Flight Controls",
                 "Brakes",
                 "Cabin Heat and Vent",
                 "Audio"
@@ -259,6 +260,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildFlightControlVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         foreach (var kv in BuildTrimVariables())
         {
             vars[kv.Key] = kv.Value;
@@ -360,6 +366,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) d[FuelPanel] = new List<string>(FuelDisplay);
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
+        d[FlightControlsPanel] = new List<string>(FlightControlDisplay);
         d[BrakesPanel] = new List<string>(BrakeDisplay);
         d[AudioPanel] = new List<string>(AudioDisplay);
 
@@ -452,6 +459,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFlapsDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetTrimDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetFlightControlDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBrakeDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetAudioDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetBreakerDisplayOverride(varKey, value, out displayText)) return true;

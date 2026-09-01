@@ -174,3 +174,4 @@ ifly-aircraft-737max8/
 # reports and review packages. Working state for an in-flight plan, never part of
 # the repository — git history is the record once the branch merges.
 .superpowers/
+da40-checklists-dump.md

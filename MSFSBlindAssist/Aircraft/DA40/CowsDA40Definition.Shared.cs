@@ -159,6 +159,13 @@ public partial class CowsDA40Definition
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
+        // The control surfaces. Announced only so they reach the batch cache; a control
+        // check sweeps the stick stop to stop, and speaking every position on the way
+        // would bury the one reading the pilot is listening for.
+        "DA40_CTL_ELEVATOR",
+        "DA40_CTL_AILERON",
+        "DA40_CTL_RUDDER",
+
         "DA40_G1000_BARO",
         "DA40_FUEL_MAIN_ACTUAL",
         "DA40_FUEL_AUX_ACTUAL",
