@@ -82,6 +82,11 @@ public partial class CowsDA40Definition
 
     public void StopCasMonitor()
     {
+        // The barometric settle timer belongs to the same lifetime: it is armed from
+        // ProcessSimVarUpdate and would otherwise keep a Forms timer alive against a
+        // definition the app has finished with.
+        StopBaroAnnounce();
+
         if (_casClient == null) return;
 
         _casClient.RowsUpdated -= OnCasRows;

@@ -79,7 +79,8 @@ public partial class CowsDA40Definition
 
         simConnect.ExecuteCalculatorCode(
             $"{millibars * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
-        simConnect.SetLVar("KOHLSMAN SETTING HG:2", inHg);
+        SetStandbyBaro(simConnect, inHg);
+        MarkBaroSetByUs();
 
         announcer.AnnounceImmediate(
             $"Both altimeters set, {millibars:0} hectopascals, {inHg:0.00} inches");

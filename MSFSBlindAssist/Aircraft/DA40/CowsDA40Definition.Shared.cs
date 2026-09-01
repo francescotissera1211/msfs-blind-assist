@@ -41,8 +41,11 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "inHg",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ExcludeFromMonitorManager = true
+            IsAnnounced = true
+            // NOT excluded from the Monitor Manager any more: it announces now (debounced,
+            // once the knob settles), so its Ctrl+M row mutes something real. The rule is
+            // that a checkbox which silences nothing should not exist - the converse is
+            // that one which does, must.
         },
 
         // Tank quantities, for the F readout and for the Fuel System scan. BOTH variants
@@ -166,7 +169,9 @@ public partial class CowsDA40Definition
         "DA40_CTL_AILERON",
         "DA40_CTL_RUDDER",
 
-        "DA40_G1000_BARO",
+        // DA40_G1000_BARO is deliberately NOT here any more. It was, and that is why a
+        // subscale changed on external hardware said nothing at all. It is handled by the
+        // settle-timer announcer instead, which speaks the value the knob came to rest on.
         "DA40_FUEL_MAIN_ACTUAL",
         "DA40_FUEL_AUX_ACTUAL",
         "DA40_GROSS_WEIGHT",
@@ -183,6 +188,11 @@ public partial class CowsDA40Definition
         Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (SilentCachedReadouts.Contains(varName)) return true;
+
+        // Both barometric subscales: recorded and announced once the knob settles, rather
+        // than on every 0.01 inHg step. Returns true either way - the generic announcer
+        // must not also read them.
+        if (NoteBaroChange(varName, value, announcer)) return true;
 
         // Remember every breaker position so the per-panel "how many are out" row can be
         // computed. A display override gets no SimConnect, so it cannot read them itself.

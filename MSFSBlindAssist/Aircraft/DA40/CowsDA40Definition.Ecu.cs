@@ -154,7 +154,10 @@ public partial class CowsDA40Definition
             Name = "FADEC_ECUTEST_TIMER:1",
             DisplayName = "Governor Watchdog",
             Type = SimVarType.LVar,
-            Units = "count of 4",
+            // "number": an L:var is a raw number, and "count of 4" is not a SimConnect
+            // unit at all - it was a note about what the timer counts to that ended up in
+            // the field that decides how the value is converted.
+            Units = "number",
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,

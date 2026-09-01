@@ -425,7 +425,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             return true;
         }
 
-        if (action == Hotkeys.HotkeyAction.ReadDisplayND)
+        // Alt+M and Alt+N both open it. M is the obvious letter on a G1000 - the aeroplane
+        // has a PFD and an MFD and no ND at all - and N is kept because the docs have said
+        // so since the window was built.
+        if (action == Hotkeys.HotkeyAction.ReadDisplayND ||
+            action == Hotkeys.HotkeyAction.ReadDisplayMFD)
         {
             hotkeyManager?.ExitOutputHotkeyMode();
             ShowTrackedWindow("DA40_MFD",

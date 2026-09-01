@@ -114,6 +114,12 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_LOWER_ECAM = 9070;
         private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
+
+        // Alt+M, the G1000's MFD. A glass GA panel has a PFD and an MFD and no ND at all,
+        // so borrowing the ND key was the only thing available and never the obvious one -
+        // reported from the cockpit as "Alt+M for the MFD doesn't work". Alt+N still opens
+        // it, because that is what the docs have said and a working key is not taken away.
+        private const int HOTKEY_READ_DISPLAY_MFD = 9253;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
         private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
@@ -475,6 +481,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_READ_DISPLAY_ND:
                             TriggerHotkey(HotkeyAction.ReadDisplayND);
                             break;
+                        case HOTKEY_READ_DISPLAY_MFD:
+                            TriggerHotkey(HotkeyAction.ReadDisplayMFD);
+                            break;
                         case HOTKEY_READ_DISPLAY_PFD:
                             TriggerHotkey(HotkeyAction.ReadDisplayPFD);
                             break;
@@ -764,6 +773,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, MOD_ALT, 0x45);  // Alt+E (Read E/WD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, MOD_ALT, 0x53);  // Alt+S (Read SD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x4E);          // Alt+N (Read ND)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_MFD, MOD_ALT, 0x4D);         // Alt+M (Read MFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
@@ -1337,6 +1347,9 @@ public class HotkeyManager : IDisposable
         ReadDisplayLowerECAM,
         ReadDisplayUpperECAM,
         ReadDisplayND,
+
+        /// <summary>Alt+M. The G1000's MFD, on an aeroplane that has no ND.</summary>
+        ReadDisplayMFD,
         ReadDisplayISIS,
         DescribeScene,
         ShowTrackFixWindow,

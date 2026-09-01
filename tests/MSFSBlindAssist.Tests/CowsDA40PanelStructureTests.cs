@@ -720,11 +720,23 @@ public class CowsDA40PanelStructureTests
     [Fact]
     public void StandbyHasItsOwnAltimeterSubscale()
     {
-        // KOHLSMAN SETTING HG:2 is a SEPARATE subscale from the G1000's, which is why the
-        // AFM descent check reads "Altimeters (2) SET".
+        // The standby subscale is SEPARATE from the G1000's, which is why the AFM descent
+        // check reads "Altimeters (2) SET".
+        //
+        // It READS THE MIRROR and WRITES THE INPUT, this aeroplane's own rule. The input,
+        // L:KOHLSMAN SETTING HG:2, carries a space and a colon - a stock-SimVar shape that
+        // defeats both normal paths at once (SetLVar's data-def fallback lands on the
+        // STOCK SimVar of that name, and a data-def read in "inHg" converts a raw number
+        // and returned zero). L:STATE_BARO2 is the airframe's own mirror of the same
+        // subscale with a clean name, so it reads through the ordinary path; the write
+        // goes to the input via SetStandbyBaro.
         var v = Ng().GetVariables()["DA40_STBY_ALTIMETER_SET"];
 
-        Assert.Equal("KOHLSMAN SETTING HG:2", v.Name);
+        Assert.Equal("STATE_BARO2", v.Name);
+
+        // "number", never a pressure unit: an L:var holds a raw number and SimConnect
+        // would convert it. This is the assertion that pins the reported zero.
+        Assert.Equal("number", v.Units);
         // Typed entry, not a slider — see StandbyAltimeterIsTypedNotASlider. The 28.00 to
         // 31.50 travel is enforced on the write instead, where it belongs.
         Assert.False(v.RenderAsSlider);
@@ -856,17 +868,17 @@ public class CowsDA40PanelStructureTests
     public void ReadoutSupportVariablesDoNotCluttertheMonitorManager()
     {
         // Silent plumbing for the hotkeys gets no Ctrl+M row, because the checkbox would
-        // mute nothing. The G1000 subscale is still plumbing: the B key reads it, the
-        // Standby panel owns the OTHER altimeter, and nothing announces this one.
+        // mute nothing.
         var vars = Ng().GetVariables();
 
-        Assert.True(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
-
-        // It IS IsAnnounced - that is the only way into the continuous batch, and the
-        // batch is the only thing that caches it - and it is silenced in
-        // ProcessSimVarUpdate instead.
+        // THE G1000 SUBSCALE IS THE EXCEPTION, and deliberately so. It used to be silent
+        // plumbing, which is exactly why a subscale changed on external hardware said
+        // nothing at all. It now announces once the knob settles, so it MUST have a Ctrl+M
+        // row - a checkbox that silences nothing should not exist, and the converse is
+        // that one which does, must.
+        Assert.False(vars["DA40_G1000_BARO"].ExcludeFromMonitorManager);
         Assert.True(vars["DA40_G1000_BARO"].IsAnnounced);
-        Assert.Contains("DA40_G1000_BARO", CowsDA40Definition.SilentCachedReadoutKeys);
+        Assert.DoesNotContain("DA40_G1000_BARO", CowsDA40Definition.SilentCachedReadoutKeys);
 
         // DA40_FLAPS_POSITION is NOT plumbing any more. The Flaps panel promoted the same
         // key into its selector control rather than defining a second copy, so it now

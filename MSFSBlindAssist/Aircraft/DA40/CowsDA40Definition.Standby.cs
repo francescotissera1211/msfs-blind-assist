@@ -50,10 +50,29 @@ public partial class CowsDA40Definition
 
         v["DA40_STBY_ALTIMETER_SET"] = new SimVarDefinition
         {
-            Name = "KOHLSMAN SETTING HG:2",
+            // READS THE MIRROR, WRITES THE INPUT - this aeroplane's own rule, and the
+            // one place it was not being followed.
+            //
+            // The subscale's INPUT is "L:KOHLSMAN SETTING HG:2", whose name carries a
+            // space AND a colon. That shape is normally a stock SimVar, so it defeats both
+            // of MSFSBA's normal paths at once: SetLVar refuses the calculator for it and
+            // falls back to a data-def write that lands on the STOCK SimVar of that name
+            // (a different variable - measured, the L:var moved to 30.11 while the SimVar
+            // stayed at 29.85), and the data-def READ asked for it in "inHg", which makes
+            // SimConnect convert a raw number from its base pressure unit. The pilot heard
+            // "Standby 0 hectopascals, 0.01 inches" over a subscale that was set correctly.
+            //
+            // L:STATE_BARO2 is the airframe's own read-only mirror of the same subscale -
+            // measured at 30.11 alongside the input - and its name is CLEAN, so it reads
+            // through the ordinary path with no special case at all. The write goes to the
+            // input through SetStandbyBaro.
+            Name = "STATE_BARO2",
             DisplayName = "Standby Altimeter Setting",
             Type = SimVarType.LVar,
-            Units = "inHg",
+            // "number", never "inHg": an L:var holds a raw number and a pressure unit here
+            // makes SimConnect convert it. Same trap as the A380's TCAS vertical-speed
+            // L:vars, which must be "number" and not "feet per minute".
+            Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             // A TEXT FIELD, not a slider. MainForm's TrackBar is hardcoded 0-100 and maps
@@ -93,7 +112,9 @@ public partial class CowsDA40Definition
 
         // ---------- Status ----------
 
-        AddReadout(v, "DA40_STBY_ALT_SETTING_STATE", "STATE_BARO2", "Standby Subscale", "inHg", "F2");
+        // No separate "Standby Subscale" readout: the setting control above now reads
+        // STATE_BARO2 itself, so a second row would report the same number twice under two
+        // names - the duplication this aeroplane's panels are explicitly meant not to have.
 
         AddFlag(v, "DA40_STBY_GYRO_CAGED", "ATT_GYRO_CAGE_SET", "Gyro Caged", "No", "Yes");
 
@@ -120,7 +141,11 @@ public partial class CowsDA40Definition
             Name = "ATT_GYRO_SPEED",
             DisplayName = "Gyro Spin",
             Type = SimVarType.LVar,
-            Units = "percent",
+            // "number", with Scale doing the 0-1 to percent conversion below. Asking a
+            // data definition for an L:var in "percent" invites SimConnect to convert it
+            // as well, which would scale the same number twice - the trap that read the
+            // standby subscale as zero when it was asked for in inHg.
+            Units = "number",
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
@@ -196,7 +221,6 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> StandbyDisplay = new()
     {
-        "DA40_STBY_ALT_SETTING_STATE",
         "DA40_STBY_ALTITUDE",
         "DA40_STBY_AIRSPEED",
         "DA40_STBY_COMPASS",
@@ -223,7 +247,8 @@ public partial class CowsDA40Definition
                 // Accept hectopascals or inches. The ranges cannot overlap - inHg runs
                 // 28.00 to 31.50 and hPa 948 to 1066 - so magnitude disambiguates.
                 double inHg = Math.Clamp(value > 100 ? value / 33.8639 : value, 28.00, 31.50);
-                simConnect.SetLVar("KOHLSMAN SETTING HG:2", inHg);
+                SetStandbyBaro(simConnect, inHg);
+                MarkBaroSetByUs();
 
                 // A typed numeric entry gets a spoken confirmation — the pilot needs the
                 // exact value back, and it is the one announcement CLAUDE.md explicitly
@@ -246,5 +271,30 @@ public partial class CowsDA40Definition
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Writes the standby altimeter's subscale.
+    ///
+    /// ⚠️ NOT through SetLVar. This L:var's name carries a SPACE AND A COLON, and SetLVar
+    /// deliberately refuses the calculator path for such names because that shape is
+    /// normally a stock SimVar ("TRANSPONDER STATE:1"). It falls back to a native
+    /// data-definition write against "L:KOHLSMAN SETTING HG:2" — which lands on the STOCK
+    /// SimVar of that name instead, a different variable entirely.
+    ///
+    /// Measured: writing the L:var through the calculator moved it to 30.11 while the
+    /// stock KOHLSMAN SETTING HG:2 stayed at 29.85. So this aeroplane really does have a
+    /// standby subscale that only the L:var reaches, exactly as the vendor's own bindings
+    /// document says — and the general rule about space/colon names has a real exception
+    /// here, which is why this write is spelt out rather than routed.
+    ///
+    /// Unique, because a pilot setting the same value twice must not have the second write
+    /// coalesced away by MobiFlight.
+    /// </summary>
+    private static void SetStandbyBaro(SimConnectManager simConnect, double inHg)
+    {
+        simConnect.ExecuteCalculatorCodeUnique(
+            inHg.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+            + " (>L:KOHLSMAN SETTING HG:2)");
     }
 }
