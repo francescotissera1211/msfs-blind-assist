@@ -86,6 +86,7 @@ public partial class CowsDA40Definition
         // ProcessSimVarUpdate and would otherwise keep a Forms timer alive against a
         // definition the app has finished with.
         StopBaroAnnounce();
+        StopRadioAnnounce();
 
         if (_casClient == null) return;
 

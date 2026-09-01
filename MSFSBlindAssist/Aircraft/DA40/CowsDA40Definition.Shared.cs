@@ -194,6 +194,11 @@ public partial class CowsDA40Definition
         // must not also read them.
         if (NoteBaroChange(varName, value, announcer)) return true;
 
+        // Every COM and NAV frequency, active and standby, announced once tuning settles
+        // rather than on every 25 kHz step - and spoken from what the RADIO reported,
+        // never from a prediction made before the event was sent.
+        if (NoteRadioChange(varName, value, announcer)) return true;
+
         // Remember every breaker position so the per-panel "how many are out" row can be
         // computed. A display override gets no SimConnect, so it cannot read them itself.
         // Returning FALSE here on purpose: a breaker moving on its own is exactly the kind

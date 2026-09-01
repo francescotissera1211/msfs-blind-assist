@@ -101,7 +101,11 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "MHz",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            // IsAnnounced is REQUIRED for batch membership, which is the only way this
+            // value reaches the cache at all. It was false, so the cache was empty and
+            // the swap announcement had nothing to read - "COM 2 does not remember".
+            // The generic announcer is kept out by NoteRadioChange, not by this flag.
+            IsAnnounced = true,
             Format = "F3",
             HelpText = help
         };
@@ -130,8 +134,11 @@ public partial class CowsDA40Definition
             DisplayName = display,
             Type = SimVarType.SimVar,
             Units = "MHz",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            // Was OnRequest + silent, so a frequency set from OUTSIDE MSFSBA - by
+            // SayIntentions, or by the pilot on the G1000 - changed the radio and said
+            // nothing at all. Continuous and announced; the settle timer speaks it.
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             Format = "F3"
         };
@@ -176,15 +183,20 @@ public partial class CowsDA40Definition
         return (d1 << 12) | (d2 << 8) | (d3 << 4) | d4;
     }
 
-    private static void AnnounceSwap(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+    private void AnnounceSwap(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         string swapEvent, string standbyKey, string radio, string format)
     {
-        double? becomingActive = simConnect.GetCachedVariableValue(standbyKey);
-        simConnect.ExecuteCalculatorCode($"1 (>K:{swapEvent})");
+        // UNIQUE, not plain. Two swaps of one radio in a row are two byte-identical
+        // calculator strings and MobiFlight drops the second - which is exactly why a
+        // second press announced a swap that never happened.
+        simConnect.ExecuteCalculatorCodeUnique($"1 (>K:{swapEvent})");
 
-        announcer.AnnounceImmediate(becomingActive is null
-            ? $"{radio} swapped"
-            : $"{radio} active {becomingActive.Value.ToString(format)}");
+        // Say only what we KNOW: that the swap was commanded. The frequency is NOT
+        // predicted from the standby any more - that prediction was wrong whenever the
+        // cache was stale and stayed confident when the event had been dropped. The
+        // radio's own change announces itself a moment later, and that number is real.
+        MarkRadioSetByUs();
+        announcer.AnnounceImmediate($"{radio} swapped");
     }
 
     private bool HandleRadioSet(string varKey, double value, SimConnectManager simConnect,
@@ -198,7 +210,8 @@ public partial class CowsDA40Definition
                 int radio = varKey.Contains('2') ? 2 : 1;
                 double mhz = Math.Clamp(value, 118.0, 136.999);
                 string evt = radio == 1 ? "COM_STBY_RADIO_SET" : "COM2_STBY_RADIO_SET";
-                simConnect.ExecuteCalculatorCode($"{ComBcd16(mhz)} (>K:{evt})");
+                simConnect.ExecuteCalculatorCodeUnique($"{ComBcd16(mhz)} (>K:{evt})");
+                MarkRadioSetByUs();
                 announcer.AnnounceImmediate($"COM {radio} standby {mhz:0.000}");
                 return true;
             }
@@ -210,6 +223,7 @@ public partial class CowsDA40Definition
                 double mhz = Math.Clamp(value, 108.0, 117.95);
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
                 simConnect.ExecuteCalculatorCode($"{hz} (>K:NAV{radio}_STBY_SET_HZ)");
+                MarkRadioSetByUs();
                 announcer.AnnounceImmediate($"NAV {radio} standby {mhz:0.00}");
                 return true;
             }

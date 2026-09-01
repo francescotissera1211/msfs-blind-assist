@@ -653,6 +653,12 @@ public class CowsDA40PanelStructureTests
             .Where(k => k.StartsWith("DA40_"))
             .Where(k => vars[k].IsAnnounced)
             .Where(k => !CowsDA40Definition.SilentCachedReadoutKeys.Contains(k))
+            // The radio frequencies are the deliberate exception. They carry IsAnnounced
+            // because batch membership REQUIRES it - without it the cache was empty, which
+            // is exactly why a swap announced a frequency the radio did not hold - but
+            // they never reach the generic announcer: NoteRadioChange intercepts them and
+            // speaks the settled value the RADIO reported.
+            .Where(k => !CowsDA40Definition.RadioAnnouncedKeys.Contains(k))
             .ToList();
 
         Assert.True(noisy.Count == 0,
