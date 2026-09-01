@@ -1337,6 +1337,21 @@
     // pilot is still on, which sounds exactly like a key that did nothing. So while the
     // selector is up, what gets spoken is the SELECTOR: the group and page it is offering.
     A.summary = function () {
+        // A SELECTION POPUP outranks everything, and this is why the checklist page felt
+        // like a dead end: the knob really was moving the highlight, but the readback fell
+        // through to the page TITLE and said "CHKLST - Checklist" after every press. The
+        // pilot heard the same four words whichever way they turned, so the page looked
+        // frozen when it was working perfectly.
+        var picking = A.checklistSelection();
+        if (picking.length) {
+            // Lead with the item under the knob. The whole list is still available from
+            // the window itself; what a keypress must answer is "where am I now".
+            for (var c = 0; c < picking.length; c++) {
+                if (picking[c].indexOf("Currently on: ") === 0) return picking[c];
+            }
+            return picking[0];
+        }
+
         var d = document.querySelector(".mfd-pageselect");
         if (d && visible(d) && parseFloat(window.getComputedStyle(d).opacity || "1") >= 0.05) {
             var group = "";

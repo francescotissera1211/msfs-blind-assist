@@ -235,7 +235,22 @@ public sealed class CowsDA40DisplayForm : Form
         [Keys.Control | Keys.Left]  = ("FMS_Lower_DEC", "previous page group"),
         [Keys.Control | Keys.Down]  = ("FMS_Upper_INC", "next page"),
         [Keys.Control | Keys.Up]    = ("FMS_Upper_DEC", "previous page"),
-        [Keys.Control | Keys.Enter] = ("FMS_Upper_PUSH", "cursor"),
+        // ENTER means ENTER. Ctrl+Enter used to be the CURSOR push, which is the one key
+        // on the bezel a pilot reaches for expecting "confirm" - so the obvious key did
+        // the unobvious thing and the confirm key was F3, three rows away.
+        [Keys.Control | Keys.Enter] = ("ENT_Push", "enter"),
+        [Keys.Shift | Keys.Enter]   = ("FMS_Upper_PUSH", "cursor"),
+
+        // The named bezel buttons take their own initial under Alt, which is the shape
+        // every other display window in MSFSBA uses for "jump straight to that thing".
+        [Keys.Alt | Keys.D]         = ("DIRECTTO", "direct to"),
+        [Keys.Alt | Keys.F]         = ("FPL_Push", "flight plan"),
+        [Keys.Alt | Keys.P]         = ("PROC_Push", "procedures"),
+        [Keys.Alt | Keys.E]         = ("MENU_Push", "menu"),
+        [Keys.Alt | Keys.C]         = ("CLR", "clear"),
+
+        // The old function keys stay as aliases. They are in muscle memory and in the
+        // docs, and nothing is gained by breaking them to make a point.
         [Keys.F2]                   = ("MENU_Push", "menu"),
         [Keys.F3]                   = ("ENT_Push", "enter"),
         [Keys.F4]                   = ("CLR", "clear"),
@@ -279,6 +294,11 @@ public sealed class CowsDA40DisplayForm : Form
     /// </summary>
     private async Task PressBezel(string eventSuffix, string spoken)
     {
+        // What the display said BEFORE the key, so the readback can tell "the knob moved"
+        // from "the knob has not committed yet" without guessing from a clock.
+        string before = (await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
+
         string name = $"AS1000_{_side}_{eventSuffix}";
         string result = await _client.InvokeAsync(
             $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.key('{name}')");
@@ -292,29 +312,62 @@ public sealed class CowsDA40DisplayForm : Form
             return;
         }
 
-        await Task.Delay(BezelSettleMs);
+        // Read the quick answer first. A list highlight moves on the frame it is asked
+        // to, so for the case the pilot spends most of their time in this is instant.
+        await Task.Delay(BezelQuickSettleMs);
         if (_disposed) return;
 
-        // Refresh the window's own text first, then ask the display what to SAY. The two
-        // are different questions: the list wants everything on screen, the pilot who just
-        // turned a knob wants the one line that answers what the knob did.
-        await _client.ScrapeNowAsync();
-        if (_disposed) return;
-
+        // SPEAK FIRST, scrape after. This used to wait 1200 ms, then make a full scrape
+        // round trip, and only then a second round trip for the summary - three waits
+        // before the pilot heard anything, on EVERY press of an arrow key. The window's
+        // own text is not what the pilot is waiting for after a keystroke; the one line
+        // that says where the knob landed is. So the summary is fetched first and the
+        // scrape follows, off the critical path.
+        //
         // InvokeAsync returns the value already unwrapped - CoherentDisplayClient's
         // ExtractValue calls GetString() on a string result - so there is no JSON quoting
         // to strip here.
         string summary = (await _client.InvokeAsync(
             "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
+        if (_disposed) return;
+
+        // NOTHING CHANGED YET is the only case that earns the long wait, and only for the
+        // knob, because the page SELECTOR it opens commits about a second after the last
+        // turn. Paying that on every press is what made the window feel broken; paying it
+        // only when the quick read came back identical costs nothing in the common case.
+        if (summary == before && eventSuffix.StartsWith("FMS_", StringComparison.Ordinal))
+        {
+            await Task.Delay(BezelSettleMs - BezelQuickSettleMs);
+            if (_disposed) return;
+
+            summary = (await _client.InvokeAsync(
+                "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.summary()")).Trim();
+            if (_disposed) return;
+        }
+
         _announcer.AnnounceImmediate(summary.Length > 0 ? summary : spoken);
+
+        await _client.ScrapeNowAsync();
     }
 
     /// <summary>
-    /// How long to wait before reading back a bezel press. The page selector the FMS knob
-    /// opens holds its choice for about a second before committing, so a shorter wait
-    /// reads the OLD page and reports the knob as having done nothing.
+    /// How long to wait before reading back a bezel press.
+    ///
+    /// The 1200 ms is real but it is NOT general: it exists because the page SELECTOR the
+    /// FMS knob opens holds its choice for about a second before committing, so a shorter
+    /// wait reads the old page and reports the knob as having done nothing. Applying it to
+    /// every key made the whole window feel broken - a list highlight moves on the frame
+    /// it is asked to, and waiting 1.2 s to say so, four keys in a row, is an eternity.
+    ///
+    /// So the wait is now per-key. Only the two knob events that can open the page
+    /// selector pay it; everything else - ENT, CLR, MENU, the direct keys - reads back
+    /// almost at once.
     /// </summary>
     private const int BezelSettleMs = 1200;
+
+    /// <summary>The short settle, enough for the page to re-render but not felt.</summary>
+    private const int BezelQuickSettleMs = 180;
+
 
     /// <summary>
     /// Presses the softkey on the selected row, if it is one. Returns false for any other
