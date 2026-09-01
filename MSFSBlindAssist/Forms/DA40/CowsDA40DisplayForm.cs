@@ -241,22 +241,18 @@ public sealed class CowsDA40DisplayForm : Form
         [Keys.Control | Keys.Enter] = ("ENT_Push", "enter"),
         [Keys.Shift | Keys.Enter]   = ("FMS_Upper_PUSH", "cursor"),
 
-        // The named bezel buttons take their own initial under Alt, which is the shape
-        // every other display window in MSFSBA uses for "jump straight to that thing".
-        [Keys.Alt | Keys.D]         = ("DIRECTTO", "direct to"),
-        [Keys.Alt | Keys.F]         = ("FPL_Push", "flight plan"),
-        [Keys.Alt | Keys.P]         = ("PROC_Push", "procedures"),
-        [Keys.Alt | Keys.E]         = ("MENU_Push", "menu"),
-        [Keys.Alt | Keys.C]         = ("CLR", "clear"),
+        // The named bezel buttons take their own initial under Ctrl, so the whole bezel
+        // sits on ONE modifier rather than two.
+        [Keys.Control | Keys.D]     = ("DIRECTTO", "direct to"),
+        [Keys.Control | Keys.F]     = ("FPL_Push", "flight plan"),
+        [Keys.Control | Keys.P]     = ("PROC_Push", "procedures"),
+        [Keys.Control | Keys.E]     = ("MENU_Push", "menu"),
+        [Keys.Control | Keys.L]     = ("CLR", "clear"),
 
-        // The old function keys stay as aliases. They are in muscle memory and in the
-        // docs, and nothing is gained by breaking them to make a point.
-        [Keys.F2]                   = ("MENU_Push", "menu"),
-        [Keys.F3]                   = ("ENT_Push", "enter"),
-        [Keys.F4]                   = ("CLR", "clear"),
-        [Keys.F6]                   = ("DIRECTTO", "direct to"),
-        [Keys.F7]                   = ("FPL_Push", "flight plan"),
-        [Keys.F8]                   = ("PROC_Push", "procedures"),
+        // NO function-key aliases. Two ways to press one button is two things to learn
+        // and two things to document, and the F-keys were never mnemonic. F5 survives
+        // elsewhere in this form, but that is the house-wide REFRESH key every MSFSBA
+        // status display uses - it is not a bezel button.
         [Keys.Control | Keys.PageUp]   = ("RANGE_INC", "range out"),
         [Keys.Control | Keys.PageDown] = ("RANGE_DEC", "range in")
     };

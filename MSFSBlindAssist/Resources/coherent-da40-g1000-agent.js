@@ -1093,6 +1093,16 @@
     // The selected item carries "highlight-select" (NOT "checklist-focus", which is the
     // display list's own marker - they are different lists with different classes).
     A.checklistSelection = function () {
+        // ⚠️ GUARD FIRST. Both selection lists stay in the DOM with offsetParent set AND
+        // opacity 1 long after the pilot has left the checklist page - measured on the
+        // live MFD sitting on "FPL - Active Flight Plan", where both lists still reported
+        // visible with opacity 1 while the checklist PAGE container reported hidden. So
+        // neither the visibility test nor the opacity test that works for a G1000 popout
+        // dialog can be trusted here; the parent PAGE is the only honest signal. Without
+        // this the readback answered "Currently on: TERMS AND CONDITIONS FOR USE" on
+        // EVERY page of the MFD - a worse fault than the one this function was added for.
+        if (!firstVisible(".Da40-checklist-page-container")) return [];
+
         // ORDER MATTERS, and it is the reverse of the order a pilot meets them. Choosing
         // a GROUP opens the CHECKLIST list ON TOP of it, and both stay visible - measured
         // live: the category list stayed visible:1 while the selection list went 0 to 1.
