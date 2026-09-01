@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 4;
+    A.VERSION = 5;
 
     function visible(el) {
         if (!el) return false;
@@ -87,6 +87,30 @@
                   .replace(/\s+/g, " ").trim();
     }
 
+    // THE FIRST MATCH IS NOT ALWAYS THE ONE ON SCREEN.
+    //
+    // The G1000 keeps more than one copy of several of its blocks in the DOM — a full-width
+    // one and a half-width one for the split layouts — and only one is ever rendered. A
+    // plain querySelector takes whichever comes first in document order, which on this
+    // aeroplane is the HIDDEN one.
+    //
+    // That is not a cosmetic difference. The PFD carries TWO ".cas-display" blocks of 32
+    // rows each; the first is display:none with stale content, so A.cas() read the dead
+    // copy, found every row hidden, and reported "CAS messages: none" while ECU A FAIL,
+    // ECU B FAIL and PITOT HT OFF were on the screen. On an aeroplane whose only channel
+    // for most failures IS the CAS window, that is the worst thing this agent could get
+    // wrong, and it read as a clean scan rather than as an error.
+    //
+    // So anything that can plausibly be duplicated is looked up through here.
+    function firstVisible(sel, root) {
+        var all = (root || document).querySelectorAll(sel);
+        for (var i = 0; i < all.length; i++) {
+            if (visible(all[i])) return all[i];
+        }
+        return null;
+    }
+    A.firstVisible = firstVisible;
+
     function classList(el) {
         var cn = el.className;
         if (cn && cn.baseVal !== undefined) cn = cn.baseVal;
@@ -119,11 +143,18 @@
     // it, so a colour test reports the same caution differently depending on when it is
     // sampled.
     A.cas = function () {
-        var host = document.querySelector(".cas-display");
-        if (!host) return [];
+        // Every visible copy, not the first copy. See firstVisible above for what this
+        // cost before: a clean "no messages" over three standing cautions.
+        var hosts = document.querySelectorAll(".cas-display");
+        var rows = [];
+        for (var h = 0; h < hosts.length; h++) {
+            if (!visible(hosts[h])) continue;
+            var found = hosts[h].querySelectorAll(".annunciation");
+            for (var f = 0; f < found.length; f++) rows.push(found[f]);
+        }
 
-        var rows = host.querySelectorAll(".annunciation");
         var out = [];
+        var seen = {};
 
         for (var i = 0; i < rows.length; i++) {
             var row = rows[i];
@@ -136,6 +167,10 @@
             else if (cls.indexOf("caution") >= 0) severity = "caution";
             else if (cls.indexOf("safe-op") >= 0) severity = "status";
 
+            // Two visible copies would otherwise report every caution twice.
+            if (seen[t]) continue;
+            seen[t] = 1;
+
             out.push({ text: t, severity: severity, isNew: cls.indexOf("new") >= 0 });
         }
 
@@ -145,8 +180,8 @@
     // ---------------------------------------------------------------- FMA
     A.fma = function () {
         function one(sel) {
-            var e = document.querySelector(sel);
-            return e && visible(e) ? text(e) : "";
+            var e = firstVisible(sel);
+            return e ? text(e) : "";
         }
         return {
             autopilot: one(".fma-ap-label"),
@@ -158,8 +193,8 @@
     // ------------------------------------------------------- navigation source
     A.nav = function () {
         function one(sel) {
-            var e = document.querySelector(sel);
-            return e && visible(e) ? text(e) : "";
+            var e = firstVisible(sel);
+            return e ? text(e) : "";
         }
         return {
             source: one(".hsi-nav-source") || one(".hsi-map-nav-src"),
@@ -243,7 +278,7 @@
     // as a fixed list. A blank slot is a real state and is reported as such: the pilot
     // needs to know a key does nothing here, not that it is missing.
     A.softkeys = function () {
-        var host = document.querySelector(".softkeys-container");
+        var host = firstVisible(".softkeys-container");
         if (!host) return [];
 
         var tabs = host.querySelectorAll(".softkey-tab");
@@ -486,7 +521,7 @@
     // tab and highlighted entry in the DOM, so it can still say which group and page are
     // current long after it has faded out.
     A.pageTitle = function () {
-        var shown = text(document.querySelector(".nav-data-bar-page-title"));
+        var shown = text(firstVisible(".nav-data-bar-page-title"));
         if (shown) return shown;
 
         var d = document.querySelector(".mfd-pageselect");
@@ -529,7 +564,7 @@
     // answers. Keeping both is not a duplicate control - the panel is where the pilot
     // reads the engine, this is where they read the display.
     A.eis = function () {
-        var host = document.querySelector(".eis");
+        var host = firstVisible(".eis");
         if (!host) return [];
 
         var out = [];
