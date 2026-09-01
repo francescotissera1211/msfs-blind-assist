@@ -373,8 +373,20 @@ public sealed class CowsDA40DisplayForm : Form
             if (_disposed) return;
         }
 
+        // CURSOR OFF has to be said, because nothing else marks it. Turning the cursor on
+        // announces itself - the readback starts "Cursor on." - but turning it off just
+        // produced the page title, which is indistinguishable from a key that did nothing.
+        // A pilot then presses the cursor again to check, which turns it back ON, and the
+        // two states become impossible to tell apart by ear.
+        const string cursorPrefix = "Cursor on.";
+        bool wasOn = _lastSpokenSummary.StartsWith(cursorPrefix, StringComparison.Ordinal);
+        bool nowOn = summary.StartsWith(cursorPrefix, StringComparison.Ordinal);
+
+        string toSay = summary.Length > 0 ? summary : spoken;
+        if (wasOn && !nowOn) toSay = "Cursor off. " + toSay;
+
         _lastSpokenSummary = summary;
-        _announcer.AnnounceImmediate(summary.Length > 0 ? summary : spoken);
+        _announcer.AnnounceImmediate(toSay);
 
         // The window's own text last, off the critical path: it is not what a pilot is
         // waiting on after a keystroke.
