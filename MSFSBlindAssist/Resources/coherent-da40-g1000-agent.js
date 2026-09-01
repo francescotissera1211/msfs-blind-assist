@@ -1198,6 +1198,119 @@
         return lines;
     };
 
+    /// The MFD ENGINE page, read a field at a time.
+    ///
+    /// Its lower half is four boxes - Fluids, Electrical, Fuel System, Fuel Calculator -
+    /// and the generic walk rendered each box as ONE line, so a screen reader said
+    /// "Fluids Coolant °C 82 Gearbox °C 81" and, worse,
+    /// "Fuel System FFlow GPH 0.641°C 34 L R Main 14105 Gal 814", in which no value can be
+    /// arrowed to and two numbers run together into a third that does not exist.
+    ///
+    /// Every value on the page is an .engine-page-gauge, and there are exactly two shapes:
+    /// a VERTICAL gauge splits into .gauge-label and .gauge-value, and a HORIZONTAL one
+    /// welds both into a single .gauge-text ("Volts28.2"), which has to be split on the
+    /// numeric tail because the DOM offers no boundary. The fuel calculator uses its own
+    /// .fuel-calculator-field, label and value already separate.
+    /// Collapses a line that is immediately repeated. The engine page draws Load % twice
+    /// - once in the EIS strip and once in the page body - and a screen reader reading
+    /// "Load %: 4  Load %: 4" sounds like a stutter or a fault rather than two gauges.
+    /// Adjacent only: two identical values far apart on a page are two real readings.
+    A.dedupeAdjacent = function (lines) {
+        var out = [];
+        for (var i = 0; i < lines.length; i++) {
+            if (i > 0 && lines[i] === lines[i - 1]) continue;
+            out.push(lines[i]);
+        }
+        return out;
+    };
+
+    A.engineGaugeLine = function (g) {
+        // A TEXT gauge keeps its label and value in their own nodes under different class
+        // names again (.ff-label / .ff-text), so the generic pair below misses it and the
+        // welded fallback produced "FFlow GPH0.6".
+        var ffLabel = g.querySelector(".ff-label");
+        var ffText = g.querySelector(".ff-text");
+        if (ffLabel && ffText) {
+            return text(ffLabel) + ": " + text(ffText);
+        }
+
+        // A DOUBLE gauge is the fuel pair - one gauge, TWO needles, left tank and right.
+        // Its .gauge-text holds .left-value, .label and .right-value as separate nodes, so
+        // reading the parent welds three readings into one number: "41°C34" was two tank
+        // temperatures of 41 and 34, and "Main14105Gal814" was worse.
+        var left = g.querySelector(".left-value");
+        var right = g.querySelector(".right-value");
+        if (left && right) {
+            var mid = g.querySelector(".gauge-text > .label");
+            var unit = mid ? text(mid) : "";
+            return (unit ? unit + ": " : "") + "left " + text(left) + ", right " + text(right);
+        }
+
+        var label = g.querySelector(".gauge-label");
+        var value = g.querySelector(".gauge-value");
+        if (label && value) {
+            var l = text(label), v = text(value);
+            if (l || v) return (l ? l + ": " : "") + v;
+        }
+
+        var welded = g.querySelector(".gauge-text");
+        if (welded) {
+            var t = text(welded);
+            // The value is the trailing number, optionally signed and decimal. Anchored at
+            // the END so a label containing digits ("Fuel Qty Gal") keeps them.
+            var m = t.match(/^(.*?)([+-]?\d+(?:\.\d+)?)$/);
+            if (m && m[1].trim()) return m[1].trim() + ": " + m[2];
+            if (t) return t;
+        }
+
+        var whole = text(g);
+        return whole || "";
+    };
+
+    A.enginePageLines = function (p) {
+        var boxes = [
+            [".fluids-container", ".fluids-container-label"],
+            [".electrical-container", ".electrical-container-label"],
+            [".fuel-system-container", ".fuel-system-container-label"],
+            [".fuel-calculator-container", ".fuel-calculator-label"]
+        ];
+
+        var lines = [];
+
+        for (var b = 0; b < boxes.length; b++) {
+            var box = p.querySelector(boxes[b][0]);
+            if (!box || !visible(box)) continue;
+
+            var heading = text(box.querySelector(boxes[b][1]));
+            if (heading) lines.push(heading);
+
+            var fields = box.querySelectorAll(".fuel-calculator-field");
+            if (fields.length) {
+                for (var f = 0; f < fields.length; f++) {
+                    if (!visible(fields[f])) continue;
+                    var kids = fields[f].children;
+                    if (kids.length >= 2) {
+                        var fl = text(kids[0]), fv = text(kids[1]);
+                        if (fl || fv) lines.push("  " + fl + ": " + fv);
+                    } else {
+                        var ft = text(fields[f]);
+                        if (ft) lines.push("  " + ft);
+                    }
+                }
+                continue;
+            }
+
+            var gauges = box.querySelectorAll(".engine-page-gauge");
+            for (var i = 0; i < gauges.length; i++) {
+                if (!visible(gauges[i])) continue;
+                var line = A.engineGaugeLine(gauges[i]);
+                if (line) lines.push("  " + line);
+            }
+        }
+
+        return lines;
+    };
+
     A.page = function () {
         var p = document.querySelector(".mfd-page.open");
         if (!p || !visible(p)) return [];
@@ -1240,6 +1353,11 @@
             }
             if (lines.length) return lines;
         }
+
+        // THE ENGINE PAGE FIRST. Its four boxes are gauges, not group-boxes, so the
+        // grouped reader below renders each box as one welded line.
+        var engine = A.enginePageLines(p);
+        if (engine.length) return A.dedupeAdjacent(engine);
 
         // GROUPED PAGES FIRST. The setup, status and utility pages are built as boxes of
         // labelled rows, and the generic one-level walk renders each COLUMN as a single
