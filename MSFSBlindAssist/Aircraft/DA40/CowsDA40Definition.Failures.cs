@@ -55,7 +55,7 @@ public partial class CowsDA40Definition
         // ---------- Engine Failures ----------
         if (isNg)
         {
-            AddFailureModes(v, "DA40_FAIL_BYPASS", "FAILURES_BYPASS", "Oil Bypass Valve",
+            AddFailureModes(v, "DA40_FAIL_BYPASS", "FAILURES_BYPASS:1", "Oil Bypass Valve",
             new Dictionary<double, string> { [0] = "Normal", [1] = "Stuck closed", [2] = "Stuck open", [3] = "Stuck as is" });
             AddFailureModes(v, "DA40_FAIL_THERM_COOL", "FAILURES_THERMOSTAT:1", "Coolant Thermostat",
             new Dictionary<double, string> { [0] = "Normal", [1] = "Stuck closed", [2] = "Stuck open", [3] = "Stuck as is" });
@@ -153,9 +153,51 @@ public partial class CowsDA40Definition
         // ---------- Engine Damage ----------
         if (isNg)
         {
-            AddFailureFlag(v, "DA40_FAIL_OIL_PUMP", "FAILURES_OIL", "Oil Pump");
-            AddFailureFlag(v, "DA40_FAIL_BLOCK", "FAILURES_BLOCK", "Engine Block");
+            AddFailureFlag(v, "DA40_FAIL_OIL_PUMP", "FAILURES_OIL:1", "Oil Pump");
+            AddFailureFlag(v, "DA40_FAIL_BLOCK", "FAILURES_BLOCK:1", "Engine Block");
         }
+
+        // ⚠️ THREE OF THESE CARRY A ":1" AND IT IS LOAD-BEARING. The oil pump, the engine
+        // block and the bypass are read by the aeroplane as FAILURES_OIL:1,
+        // FAILURES_BLOCK:1 and FAILURES_BYPASS:1; MSFSBA wrote the UNINDEXED name, which
+        // is a different variable that nothing reads. Measured before the fix: arming the
+        // oil pump failure with the engine running left oil pressure at 2.41 bar and then
+        // 2.40 eight seconds later - it did nothing at all, which is exactly how it was
+        // reported. A write-stick test cannot catch this; only reading what the MODEL
+        // reads can.
+
+        // ---------- Breaker trips ----------
+        // Thirty of them, all read by the aeroplane, none previously offered.
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ADC", "FAILURES_CB_ADC", "ADC");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AFCS", "FAILURES_CB_AFCS", "Autopilot Computer");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AHRS", "FAILURES_CB_AHRS", "AHRS");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ALT", "FAILURES_CB_ALT", "Alternator");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AP", "FAILURES_CB_AP", "Autopilot");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AUD", "FAILURES_CB_AUD", "Audio Panel");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AV_FAN", "FAILURES_CB_AV_FAN", "Avionics Fan");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_CDU_FAN", "FAILURES_CB_CDU_FAN", "CDU Fan");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_COM1", "FAILURES_CB_COM1", "COM 1");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_COM2", "FAILURES_CB_COM2", "COM 2");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ECA", "FAILURES_CB_ECA", "ECU A");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ECB", "FAILURES_CB_ECB", "ECU B");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ENGINST", "FAILURES_CB_ENGINST", "Engine Instruments");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ESS_TIE", "FAILURES_CB_ESS_TIE", "Essential Bus Tie");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAP", "FAILURES_CB_FLAP", "Flap");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAPS", "FAILURES_CB_FLAPS", "Flaps");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FPA", "FAILURES_CB_FPA", "Fuel Pump A");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FPB", "FAILURES_CB_FPB", "Fuel Pump B");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_HORIZON", "FAILURES_CB_HORIZON", "Standby Horizon");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MAIN_TIE", "FAILURES_CB_MAIN_TIE", "Main Bus Tie");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MAST", "FAILURES_CB_MAST", "Master Control");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MFD", "FAILURES_CB_MFD", "MFD");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV1", "FAILURES_CB_NAV1", "NAV 1");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV2", "FAILURES_CB_NAV2", "NAV 2");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_PFD", "FAILURES_CB_PFD", "PFD");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_PITOT", "FAILURES_CB_PITOT", "Pitot Heat");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_START", "FAILURES_CB_START", "Starter");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_TAS", "FAILURES_CB_TAS", "Traffic");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_XFR", "FAILURES_CB_XFR", "Transfer Pump");
+        AddBreakerTrip(v, "DA40_FAIL_CBT_XPDR", "FAILURES_CB_XPDR", "Transponder");
 
         // ---------- Reset ----------
 
@@ -194,6 +236,38 @@ public partial class CowsDA40Definition
             RenderAsButton = true,
             SuppressRestingButtonState = true,
             IsAnnounced = false
+        };
+    }
+
+
+    /// <summary>
+    /// A failure that POPS A BREAKER, which is a different thing from the breaker being
+    /// pulled and deserves its own name for it.
+    ///
+    /// The aeroplane models thirty of these and MSFSBA offered none, which is a large part
+    /// of the gap between the 79 failures it exposed and the "130+ random failures" COWS
+    /// advertises. They genuinely work - the starter one is read right beside the write
+    /// that trips CB_STR - and they are the mechanism behind a breaker popping in flight
+    /// rather than a pilot pulling it.
+    ///
+    /// No " Failure" suffix here: "Starter Breaker Trip" already says what it is, and
+    /// "Starter Breaker Trip Failure" says it twice.
+    /// </summary>
+    private static void AddBreakerTrip(Dictionary<string, SimVarDefinition> v, string key,
+        string lvar, string label)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = lvar,
+            DisplayName = label + " Breaker Trip",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Normal",
+                [1] = "WILL TRIP"
+            }
         };
     }
 
@@ -351,6 +425,40 @@ public partial class CowsDA40Definition
         "DA40_FAIL_BLOCK"
     };
 
+    private static readonly List<string> BreakerTripControls = new()
+    {
+        "DA40_FAIL_CBT_ADC",
+        "DA40_FAIL_CBT_AFCS",
+        "DA40_FAIL_CBT_AHRS",
+        "DA40_FAIL_CBT_ALT",
+        "DA40_FAIL_CBT_AP",
+        "DA40_FAIL_CBT_AUD",
+        "DA40_FAIL_CBT_AV_FAN",
+        "DA40_FAIL_CBT_CDU_FAN",
+        "DA40_FAIL_CBT_COM1",
+        "DA40_FAIL_CBT_COM2",
+        "DA40_FAIL_CBT_ECA",
+        "DA40_FAIL_CBT_ECB",
+        "DA40_FAIL_CBT_ENGINST",
+        "DA40_FAIL_CBT_ESS_TIE",
+        "DA40_FAIL_CBT_FLAP",
+        "DA40_FAIL_CBT_FLAPS",
+        "DA40_FAIL_CBT_FPA",
+        "DA40_FAIL_CBT_FPB",
+        "DA40_FAIL_CBT_HORIZON",
+        "DA40_FAIL_CBT_MAIN_TIE",
+        "DA40_FAIL_CBT_MAST",
+        "DA40_FAIL_CBT_MFD",
+        "DA40_FAIL_CBT_NAV1",
+        "DA40_FAIL_CBT_NAV2",
+        "DA40_FAIL_CBT_PFD",
+        "DA40_FAIL_CBT_PITOT",
+        "DA40_FAIL_CBT_START",
+        "DA40_FAIL_CBT_TAS",
+        "DA40_FAIL_CBT_XFR",
+        "DA40_FAIL_CBT_XPDR",
+    };
+
     private static readonly List<string> SimResetControls = new()
     {
         "DA40_FAIL_RESET",
@@ -374,6 +482,7 @@ public partial class CowsDA40Definition
         d[SimLightsPanel] = new List<string>(SimLightsControls);
         d[SimBrakesPanel] = new List<string>(SimBrakesControls);
         if (isNg) d[SimDamagePanel] = new List<string>(SimDamageControls);
+        d["Breaker Trips"] = new List<string>(BreakerTripControls);
         d[SimResetPanel] = new List<string>(SimResetControls);
         return d;
     }

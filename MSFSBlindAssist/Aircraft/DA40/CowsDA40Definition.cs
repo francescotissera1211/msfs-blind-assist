@@ -130,6 +130,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 "Flight System Failures",
                 "Light Failures",
                 "Brake Failures",
+                // Thirty breaker POPS, which the aeroplane models and MSFSBA never
+                // offered. Separate from the Breakers panel: that is where a pilot pulls
+                // one, this is where one trips on its own.
+                "Breaker Trips",
                 "Engine Damage",
                 "Reset",
                 // The COWS options. They live on the MFD Engine page's own Page Menu,

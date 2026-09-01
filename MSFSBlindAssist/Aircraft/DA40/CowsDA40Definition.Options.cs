@@ -101,6 +101,12 @@ public partial class CowsDA40Definition
             "Random Failures Mode",
             "0 is off. The aircraft uses modes 1 to 4; it does not name them.");
 
+        // COWS ship a "timer expired" voice alert; this is its setting. Named from their
+        // own feature list rather than guessed from the variable.
+        AddOptionNumber(v, "DA40_OPT_TIMER_EXPIRED", "COWS_TIMER_EXP",
+            "Timer Expired Alert",
+            "The aircraft's own spoken alert when the G1000 timer runs out.");
+
         AddOptionNumber(v, "DA40_OPT_TRIM_SPEED", "INPUT_TRIM_SPEED",
             "Electric Trim Speed",
             "Scales how fast the electric trim runs. The model forces 1 if it is ever 0.");
@@ -123,6 +129,7 @@ public partial class CowsDA40Definition
         "DA40_OPT_FAILURES_MODE",
         "DA40_OPT_REALISTIC_PARK_BRAKE",
         "DA40_OPT_WHEEL_ASSIST",
+        "DA40_OPT_TIMER_EXPIRED",
         "DA40_OPT_TRIM_SPEED",
         "DA40_OPT_SLOW_PROPS",
         "DA40_OPT_PANEL_SHAKE",
