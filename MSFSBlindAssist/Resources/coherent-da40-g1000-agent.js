@@ -281,6 +281,59 @@
         return parts.join(" ");
     };
 
+    /// THE RADIO BOXES, including the two facts a pilot cannot get from a SimVar.
+    ///
+    /// Which radio the tuning knob will act on, and which COM would actually TRANSMIT, are
+    /// display state - the aeroplane marks them with a `select` class on the frequency
+    /// container and a `transmit-selected` on the active frequency. Nothing read either,
+    /// so a pilot turning the NAV knob had no way to know it was about to retune NAV 2
+    /// rather than NAV 1, and no way at all to know which COM was live. Both were found by
+    /// class inventory rather than by being reported.
+    ///
+    /// Structure, read from the live PFD: `.navcom-frequencies left` holds the two NAV
+    /// rows and `right` the two COM rows; each row is a
+    /// `.navcom-frequencyelement-container` carrying `select` when the knob is on it, with
+    /// `.navcom-freqstandby` and `.navcom-freqactive` inside.
+    A.radios = function () {
+        var out = [];
+
+        var sides = [[".navcom-frequencies.left", "NAV"], [".navcom-frequencies.right", "COM"]];
+
+        for (var s = 0; s < sides.length; s++) {
+            var box = firstVisible(sides[s][0]);
+            if (!box) continue;
+
+            var rows = box.querySelectorAll(".navcom-frequencyelement-container");
+            var n = 0;
+
+            for (var i = 0; i < rows.length; i++) {
+                if (!visible(rows[i])) continue;
+                n++;
+
+                var active = rows[i].querySelector(".navcom-freqactive");
+                var standby = rows[i].querySelector(".navcom-freqstandby");
+                if (!active && !standby) continue;
+
+                var bits = [sides[s][1] + " " + n];
+                if (active) bits.push("active " + text(active));
+                if (standby) bits.push("standby " + text(standby));
+
+                // The knob acts on exactly one radio per side, and turning it while the
+                // box is on the other one retunes a radio the pilot did not mean to.
+                if (hasClassContaining(rows[i], "select")) bits.push("TUNING");
+
+                // Which COM the transmit key would key. There is no SimVar for it.
+                if (active && hasClassContaining(active, "transmit-selected")) {
+                    bits.push("TRANSMIT");
+                }
+
+                out.push(bits.join(", "));
+            }
+        }
+
+        return out;
+    };
+
     A.pfdWindows = function () {
         var out = [];
 
@@ -294,6 +347,9 @@
         // all readable as SimVars, but the SELECTED ones are the targets, and on a display
         // that is where they live. Altitude is always on the screen; heading and course
         // sit in their own boxes; the selected vertical speed appears only in VS mode.
+        var radios = A.radios();
+        for (var r = 0; r < radios.length; r++) out.push(radios[r]);
+
         var wind = A.wind();
         if (wind) out.push("Wind: " + wind);
 
