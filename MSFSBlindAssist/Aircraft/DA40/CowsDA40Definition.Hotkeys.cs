@@ -189,53 +189,34 @@ public partial class CowsDA40Definition
                 return true;
             }
 
-            // ---------- A, H, S, V: current AND selected ----------
+            // ---------- Output mode + Shift A, H, S, V: the SELECTED values ----------
             //
-            // These four fell through to the base class, which answers with the CURRENT
-            // value only. On an aeroplane with an autopilot that is half the question: a
-            // pilot about to climb wants to know what is SELECTED as much as where they
-            // are, and on the GFC 700 the selected values are the whole reason the panel
-            // exists. Reported as "they do not give values at all when it comes to what is
-            // selected in the autopilot", which was exactly right.
-            //
-            // Both numbers in ONE utterance. Two announcements a breath apart is how a
-            // pilot loses the first, and these are read together or not at all.
+            // These four are the SELECTED values and nothing else. The registrations name
+            // them for it - "Shift+A (FCU Altitude)", "Shift+H (FCU Heading)" - and the
+            // CURRENT values already have their own keys in output mode: plain A is
+            // altitude MSL, H magnetic heading, S indicated airspeed, V vertical speed.
+            // Answering with both put the current value on a key that exists to say what
+            // the autopilot is aiming at, and buried the number actually being asked for.
             case HotkeyAction.ReadAltitude:
-            {
-                double? now = ReadNow(simConnect, "DA40_ALTITUDE");
-                double? sel = ReadNow(simConnect, "DA40_AP_ALT_SET");
-                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
-                    "Altitude", now, "feet", "Selected", sel, "feet"));
+                announcer.AnnounceImmediate(ComposeSelected(
+                    "Selected altitude", ReadNow(simConnect, "DA40_AP_ALT_SET"), "feet"));
                 return true;
-            }
 
             case HotkeyAction.ReadHeading:
-            {
-                double? now = ReadNow(simConnect, "DA40_HEADING");
-                double? bug = ReadNow(simConnect, "DA40_AP_HDG_SET");
-                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
-                    "Heading", now, "degrees", "Bug", bug, "degrees"));
+                announcer.AnnounceImmediate(ComposeSelected(
+                    "Heading bug", ReadNow(simConnect, "DA40_AP_HDG_SET"), "degrees"));
                 return true;
-            }
 
             case HotkeyAction.ReadSpeed:
-            {
-                double? now = ReadNow(simConnect, "DA40_AIRSPEED");
-                double? sel = ReadNow(simConnect, "DA40_AP_IAS_SET");
-                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
-                    "Airspeed", now, "knots", "Selected", sel, "knots"));
+                announcer.AnnounceImmediate(ComposeSelected(
+                    "Selected airspeed", ReadNow(simConnect, "DA40_AP_IAS_SET"), "knots"));
                 return true;
-            }
 
             case HotkeyAction.ReadFCUVerticalSpeedFPA:
-            {
-                double? now = ReadNow(simConnect, "DA40_VERTICAL_SPEED");
-                double? sel = ReadNow(simConnect, "DA40_AP_VS_SET");
-                announcer.AnnounceImmediate(ComposeCurrentAndSelected(
-                    "Vertical speed", now, "feet per minute",
-                    "Selected", sel, "feet per minute"));
+                announcer.AnnounceImmediate(ComposeSelected(
+                    "Selected vertical speed", ReadNow(simConnect, "DA40_AP_VS_SET"),
+                    "feet per minute"));
                 return true;
-            }
 
             // ---------- L: flaps ----------
             case HotkeyAction.ReadFlaps:
@@ -404,22 +385,14 @@ public partial class CowsDA40Definition
         => simConnect.GetCachedVariableValue(key);
 
     /// <summary>
-    /// "Altitude 2,400 feet. Selected 5,000 feet." - one utterance, and honest about a
-    /// value it could not read rather than inventing a zero for it.
+    /// One selected value, or an honest statement that it could not be read - never a
+    /// zero standing in for a number the cache did not have.
     /// </summary>
-    private static string ComposeCurrentAndSelected(string nowLabel, double? now, string nowUnit,
-        string selLabel, double? sel, string selUnit)
+    private static string ComposeSelected(string label, double? value, string unit)
     {
-        string first = now is null
-            ? nowLabel + " not available"
-            : nowLabel + " " + Math.Round(now.Value).ToString("N0",
-                System.Globalization.CultureInfo.InvariantCulture) + " " + nowUnit;
+        if (value is null) return label + " not available.";
 
-        string second = sel is null
-            ? selLabel + " not available"
-            : selLabel + " " + Math.Round(sel.Value).ToString("N0",
-                System.Globalization.CultureInfo.InvariantCulture) + " " + selUnit;
-
-        return first + ". " + second + ".";
+        return label + " " + Math.Round(value.Value).ToString("N0",
+            System.Globalization.CultureInfo.InvariantCulture) + " " + unit + ".";
     }
 }

@@ -95,45 +95,6 @@ public partial class CowsDA40Definition
             ExcludeFromMonitorManager = true
         },
 
-        // Altitude, heading and vertical speed, for the same reason as airspeed above:
-        // they are FIXED data definitions in SimConnectManager rather than keyed
-        // variables, so there is nothing in lastVariableValues for a hotkey to look up.
-        // Output mode + A, H and V need them to answer with the CURRENT value beside the
-        // autopilot's selected one, and without a key here they read "not available".
-        // Silent: these change constantly and are read on demand, never announced.
-        ["DA40_ALTITUDE"] = new SimVarDefinition
-        {
-            Name = "INDICATED ALTITUDE",
-            DisplayName = "Altitude",
-            Type = SimVarType.SimVar,
-            Units = "feet",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ExcludeFromMonitorManager = true
-        },
-
-        ["DA40_HEADING"] = new SimVarDefinition
-        {
-            Name = "PLANE HEADING DEGREES MAGNETIC",
-            DisplayName = "Heading",
-            Type = SimVarType.SimVar,
-            Units = "degrees",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ExcludeFromMonitorManager = true
-        },
-
-        ["DA40_VERTICAL_SPEED"] = new SimVarDefinition
-        {
-            Name = "VERTICAL SPEED",
-            DisplayName = "Vertical Speed",
-            Type = SimVarType.SimVar,
-            Units = "feet per minute",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ExcludeFromMonitorManager = true
-        },
-
         // THE TRANSPONDER, announced. It is tuned on the G1000 and nowhere else, so
         // without this the only way to know a squawk changed is to have the PFD window
         // open on the right page. A code is not a continuously-varying quantity - it
@@ -215,9 +176,6 @@ public partial class CowsDA40Definition
         "DA40_FUEL_AUX_ACTUAL",
         "DA40_GROSS_WEIGHT",
         "DA40_AIRSPEED",
-        "DA40_ALTITUDE",
-        "DA40_HEADING",
-        "DA40_VERTICAL_SPEED",
         "DA40_TRIM_SET",
         "DA40_POWER_LEVER_SET",
 

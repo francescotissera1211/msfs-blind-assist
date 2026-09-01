@@ -111,6 +111,21 @@
     }
     A.firstVisible = firstVisible;
 
+    // ⚠️ classList() returns an ARRAY, so its indexOf is an EXACT-token search. That is
+    // right for a whole class name ("cyan", "hide-element") and WRONG for a partial one:
+    // classList(e).indexOf("row") never matches "mfd-system-setup-row-right", because no
+    // token IS "row". Two call sites assumed a string and both failed silently - the
+    // cursor read back with no label at all, and pfdPopout called .split on an array,
+    // threw, and left summary() empty so every bezel key announced its fallback text.
+    // Use this when the class is a FRAGMENT.
+    function hasClassContaining(el, fragment) {
+        var parts = classList(el);
+        for (var i = 0; i < parts.length; i++) {
+            if (parts[i].indexOf(fragment) >= 0) return true;
+        }
+        return false;
+    }
+
     function classList(el) {
         var cn = el.className;
         if (cn && cn.baseVal !== undefined) cn = cn.baseVal;
@@ -612,7 +627,11 @@
             // as "Ident, Facility, City" with its own fields orphaned under it.
             if (!title) {
                 for (var h = 0; h < d.children.length; h++) {
-                    if (classList(d.children[h]).indexOf("groupbox") >= 0) continue;
+                    // FRAGMENT, not a token: the children are "groupbox-container" and
+                    // "groupbox mfd-system-setup-group", and an exact-token test skips
+                    // only the second - so a groupbox's own text could be stolen as the
+                    // dialog title.
+                    if (hasClassContaining(d.children[h], "groupbox")) continue;
                     var ht = text(d.children[h]);
                     if (ht && ht.length <= 40) { title = ht; break; }
                 }
@@ -1282,7 +1301,7 @@
             var e = all[i].parentElement;
             for (var d = 0; d < 6 && e; d++) {
                 var whole = text(e);
-                if (classList(e).indexOf("row") >= 0 &&
+                if (hasClassContaining(e, "row") &&
                     whole.length > value.length &&
                     whole.lastIndexOf(value) === whole.length - value.length) {
                     label = whole.substring(0, whole.length - value.length).trim();
@@ -1591,7 +1610,7 @@
             // The class carries the identity ("pfd-nearest-airport"); turn it into words
             // rather than reading a CSS class name aloud.
             var name = "";
-            var parts = classList(d).split(" ");
+            var parts = classList(d);
             for (var c = 0; c < parts.length; c++) {
                 var t = parts[c];
                 if (!t || t === "popout-dialog" || t === "open" || t === "subview") continue;
