@@ -69,6 +69,24 @@ public partial class CowsDA40Definition
     /// </summary>
     private const int EcuTestHoldMs = 26000;
 
+    /// <summary>
+    /// The OTHER hold on the same button, and the aeroplane's own way out of a flat
+    /// aircraft.
+    ///
+    /// From the DA40's shipped Tips and Help page, word for word: "Reseting
+    /// failures/Charging battery - Press and hold the ECU test button for 10 seconds with
+    /// the engine master turned off." One button, two functions, told apart by the engine
+    /// master and the duration.
+    ///
+    /// ⚠️ THIS IS THE DOCUMENTED FIX FOR THE STATE THAT COST THIS PROJECT AN AFTERNOON.
+    /// The COWS state system saves the cockpit into STATE_* variables and restores it on
+    /// load, so an aeroplane parked with flat batteries comes back flat every time and
+    /// nothing will crank - and reloading does not help, because the state reloads with it.
+    /// The Reset panel and the State Saving option are two ways round it; this is the
+    /// aircraft's OWN way, and it was in its documentation the whole time.
+    /// </summary>
+    private const int EcuResetHoldMs = 10000;
+
     private static Dictionary<string, SimVarDefinition> BuildEcuVariables()
     {
         var v = new Dictionary<string, SimVarDefinition>();
@@ -90,6 +108,20 @@ public partial class CowsDA40Definition
                 [2] = "ECU A"
             },
             HelpText = "Auto normally. On an ECU failure select the failed ECU, then back to Auto."
+        };
+
+        // The same physical button, held for ten seconds with the engine master OFF. See
+        // EcuResetHoldMs for the aircraft's own wording and for why it matters so much.
+        v["DA40_ECU_RESET_HOLD"] = new SimVarDefinition
+        {
+            Name = "DA40_ECU_RESET_HOLD",
+            DisplayName = "Reset Failures and Charge Battery",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Holds the ECU test button 10 seconds. Engine master must be OFF."
         };
 
         v["DA40_ECU_TEST"] = new SimVarDefinition
@@ -245,7 +277,8 @@ public partial class CowsDA40Definition
     private static readonly List<string> EcuControls = new()
     {
         "DA40_ECU_VOTER",
-        "DA40_ECU_TEST"
+        "DA40_ECU_TEST",
+        "DA40_ECU_RESET_HOLD"
     };
 
     private static readonly List<string> EcuDisplay = new()
@@ -408,6 +441,31 @@ public partial class CowsDA40Definition
                 _ecuTestStartedTicks = Environment.TickCount64;
                 _ecuTestEndedTicks = 0;
                 HoldLVar("ECU_TEST:1", EcuTestHoldMs, simConnect);
+                return true;
+            }
+
+            case "DA40_ECU_RESET_HOLD":
+            {
+                // THE ENGINE MASTER MUST BE OFF, and this is not a nicety: with it on, the
+                // same hold runs the 26-second ECU TEST instead, which cycles the propeller
+                // and is not what the pilot asked for. Said and refused rather than done
+                // wrong - the one case on this aeroplane where a blocker is not merely
+                // reported, because the alternative is a different function entirely.
+                double? master = simConnect.GetCachedVariableValue("DA40_START_ENGINE_MASTER");
+                if (master is > 0.5)
+                {
+                    announcer.AnnounceImmediate(
+                        "Turn the engine master off first. With it on this button runs the " +
+                        "ECU test instead.");
+                    return true;
+                }
+
+                announcer.AnnounceImmediate(
+                    "Holding the ECU test button for 10 seconds. Resets latched failures " +
+                    "and charges the batteries.");
+
+                HoldLVar("ECU_TEST:1", EcuResetHoldMs, simConnect, () =>
+                    announcer.AnnounceImmediate("Reset complete."));
                 return true;
             }
         }

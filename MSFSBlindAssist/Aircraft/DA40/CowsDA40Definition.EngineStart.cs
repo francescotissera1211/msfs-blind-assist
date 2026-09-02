@@ -145,13 +145,24 @@ public partial class CowsDA40Definition
             }
         };
 
+        // ⚠️ THE GLOW LAMP GOING OUT IS A CUE TO ACT, so it speaks.
+        //
+        // The AFM start is: engine master on, WAIT for the glow annunciation to go out,
+        // then crank. A sighted pilot is interrupted by that lamp extinguishing whether
+        // they were watching for it or not - it is the whole reason they are sitting there
+        // - so by this aircraft's own announcement rule it has to interrupt a blind pilot
+        // too. It was OnRequest, which meant it only ever appeared in the Engine Start
+        // panel's scan and a pilot had to sit on that panel pressing F5 to catch it.
+        //
+        // It is a described STATE and not a moving number, so it does not fall foul of the
+        // numeric-silence rule that keeps temperatures and voltages quiet.
         v["DA40_START_GLOW_ON"] = new SimVarDefinition
         {
             Name = "GLOW_ON:1",
             DisplayName = "Glow Plugs",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {

@@ -362,7 +362,14 @@ public class CowsDA40PanelStructureTests
 
         Assert.Contains("DA40_ECU_VOTER", controls);
         Assert.Contains("DA40_ECU_TEST", controls);
-        Assert.Equal(2, controls.Count);
+
+        // ONE BUTTON, TWO FUNCTIONS. The aircraft's own Tips and Help page: "Reseting
+        // failures/Charging battery - Press and hold the ECU test button for 10 seconds
+        // with the engine master turned off." Same button as the test, told apart by the
+        // engine master and the duration, so it earns its own control rather than a
+        // footnote on the test's help text.
+        Assert.Contains("DA40_ECU_RESET_HOLD", controls);
+        Assert.Equal(3, controls.Count);
     }
 
     [Fact]
