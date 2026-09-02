@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 7;
+    A.VERSION = 8;
 
     function visible(el) {
         if (!el) return false;
@@ -1623,10 +1623,10 @@
     // Blank slots are real and are reported as blank: on that sub-page keys 2, 6 and 8 do
     // nothing, and a pilot needs to know that rather than wonder whether the key is
     // missing.
-    A.press = function (index, side) {
-        if (!(index >= 1 && index <= 12)) return "range";
-        return A.key("AS1000_" + (side === "MFD" ? "MFD" : "PFD") + "_SOFTKEYS_" + index);
-    };
+    // ⚠️ THERE IS NO A.press FOR SOFTKEYS, and there must not be one. A softkey press
+    // goes over SimConnect from CowsDA40DisplayForm - see the split described below - and
+    // an A.press(index, side) that lived here was silently overwritten by the bezel
+    // A.press(name) a few lines further down, so it had never once been callable.
 
     // ---------------------------------------------------- the BEZEL, not the keys
     //
@@ -1677,13 +1677,67 @@
     /// to a key that did nothing - which is exactly how pressing the cursor appeared to
     /// need TWO presses before it said anything.
     A.state = function () {
-        var cursor = "";
-        try { cursor = A.cursorField(); } catch (e) { cursor = ""; }
+        // THE CURSOR COMES FROM THE INSTRUMENT NOW, not from a colour. A.M.cursor() asks
+        // the page's own scroll controller, which is the flag the aeroplane itself tests,
+        // so it cannot be wrong about a page whose highlight class this reader has never
+        // seen - which is what every previous cursor bug was. The DOM reader stays as the
+        // fallback for the one case the model cannot answer: a display whose instrument
+        // element is not up yet, where A.M.cursor() returns null rather than false.
+        var cursor;
+        var modelCursor = null;
+        try { modelCursor = A.M.cursor(); } catch (e) { modelCursor = null; }
+        if (modelCursor === null) {
+            var domCursor = "";
+            try { domCursor = A.cursorField(); } catch (e) { domCursor = ""; }
+            cursor = domCursor ? "1" : "0";
+        } else {
+            cursor = modelCursor ? "1" : "0";
+        }
 
         var summary = "";
         try { summary = A.summary(); } catch (e) { summary = ""; }
 
-        return "ok|" + (cursor ? "1" : "0") + "|" + summary;
+        // The VIEW KEY rides along because the caller has to know WHAT it is looking at
+        // before it can decide how long to wait for it. The page selector commits about a
+        // second after the last turn and needs the long settle; a list highlight moves on
+        // the frame it is asked to and waiting a second for it is an eternity.
+        var key = "";
+        try { key = A.M.viewKey(); } catch (e) { key = ""; }
+
+        return "ok|" + cursor + "|" + key + "|" + summary;
+    };
+
+    /// Type an ident into whatever text field the cursor is on.
+    A.typeIdent = function (str) {
+        try { return A.M.type(str); } catch (e) { return "error " + e; }
+    };
+
+    /// What the aeroplane resolved the typed ident to, once its search has run.
+    A.typedResult = function () {
+        try { return A.M.typed(); } catch (e) { return "error " + e; }
+    };
+
+    /// The page map, as "Group|Page|Key" rows. An empty key means the stock G1000 draws
+    /// the name but never built the page.
+    A.pageList = function () {
+        var out = [];
+        try {
+            var map = A.M.pageMap();
+            for (var g = 0; g < map.length; g++) {
+                for (var p = 0; p < map[g].pages.length; p++) {
+                    out.push(map[g].group + "|" + map[g].pages[p].name + "|" + map[g].pages[p].key);
+                }
+            }
+        } catch (e) { }
+        return out.join(String.fromCharCode(10));
+    };
+
+    /// Open a page directly, then answer with the same state string a key press does.
+    A.goPage = function (key) {
+        var r;
+        try { r = A.M.goPage(key); } catch (e) { r = "error " + e; }
+        if (r !== "ok") return r;
+        return A.state();
     };
 
     A.key = function (name) {
@@ -1755,12 +1809,753 @@
         return "";
     };
 
+    // ================================================== THE INSTRUMENT'S OWN VIEW MODEL
+    //
+    // Everything above this line reads the G1000 by looking at its MARKUP. That is right
+    // for gauges and text, and it has now been wrong about the CURSOR five separate times,
+    // because a cursor is not a colour - it is part of the instrument's STATE, and the
+    // markup is only where that state happens to get painted. Every fix so far was "learn
+    // one more class name", and every next page used a different one.
+    //
+    // The G1000 is a JavaScript instrument and it keeps that state in an object we can
+    // simply ask. `wtg1000-mfd` IS the instrument, and it carries a `viewService` that owns
+    // every page and dialog; each of those owns a scroll controller that knows
+    //
+    //   whether the cursor is on ....... getIsScrollEnabled()
+    //   which field it is on ........... getFocusedUiControl()
+    //   whether that field is OPEN ..... getActivatedUiControl()
+    //   what the field's choices are ... props.data
+    //
+    // read out of the aeroplane instead of inferred from a stylesheet.
+    //
+    // THE INTERACTION RULES BELOW ARE THE AIRCRAFT'S OWN SOURCE, not a guess: they were
+    // read off the live instrument with Function.prototype.toString and then confirmed one
+    // keystroke at a time against the real display.
+    //
+    //   UPPER_PUSH ................ toggles the cursor
+    //   cursor OFF + any knob ..... opens the PAGE SELECTOR (upper turns the page,
+    //                               lower turns the page GROUP)
+    //   cursor ON,  LOWER ......... moves BETWEEN fields
+    //   cursor ON,  UPPER ......... acts ON the focused field: opens its list of choices,
+    //                               or cycles the character of a text field
+    //   in a list,  LOWER ......... moves the highlight; ENT accepts, CLR cancels
+    //   in a text field, UPPER .... cycles the character, LOWER moves along the field
+    //
+    // That is the whole interaction model of both displays, and none of it was knowable
+    // from the DOM. It also settles a question a pilot asked out loud: the FIRST turn of
+    // the upper knob on a text field only ACTIVATES it and changes nothing, which is the
+    // aeroplane behaving correctly rather than a dropped keystroke.
+    //
+    // TWO CONTROL FRAMEWORKS live in this instrument and they are not interchangeable.
+    // The setup pages, the dialogs and Direct-To use the older one (`scrollController`
+    // with a flat `controls` array). The flight plan page and every LIST use the newer
+    // `G1000UiControl` (`registeredControls`, `focusedIndex`, `getSelectedIndex`). That is
+    // why the flight plan page "would not even arm": its scrollController is EMPTY because
+    // all of its controls live in the other framework, so a control count said zero and the
+    // page read as dead when it was working perfectly. The CURSOR flag stays on the scroll
+    // controller for both - which is exactly why that, and not the control count, is what
+    // gets asked here.
+    A.M = {};
+
+    A.M.el = function () {
+        return document.querySelector("wtg1000-mfd") || document.querySelector("wtg1000-pfd");
+    };
+
+    A.M.vs = function () {
+        var e = A.M.el();
+        return (e && e.viewService) ? e.viewService : null;
+    };
+
+    /// Subjects and plain values look the same from here; this reads either.
+    A.M.get = function (sub) {
+        try { return (sub && typeof sub.get === "function") ? sub.get() : sub; }
+        catch (e) { return null; }
+    };
+
+    A.M.view = function () { var v = A.M.vs(); return v ? A.M.get(v.activeView) : null; };
+    A.M.viewKey = function () { var v = A.M.vs(); return v ? (A.M.get(v.activeViewKey) || "") : ""; };
+    A.M.pageKey = function () { var v = A.M.vs(); return v ? (A.M.get(v.openPageKey) || "") : ""; };
+
+    /// The cursor, from the instrument rather than from a colour. Null means the model
+    /// could not be reached at all, which is a different answer from "off" and is treated
+    /// as such - the DOM reader is the fallback for that case only.
+    A.M.cursor = function () {
+        var view = A.M.view();
+        if (!view || !view.scrollController) return null;
+        try { return !!view.scrollController.getIsScrollEnabled(); } catch (e) { return null; }
+    };
+
+    A.M.isGroup = function (c) { return !!(c && c.scrollController); };
+
+    /// What KIND of thing a control is, which decides what a keystroke will do to it.
+    A.M.kindOf = function (c) {
+        if (!c) return "";
+        // A waypoint entry box is a group wrapping a text input; it is a LEAF here,
+        // because descending into it would lose the fact that it can be typed into.
+        if (c.inputComponentRef) return "waypoint";
+        // ⚠️ A NUMBER field is a group wrapping a newer-framework digit input, and its
+        // inner scroll controller is EMPTY - the digits register on the other framework.
+        // Treating it as a group therefore dropped it entirely, which is how the Aux
+        // page's Time Offset and the nearest-airport Minimum Length came to be missing
+        // from a field list that claimed to be complete.
+        if (c.control && c.control.digitValues !== undefined) return "number";
+        if (c.MenuItems !== undefined) return "select";
+        if (typeof c.getText === "function" && c.dataEntry) return "input";
+        if (A.M.isGroup(c)) return "group";
+        return "field";
+    };
+
+    A.M.valueOf = function (c) {
+        try {
+            if (c.inputComponentRef && c.inputComponentRef.instance) {
+                return c.inputComponentRef.instance.getText();
+            }
+            // A number field draws its value TWICE - once for the resting display and once
+            // for the digit-by-digit editor - and both nodes stay in the DOM, so reading
+            // the wrapper gives "03000 FT 3000 FT". Which one is live depends on whether
+            // the field is being edited.
+            if (c.control && c.control.digitValues !== undefined) {
+                var editing = false;
+                try { editing = !!A.M.get(c.control.isEditing); } catch (e3) { }
+                var order = editing
+                    ? [c.control.activeRef, c.control.inactiveRef]
+                    : [c.control.inactiveRef, c.control.activeRef];
+                for (var r = 0; r < order.length; r++) {
+                    var inst = order[r] && order[r].instance;
+                    var v = inst ? text(inst) : "";
+                    if (v) return v;
+                }
+                if (c.control.rootRef && c.control.rootRef.instance) {
+                    return text(c.control.rootRef.instance);
+                }
+            }
+            if (typeof c.getText === "function") return c.getText();
+            var hl = c.getHighlightElement ? c.getHighlightElement() : null;
+            if (hl) return text(hl);
+        } catch (e) { }
+        return "";
+    };
+
+    /// The label is whatever the row says once the VALUE is taken off the end of it -
+    /// "Time FormatUTC" minus "UTC". The climb is capped and a suspiciously long answer is
+    /// thrown away, because the ancestor chain ends at the whole page and a "label" of four
+    /// hundred characters is worse than none.
+    /// The DOM node a control actually draws itself into. There are three shapes of it and
+    /// only knowing one of them is why the two number fields on the Aux page came out with
+    /// no label at all: they have neither a containerRef nor a highlight element, and their
+    /// markup hangs off the digit input in the OTHER framework.
+    A.M.hostOf = function (c) {
+        try {
+            if (c.containerRef && c.containerRef.instance) return c.containerRef.instance;
+            if (c.control && c.control.rootRef && c.control.rootRef.instance) {
+                return c.control.rootRef.instance;
+            }
+            if (c.getHighlightElement) {
+                var h = c.getHighlightElement();
+                if (h) return h;
+            }
+        } catch (e) { }
+        return null;
+    };
+
+    A.M.labelOf = function (c, value) {
+        var host = A.M.hostOf(c);
+        if (!host) return "";
+
+        // WHAT TO TAKE OFF THE ROW. Usually just the value, but a NUMBER field renders
+        // itself TWICE - "03000FT" for the digit editor and "3000FT" for the resting
+        // display, both left in the DOM - so taking off only the one being shown left the
+        // other welded to the label: "Minimum Length03000FT". Both come off.
+        var strip = [];
+        if (value) strip.push(value);
+        try {
+            if (c.control && c.control.digitValues !== undefined) {
+                var refs = [c.control.activeRef, c.control.inactiveRef];
+                for (var r = 0; r < refs.length; r++) {
+                    var t2 = (refs[r] && refs[r].instance) ? text(refs[r].instance) : "";
+                    if (t2 && strip.indexOf(t2) < 0) strip.push(t2);
+                }
+            }
+        } catch (e) { }
+
+        // Longest first, or stripping "3000FT" out of "03000FT" leaves a stray zero.
+        strip.sort(function (a, b) { return b.length - a.length; });
+
+        var e2 = host.parentElement;
+        for (var d = 0; d < 6 && e2; d++) {
+            var whole = text(e2);
+            var cut = whole;
+            for (var i = 0; i < strip.length; i++) cut = cut.split(strip[i]).join(" ");
+            cut = cut.replace(/\s+/g, " ").trim();
+            // A field that is EMPTY draws placeholder dashes, and those are not part of
+            // its name: "Time Offset --:--" is the row, "Time Offset" is the label.
+            cut = cut.replace(/[^A-Za-z0-9)]+$/, "").trim();
+
+            // The row has to say MORE than the value, or this is the value's own node and
+            // the label lives further up. A LABEL IS WORDS: without that test the Aux
+            // page's Time Offset answered with the dashes of its own empty second
+            // rendering ("--:--") instead of climbing one more level to its name.
+            // A LABEL IS A NAME, and these two tests are what stop the climb from walking
+            // past the row into the whole panel and calling the OTHER fields' values a
+            // label. The PFD backlight window did exactly that and answered
+            // "Auto100.00%Auto100.00: PFD Display" - four neighbouring values welded into
+            // a name. A real label has words, no percent sign and no long runs of digits.
+            var looksLikeValues = cut.indexOf("%") >= 0 || /\d{2,}/.test(cut);
+            if (cut.length > 0 && cut.length <= 48 && cut !== whole &&
+                /[A-Za-z]/.test(cut) && !looksLikeValues) {
+                return cut;
+            }
+            if (!strip.length && whole.length > 0 && whole.length <= 48) return whole;
+            e2 = e2.parentElement;
+        }
+        return "";
+    };
+
+    /// Every field on the page, in the order the knob walks them.
+    A.M.fields = function () {
+        var view = A.M.view();
+        var out = [];
+        if (!view || !view.scrollController) return out;
+        A.M.walk(view.scrollController, "", out, 0);
+        return out;
+    };
+
+    A.M.walk = function (sc, prefix, out, depth) {
+        var n = 0;
+        try { n = sc.getControlsCount(); } catch (e) { return; }
+
+        for (var i = 0; i < n; i++) {
+            var c = sc.controls[i];
+            var path = prefix + (prefix ? "." : "") + i;
+            var kind = A.M.kindOf(c);
+
+            if (kind === "group" && depth < 4) {
+                var inner = 0;
+                try { inner = c.scrollController.getControlsCount(); } catch (e) { }
+                // An EMPTY group with nothing in the other framework either is a
+                // placeholder the page never filled in; reporting "blank field" four times
+                // running is noise, so it is dropped.
+                if (inner > 0) { A.M.walk(c.scrollController, path, out, depth + 1); }
+                continue;
+            }
+
+            var value = A.M.valueOf(c);
+            // A field the aeroplane has GREYED OUT is still a field, and a pilot needs to
+            // know it is there and why the knob skips it - the Aux page's Time Offset is
+            // unavailable precisely because Time Format is UTC. Silently dropping it would
+            // be deciding on the pilot's behalf what they are allowed to know about.
+            var able = true;
+            try { if (c.getIsFocusable) able = !!c.getIsFocusable(); } catch (e2) { }
+
+            // ⚠️ A WAYPOINT BOX IS OPEN WHEN THE INPUT INSIDE IT IS OPEN, not when the
+            // wrapper is. Asking the wrapper said "not editing" while the pilot was
+            // typing into it, which is the one moment they most need to be told they are.
+            var active = !!(c.getIsActivated && c.getIsActivated());
+            if (kind === "waypoint") {
+                try { active = !!c.inputComponentRef.instance.getIsActivated(); } catch (e4) { }
+            }
+            if (kind === "number") {
+                try { active = !!A.M.get(c.control.isEditing); } catch (e5) { }
+            }
+
+            var label = A.M.labelOf(c, value);
+            // A Direct-To box has no label of its own on screen - the pilot is looking at
+            // a dialog whose whole subject is the waypoint - so it gets named rather than
+            // read out as a bare ident with no idea what it is.
+            if (!label && kind === "waypoint") label = "Waypoint";
+
+            out.push({
+                p: path,
+                kind: kind,
+                label: label,
+                value: value,
+                ctrl: c,
+                able: able,
+                focused: !!(c.getIsFocused && c.getIsFocused()),
+                active: active
+            });
+        }
+    };
+
+    A.M.focused = function () {
+        var f = A.M.fields();
+        for (var i = 0; i < f.length; i++) if (f[i].focused) return f[i];
+        return null;
+    };
+
+    /// A LIST - the page selector, a page menu, or the choices behind a setup field. All
+    /// three are the same newer-framework list component, so one reader serves them all.
+    A.M.list = function () {
+        var view = A.M.view();
+        if (!view || !view.listRef || !view.listRef.instance) return null;
+
+        var lr = view.listRef.instance;
+        var items = [];
+        try {
+            var ic = (lr.itemsContainer && lr.itemsContainer.instance)
+                ? lr.itemsContainer.instance : lr.itemsContainer;
+            var kids = (ic && ic.children) ? ic.children : [];
+            for (var i = 0; i < kids.length; i++) {
+                var v = text(kids[i]);
+                if (v) items.push(v);
+            }
+        } catch (e) { }
+
+        var sel = -1;
+        try { sel = lr.getSelectedIndex(); } catch (e) { }
+        if (!items.length) return null;
+        return { items: items, sel: sel, len: items.length };
+    };
+
+    /// The text input the pilot is on, if any. Preferring the ACTIVATED one matters: a
+    /// page can hold several boxes and only the open one is being typed into.
+    A.M.input = function () {
+        var view = A.M.view();
+        if (!view || !view.scrollController) return null;
+
+        var best = null, fallback = null;
+
+        function consider(c) {
+            var ic = (c.inputComponentRef && c.inputComponentRef.instance)
+                ? c.inputComponentRef.instance
+                : ((typeof c.getText === "function" && c.dataEntry) ? c : null);
+            if (!ic) return false;
+            if (!fallback) fallback = ic;
+            try {
+                if (ic.getIsActivated() || ic.getIsFocused() ||
+                    (c.getIsFocused && c.getIsFocused())) best = ic;
+            } catch (e) { }
+            return true;
+        }
+
+        function scan(sc, depth) {
+            var n = 0;
+            try { n = sc.getControlsCount(); } catch (e) { return; }
+            for (var i = 0; i < n; i++) {
+                var c = sc.controls[i];
+                if (consider(c)) continue;
+                if (c.scrollController && depth < 4) scan(c.scrollController, depth + 1);
+            }
+        }
+
+        try { scan(view.scrollController, 0); } catch (e) { }
+        return best || fallback;
+    };
+
+    /// Which character of a text field the knob is sitting on. A pilot editing an ident one
+    /// character at a time has no other way to know where in the box they are.
+    A.M.charSay = function () {
+        var ic = A.M.input();
+        if (!ic) return "";
+        try {
+            var t = ic.dataEntry.text, i = ic.dataEntry.highlightIndex;
+            var ch = t.charAt(i);
+            return "character " + (i + 1) + ", " + (ch === "_" || ch === "" ? "blank" : ch);
+        } catch (e) { return ""; }
+    };
+
+    /// TYPE AN IDENT. This is the display's own text input driven at full speed rather than
+    /// one knob click per letter, and it is NOT a shortcut around the aeroplane: the G1000
+    /// itself offers keyboard entry into these boxes - the input component carries
+    /// activateKeyboardInput and setValueFromOS for exactly that - and every character goes
+    /// through the same setText the on-screen keyboard uses. The database search, the
+    /// autocomplete and the facility lookup then all run exactly as they do for a sighted
+    /// pilot, because they are the aircraft's own and nothing here reimplements them.
+    ///
+    /// Twenty-eight knob clicks to spell one four-letter ident is not "the same aircraft at
+    /// the same depth"; it is the same aircraft made unusable. The knob path is still there
+    /// unchanged for anyone who wants it, and both end in the same input component.
+    A.M.type = function (str) {
+        var ic = A.M.input();
+        if (!ic) return "no text field";
+
+        var s = String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        if (!s) return "nothing to type";
+
+        try {
+            if (!ic.getIsActivated()) ic.activate();
+            // Park the edit cursor on the LAST character typed, which is where a pilot who
+            // had turned the knob would be, so the next turn continues the ident rather
+            // than restarting it.
+            ic.setText(s, s.length - 1, true);
+            return "ok";
+        } catch (e) { return "error " + e; }
+    };
+
+    /// What the aeroplane made of what was typed, after its own debounced database search
+    /// has had time to run. The ident that comes back is the AUTOCOMPLETED one, so a pilot
+    /// who typed three letters hears the whole ident and the facility it belongs to.
+    A.M.typed = function () {
+        var ic = A.M.input();
+        var bits = [];
+        if (ic) { try { bits.push(ic.getRawText()); } catch (e) { } }
+
+        var name = text(firstVisible(".wpt-entry-name"));
+        var city = text(firstVisible(".wpt-entry-location"));
+        if (name) bits.push(name);
+        if (city) bits.push(city);
+
+        if (!bits.length) return "nothing entered";
+        if (bits.length === 1) return bits[0] + ", no match";
+        return bits.join(", ");
+    };
+
+    // ------------------------------------------------------- the OTHER control framework
+    //
+    // The flight plan page, the checklist and every list are built on `G1000UiControl`,
+    // which does not use the scroll controller at all: a control holds its children in
+    // `registeredControls`, remembers which of them has focus in `focusedIndex`, and the
+    // focused one may itself have children. So "what is the cursor on" is a WALK, not a
+    // lookup, and a reader that only knew the flat framework reported those pages as
+    // having nothing on them - which is precisely why the flight plan page and the
+    // checklist both read as dead when they were working.
+    //
+    // Where the text lives differs by control: a checklist item keeps it in `itemRef`, a
+    // list in `el`, a number field in `rootRef`. All of them are tried rather than assumed,
+    // because assuming one is how this went wrong the first four times.
+    A.M.f2Roots = function (view) {
+        var roots = [];
+        if (!view) return roots;
+
+        var names = Object.getOwnPropertyNames(view);
+        for (var i = 0; i < names.length; i++) {
+            var v;
+            try { v = view[names[i]]; } catch (e) { continue; }
+            if (!v || typeof v !== "object") continue;
+
+            var inst = (v.instance !== undefined && v.instance !== null) ? v.instance : v;
+            if (inst && typeof inst === "object" && inst._UICONTROL_ !== undefined) {
+                roots.push(inst);
+            }
+        }
+        return roots;
+    };
+
+    /// The focus chain from a root DOWNWARDS, deepest last.
+    ///
+    /// It is the chain and not just the last link, because the deepest control does not
+    /// always carry the readable element: the nearest-airport page focuses a group whose
+    /// innermost child renders nothing of its own, and asking only the bottom of the chain
+    /// answered "nothing under the cursor" over a page full of aerodromes. The deepest link
+    /// that HAS text is the answer.
+    A.M.f2Chain = function (root) {
+        var chain = [], d = root, guard = 0;
+        while (d && guard++ < 10) {
+            chain.push(d);
+            if (!(d.length > 0)) break;
+
+            var i = -1;
+            try { i = d.getFocusedIndex(); } catch (e) { break; }
+            if (i < 0) break;
+
+            var c = null;
+            try { c = d.getChild(i); } catch (e) { break; }
+            if (!c) break;
+            d = c;
+        }
+        return chain;
+    };
+
+    A.M.f2Element = function (c) {
+        // ⚠️ A LIST IS NOT ONE THING. Asking a list for its element hands back every row it
+        // holds, and the nearest-airport page then read back all ten aerodromes welded
+        // together after every knob click. A list knows which row is selected; ask it.
+        try {
+            if (typeof c.getSelectedElement === "function") {
+                var sel = c.getSelectedElement();
+                if (sel && sel.nodeType === 1) return sel;
+            }
+        } catch (e) { }
+
+        var names = ["itemRef", "el", "rootRef", "activeRef", "containerRef"];
+        for (var i = 0; i < names.length; i++) {
+            try {
+                var v = c[names[i]];
+                var inst = (v && v.instance) ? v.instance : v;
+                if (inst && inst.nodeType === 1) return inst;
+            } catch (e) { }
+        }
+        try { if (c.props && c.props.ref && c.props.ref.instance) return c.props.ref.instance; }
+        catch (e) { }
+        try {
+            if (c.getHighlightElement) {
+                var h = c.getHighlightElement();
+                if (h) return h;
+            }
+        } catch (e) { }
+        return null;
+    };
+
+    /// A LIST ROW IS READ FIELD BY FIELD, never through the text joiner. The last digit of
+    /// an identifier and the first of a bearing are both digits, so any rule that keeps a
+    /// clock from becoming "0 : 0 0" welds "VCBI 020" into one token. Its own child
+    /// elements ARE the fields: "VCBI, 250°, 0.1 NM".
+    A.M.rowText = function (el2) {
+        if (!el2) return "";
+
+        var kids = el2.children;
+        if (kids && kids.length > 1) {
+            var parts = [];
+            for (var i = 0; i < kids.length; i++) {
+                var v = text(kids[i]);
+                if (v) parts.push(v);
+            }
+            if (parts.length) return parts.join(", ");
+        }
+        return text(el2);
+    };
+
+    A.M.f2Say = function () {
+        var view = A.M.view();
+        if (!view) return "";
+
+        var roots = A.M.f2Roots(view);
+        for (var i = 0; i < roots.length; i++) {
+            var focused = false;
+            try { focused = !!roots[i].isFocused; } catch (e) { }
+            if (!focused) continue;
+
+            var chain = A.M.f2Chain(roots[i]);
+            var t2 = "";
+            // Deepest first: the innermost thing with any text of its own is the one the
+            // cursor is actually on. The root itself is skipped - its text is the whole
+            // page.
+            for (var c = chain.length - 1; c >= 1; c--) {
+                var el2 = A.M.f2Element(chain[c]);
+                var candidate = A.M.rowText(el2);
+                if (candidate) { t2 = candidate; break; }
+            }
+            if (!t2) continue;
+
+            // A checklist NOTE or a terms-and-conditions paragraph is a legitimate item and
+            // it can run to five hundred characters. Speaking all of it after every knob
+            // click would bury the next one, and the window itself still carries the whole
+            // text for a pilot who wants to read it.
+            return t2.length > 160 ? t2.substring(0, 160) + ", continues in the window" : t2;
+        }
+        return "";
+    };
+
+    // ------------------------------------------------------------------- the page map
+    //
+    // WHY SOME AUX PAGES CANNOT BE REACHED. The page selector's own table gives every page
+    // a KEY, and a page with an EMPTY key has no view behind it at all - it is a label the
+    // stock Working Title G1000 draws for a page it has never implemented. Seven of the
+    // nine Aux pages are like that: Trip Planning, Utility, GPS Status, XM Radio, System
+    // Status, Connext Setup and Databases. So are Weather Data Link, TAWS-B, VRP
+    // Information, User WPT Information, and four of the eight Nearest pages.
+    //
+    // That is NOT an MSFSBA fault and it is not something MSFSBA can fix - a sighted pilot
+    // turning the knob lands on those names and nothing happens for them either. What WAS
+    // wrong was saying nothing about it, because then a pilot cannot tell a page the
+    // aeroplane never built from a page this reader is failing to read.
+    //
+    // The table lives on the page-selector view, so it is read once, on demand, by opening
+    // the selector and closing it again, and then cached for the session.
+    /// The PFD has no PAGES at all - it has WINDOWS, and several of them (the timer, the
+    /// ADF/DME tuner, the nearest-airport list, the alert list, the display backlighting)
+    /// have no bezel button and live behind softkeys a pilot has to find first. They are
+    /// all registered views, so the same list serves them, and the same open call reaches
+    /// them. These names are the Garmin ones, because the view keys are not English.
+    A.M.PFD_WINDOWS = [
+        ["Nearest", "Nearest Airports"],
+        ["TimerRef", "Timer and References"],
+        ["ADFDME", "ADF and DME Tuning"],
+        ["Alerts", "Alerts"],
+        ["PFDSetup", "PFD Setup and Backlighting"],
+        ["DirectTo", "Direct To"],
+        ["FPL", "Active Flight Plan"],
+        ["PROC", "Procedures"],
+        ["WptInfo", "Waypoint Information"],
+        ["SetRunway", "Select Runway"],
+        ["SelectDeparture", "Select Departure"],
+        ["SelectArrival", "Select Arrival"],
+        ["SelectApproach", "Select Approach"],
+        ["SelectAirway", "Select Airway"],
+        ["HoldAt", "Hold At"]
+    ];
+
+    A.M.pageMap = function () {
+        if (A._pageMap) return A._pageMap;
+
+        var vs = A.M.vs();
+        if (!vs) return [];
+
+        if (A.side() === "PFD") {
+            var wins = [];
+            for (var w = 0; w < A.M.PFD_WINDOWS.length; w++) {
+                var key = A.M.PFD_WINDOWS[w][0];
+                wins.push({ name: A.M.PFD_WINDOWS[w][1], key: A.M.has(key) ? key : "" });
+            }
+            A._pageMap = [{ group: "PFD", pages: wins }];
+            return A._pageMap;
+        }
+
+        var weOpened = false, d = null;
+        try {
+            if (A.M.viewKey() === "PageSelect") { d = A.M.view(); }
+            else { d = vs.open("PageSelect", true); weOpened = true; }
+
+            var tabs = [];
+            try {
+                for (var i = 0; i < (d.tabRefs || []).length; i++) {
+                    tabs.push(text(d.tabRefs[i].instance));
+                }
+            } catch (e) { }
+
+            var out = [];
+            for (var g = 0; g < d.pageGroups.length; g++) {
+                var arr = d.pageGroups[g];
+                if (arr && arr.getArray) arr = arr.getArray();
+                if (arr && arr.get) arr = arr.get();
+                var pages = [];
+                for (var j = 0; j < arr.length; j++) {
+                    var p = arr[j];
+                    if (!p || !p.name) continue;
+                    pages.push({ name: p.name, key: p.key || "" });
+                }
+                out.push({ group: tabs[g] || ("Group " + (g + 1)), pages: pages });
+            }
+
+            // The EIS tab carries the AIRCRAFT's own pages and is not in that table, so it
+            // is added from the registered views. Leaving it out would hide the two pages
+            // this aeroplane adds - the very ones a DA40 pilot most wants.
+            var eis = [];
+            if (A.M.has("Da40NgEnginePage")) eis.push({ name: "Engine", key: "Da40NgEnginePage" });
+            if (A.M.has("Da40NgChecklistPage")) eis.push({ name: "Checklist", key: "Da40NgChecklistPage" });
+            if (eis.length) out.push({ group: tabs[out.length] || "EIS", pages: eis });
+
+            A._pageMap = out;
+            return out;
+        } catch (e) {
+            return [];
+        } finally {
+            try { if (weOpened && d && d.close) d.close(); } catch (e2) { }
+        }
+    };
+
+    A.M.has = function (key) {
+        var vs = A.M.vs();
+        try { return !!(vs && vs.registeredViews && vs.registeredViews.get(key)); }
+        catch (e) { return false; }
+    };
+
+    /// Open a page by its key. This is the same call the page selector makes when the knob
+    /// lands on a page and its timer commits, so nothing is being bypassed - the pilot
+    /// simply does not have to count knob clicks through five groups to get there.
+    A.M.goPage = function (key) {
+        var vs = A.M.vs();
+        if (!vs) return "no instrument";
+        if (!A.M.has(key)) return "not available";
+        try {
+            // Shut any dialog first, or the new page opens UNDERNEATH the one that is up.
+            var guard = 0;
+            while (A.M.viewKey() !== A.M.pageKey() && guard++ < 6) vs.closeActiveView();
+
+            // ⚠️ A PFD WINDOW IS A SUBVIEW AND AN MFD PAGE IS NOT, and opening one the
+            // other way leaves it registered but never shown. The PFD has no pages at all -
+            // openPageKey there is permanently empty - which is exactly the test.
+            vs.open(key, A.side() === "PFD");
+            return "ok";
+        } catch (e) { return "error " + e; }
+    };
+
+    // ---------------------------------------------------------- what to say after a key
+    //
+    // ONE sentence, and it answers "what am I on now" rather than "what key did I press".
+    // The order is the order of what covers what on the screen: a list is drawn OVER the
+    // page, a focused field is INSIDE the page, and the page title is what is left when
+    // neither of those is true.
+    A.M.say = function () {
+        var key = A.M.viewKey();
+
+        var L = A.M.list();
+        if (L) {
+            var lead = key === "PageSelect" ? "Page" :
+                       key === "ContextMenuDialog" ? "Choose" :
+                       (key === "PageMenuDialog" || key === "EnginePageMenuDialog" ||
+                        key === "ChecklistPageMenuDialog") ? "Menu" : "List";
+
+            var group = "";
+            if (key === "PageSelect") {
+                var d = A.M.view();
+                try {
+                    var gi = A.M.get(d.activeGroupIndex);
+                    if (d.tabRefs && d.tabRefs[gi]) group = text(d.tabRefs[gi].instance);
+                } catch (e) { }
+            }
+
+            var item = (L.sel >= 0 && L.sel < L.len) ? L.items[L.sel] : "";
+            return lead + (group ? " " + group : "") + ", " + (item || "nothing selected") +
+                   ", " + (L.sel + 1) + " of " + L.len;
+        }
+
+        var f = A.M.focused();
+        if (f) {
+            var s = (f.label ? f.label + ": " : "") + (f.value || "blank");
+            if (f.able === false) s += ", not available";
+            if (f.active) {
+                // "Editing" is not decoration. It is the difference between the next turn
+                // moving to the next field and the next turn changing this one, and a pilot
+                // who cannot see the box has nothing else to tell them which.
+                s += ", editing";
+                if (f.kind === "waypoint" || f.kind === "input") {
+                    var cs = A.M.charSay();
+                    if (cs) s += ", " + cs;
+
+                    // AUTOCOMPLETE HAS TO BE HEARD, not just happen. The aeroplane fills
+                    // in the rest of the ident and looks up the facility as soon as enough
+                    // letters are in, and a sighted pilot sees both appear - so a pilot
+                    // turning the knob one letter at a time is told which aerodrome they
+                    // have landed on the moment the aircraft knows.
+                    var who = text(firstVisible(".wpt-entry-name"));
+                    if (who) s += ", " + who;
+                }
+            }
+            return s;
+        }
+
+        // NOTHING IN THE FLAT FRAMEWORK - so try the other one. This is what makes the
+        // flight plan page and the checklist speak: their controls are not in the scroll
+        // controller at all.
+        return A.M.f2Say();
+    };
+
+    /// Every field on the page as readable rows, so a pilot can SCAN the page in the window
+    /// instead of turning the knob through it and hearing one field at a time.
+    A.M.fieldRows = function () {
+        var rows = [];
+        var f = A.M.fields();
+        for (var i = 0; i < f.length; i++) {
+            if (f[i].kind === "group") continue;
+            var line = (f[i].label ? f[i].label + ": " : "") + (f[i].value || "blank");
+            if (f[i].able === false) line += " (not available)";
+            if (f[i].focused) line += "   <-- cursor" + (f[i].active ? ", editing" : "");
+            rows.push(line);
+        }
+        return rows;
+    };
+
     A.summary = function () {
         // A SELECTION POPUP outranks everything, and this is why the checklist page felt
         // like a dead end: the knob really was moving the highlight, but the readback fell
         // through to the page TITLE and said "CHKLST - Checklist" after every press. The
         // pilot heard the same four words whichever way they turned, so the page looked
         // frozen when it was working perfectly.
+        // THE MODEL FIRST. A.M.say() answers from the instrument's own view objects - the
+        // open list and its position in it, the focused field and whether it is open for
+        // editing - and it is right on pages whose markup this reader has never seen,
+        // which is every page that has ever read as dead. The DOM branches below it are
+        // kept for what the model does not carry: the checklist, the startup screens and
+        // the PFD's popouts.
+        var modelSaid = "";
+        try { modelSaid = A.M.say(); } catch (e) { modelSaid = ""; }
+        if (modelSaid) {
+            var on = false;
+            try { on = A.M.cursor() === true; } catch (e) { on = false; }
+            return (on ? "Cursor on. " : "") + modelSaid;
+        }
+
         // THE CURSOR OUTRANKS EVERYTHING. If it is on, the pilot is editing a field and
         // the only thing a keystroke has to answer is which field and what it now says.
         var cursor = A.cursorField();
@@ -1816,7 +2611,15 @@
             return "Page menu";
         }
 
-        return A.pageTitle();
+        // THE CURSOR IS ON AND NOTHING IS UNDER IT. That happens for real - the knob runs
+        // off the end of a checklist, or the cursor arms a page whose only control is the
+        // map pointer - and answering with the page title alone is indistinguishable from a
+        // key that did nothing, which is the complaint that started all of this. Say which
+        // it is.
+        var title = A.pageTitle();
+        var on = false;
+        try { on = A.M.cursor() === true; } catch (e) { on = false; }
+        return on ? title + ", nothing under the cursor" : title;
     };
 
     A.snapshot = function () {
@@ -1867,6 +2670,8 @@
         }
 
         rows.push("Page: " + (A.pageTitle() || "not shown"));
+
+        A.pushFields(rows);
 
         var bar = A.navDataBar();
         if (bar.length) rows.push("Data bar: " + bar.join(", "));
@@ -1955,9 +2760,36 @@
         var wins = A.pfdWindows();
         for (var w = 0; w < wins.length; w++) rows.push(wins[w]);
 
+        // The PFD's popouts - the transponder, the timer, the nearest-airport window - are
+        // built from the same controls as the MFD's setup pages, so the same reader serves
+        // them and a pilot can scan a popout instead of turning through it.
+        A.pushFields(rows);
+
         A.pushPanes(rows);
         A.pushSoftkeys(rows);
         return rows;
+    };
+
+    /// THE EDITABLE FIELDS OF THE PAGE, WITH THEIR VALUES, and which one the cursor is on.
+    ///
+    /// This is the difference between a setup page a pilot can USE and one they can only
+    /// grope through. Before it, the only way to learn what the Aux setup page held was to
+    /// turn the knob onto every field in turn and listen - so a pilot could not answer
+    /// "what are my units set to" without disturbing them, and could not tell a page with
+    /// nothing on it from a page the reader could not read.
+    ///
+    /// The values come from the instrument's own controls, so they are what the aeroplane
+    /// has, not what a stylesheet happens to render.
+    A.pushFields = function (rows) {
+        var fields = [];
+        try { fields = A.M.fieldRows(); } catch (e) { fields = []; }
+        if (!fields.length) return;
+
+        var on = null;
+        try { on = A.M.cursor(); } catch (e) { on = null; }
+        rows.push("Fields (" + fields.length + "), cursor " +
+            (on === null ? "unknown" : on ? "on" : "off") + ":");
+        for (var i = 0; i < fields.length; i++) rows.push("  " + fields[i]);
     };
 
     A.pushPanes = function (rows) {

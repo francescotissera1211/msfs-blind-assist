@@ -93,19 +93,30 @@ public sealed class CowsDA40DisplayForm : Form
             // keys are was telling them the wrong answer.
             AccessibleDescription = title +
                 ". Read with the arrow keys. Enter presses the selected softkey. " +
-                // Say what the knobs DO, not which knob they are. Naming them was worse
-                // than useless: the labels were backwards (control left and right is the
-                // LARGE knob, not the small one), and a pilot who cannot see the bezel
-                // has no use for its geometry anyway. What they need is that one pair
-                // moves BETWEEN things and the other CHANGES the thing you are on.
-                "Control with left and right steps the page group, and moves between " +
-                "fields once the cursor is on. Control with up and down steps the page, " +
-                "and CHANGES the value of the field under the cursor. " +
+                // WHAT THE KNOBS DO, in the words of the aircraft's own source rather than
+                // the bezel's geometry. Read out of the instrument and then confirmed one
+                // keystroke at a time: with the cursor on, the lower knob moves BETWEEN
+                // fields and the upper knob acts ON the field you are on - opening its
+                // list of choices, or cycling the character of a text box. With the cursor
+                // off, either knob opens the page selector instead. Naming the knobs was
+                // worse than useless; a pilot who cannot see the bezel needs to know which
+                // pair moves and which pair changes.
+                "Control with left and right moves between fields once the cursor is on, " +
+                "and steps the page group when it is off. Control with up and down CHANGES " +
+                "the field you are on - it opens its list of choices, or cycles a letter in " +
+                "a text box - and steps the page when the cursor is off. " +
                 // Said early and plainly, because it is the fact that makes the setup
                 // pages usable: without the cursor the knobs only change pages, which is
                 // exactly how the Aux setup page came to read as completely inert.
                 "Shift with Enter pushes the cursor, which you need before you can move " +
-                "between fields on a setup page. Control with Enter is enter. " +
+                "between fields on a setup page. Control with Enter is enter, which " +
+                "accepts the choice in an open list. " +
+                // The two keys that do not exist on the bezel, and why they are here.
+                "Control with G lists every page in the G1000 and opens the one you pick, " +
+                "including the ones the knob would take five groups to reach. " +
+                "Control with T types straight into the waypoint box under the cursor, " +
+                "the same way the display's own keyboard icon does; the aircraft " +
+                "autocompletes it and reads back the facility it found. " +
                 "Control with D direct to, F flight plan, P procedures, E menu, L clear. " +
                 "Control with Page Up and Page Down is the map range. " +
                 // Radios are a PFD bezel, so this line is only true there. Said anyway:
@@ -317,6 +328,25 @@ public sealed class CowsDA40DisplayForm : Form
             return TryPressSelectedSoftkey();
         }
 
+        // GO TO A PAGE. The knob route to a page is five groups by nine pages behind a
+        // selector that closes itself, counted by ear; this is the same viewService.open
+        // the selector makes, chosen off a list.
+        if (keyData == (Keys.Control | Keys.G))
+        {
+            _ = ShowPageJumpAsync();
+            return true;
+        }
+
+        // TYPE INTO THE FIELD UNDER THE CURSOR. The G1000's own text boxes take keyboard
+        // entry - that is what the little keyboard icon beside them is - and this drives
+        // the same input component, so the database search and the autocomplete run
+        // exactly as they do for a sighted pilot.
+        if (keyData == (Keys.Control | Keys.T))
+        {
+            ShowTypeDialog();
+            return true;
+        }
+
         if (BezelKeys.TryGetValue(keyData, out var bezel))
         {
             _ = PressBezel(bezel.Event, bezel.Spoken);
@@ -342,7 +372,7 @@ public sealed class CowsDA40DisplayForm : Form
         // ONE round trip: fire the key and get the read-back together. This was four -
         // summary before, key, wait, summary again, scrape - and each is a full socket
         // exchange with the Coherent debugger.
-        var (cursorOn, summary, accepted) = await FireAndRead(name);
+        var (cursorOn, view, summary, accepted) = await FireAndRead(name);
         if (_disposed || !accepted) return;
 
         // THE DISPLAY NEEDS A FRAME, and reading before it has had one is what made this
@@ -354,10 +384,15 @@ public sealed class CowsDA40DisplayForm : Form
         // moment and that is precisely the case being missed.
         if (cursorOn == _lastCursorOn && summary == _lastSpokenSummary)
         {
-            await Task.Delay(BezelSettleMs);
+            // ONLY THE PAGE SELECTOR IS SLOW, and now the read-back says which view it is
+            // looking at, so only the page selector pays for it. Before the view key
+            // existed this was one wait for every key, which is why four arrow presses in
+            // a row felt like the window had hung.
+            bool selector = view == "PageSelect" || _lastView == "PageSelect";
+            await Task.Delay(selector ? PageSelectSettleMs : BezelSettleMs);
             if (_disposed) return;
 
-            (cursorOn, summary, accepted) = await FireAndRead(null);
+            (cursorOn, view, summary, accepted) = await FireAndRead(null);
             if (_disposed || !accepted) return;
         }
 
@@ -370,6 +405,7 @@ public sealed class CowsDA40DisplayForm : Form
 
         _lastCursorOn = cursorOn;
         _lastSpokenSummary = summary;
+        _lastView = view;
         _announcer.AnnounceImmediate(toSay);
 
         // The window's own text last, off the critical path: it is not what a pilot is
@@ -381,27 +417,32 @@ public sealed class CowsDA40DisplayForm : Form
     /// Fires a bezel key (or just re-reads, when <paramref name="name"/> is null) and
     /// unpacks the agent's "ok|cursor|summary" answer.
     /// </summary>
-    private async Task<(bool CursorOn, string Summary, bool Accepted)> FireAndRead(string? name)
+    private async Task<(bool CursorOn, string View, string Summary, bool Accepted)> FireAndRead(string? name)
     {
         string call = name is null
             ? "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.state()"
             : $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')";
 
         string result = await _client.InvokeAsync(call);
-        if (_disposed) return (false, "", false);
+        if (_disposed) return (false, "", "", false);
 
         // A.key answers "no instrument" when the view has no G1000 element to drive, which
         // is the one failure a pilot could otherwise mistake for a dead key.
         if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
         {
             _announcer.AnnounceImmediate("The display did not accept that key.");
-            return (false, "", false);
+            return (false, "", "", false);
         }
 
+        // "ok|cursor|view|summary". The VIEW key arrived with the agent's model rewrite and
+        // is what decides how long to wait: only the page SELECTOR holds its choice for
+        // about a second before committing, and paying that wait on every key is what made
+        // the window feel slow enough to be broken.
         var parts = result.Split('|');
-        if (parts.Length < 3) return (false, "", true);
+        if (parts.Length < 4) return (false, "", "", true);
 
-        return (parts[1] == "1", string.Join("|", parts, 2, parts.Length - 2).Trim(), true);
+        return (parts[1] == "1", parts[2].Trim(),
+            string.Join("|", parts, 3, parts.Length - 3).Trim(), true);
     }
 
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
@@ -409,6 +450,9 @@ public sealed class CowsDA40DisplayForm : Form
 
     /// <summary>Whether the cursor was on at the last read-back.</summary>
     private bool _lastCursorOn;
+
+    /// <summary>Which view the display was showing at the last read-back.</summary>
+    private string _lastView = "";
 
     /// <summary>
     /// How long to wait before reading back a bezel press.
@@ -425,7 +469,160 @@ public sealed class CowsDA40DisplayForm : Form
     /// </summary>
     private const int BezelSettleMs = 500;
 
+    /// <summary>
+    /// How long the PAGE SELECTOR takes to commit. It holds the page the knob landed on for
+    /// about a second before opening it, so a read-back sooner than this reports the page
+    /// the pilot has just left and the knob reads as having done nothing.
+    /// </summary>
+    private const int PageSelectSettleMs = 1200;
 
+
+
+    /// <summary>
+    /// Lists every page the G1000 has, and opens the one the pilot picks.
+    ///
+    /// The list comes from the display's OWN page table — the same table the page selector
+    /// draws — so it cannot drift out of step with the aeroplane, and it carries the keys
+    /// that say which of those names have a page behind them. Seven of the nine Aux pages
+    /// do not; the list says so rather than hiding them, because a blind pilot otherwise
+    /// has no way to tell a page the G1000 never built from one this window cannot read.
+    /// </summary>
+    private async Task ShowPageJumpAsync()
+    {
+        string raw = await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.pageList()");
+        if (_disposed) return;
+
+        var entries = new List<CowsDA40PageJumpForm.PageEntry>();
+        foreach (string line in raw.Split('\n'))
+        {
+            var bits = line.Trim().Split('|');
+            if (bits.Length < 2 || bits[0].Length == 0) continue;
+            entries.Add(new CowsDA40PageJumpForm.PageEntry(
+                bits[0].Trim(), bits[1].Trim(), bits.Length > 2 ? bits[2].Trim() : ""));
+        }
+
+        if (entries.Count == 0)
+        {
+            _announcer.AnnounceImmediate("The display did not give a page list.");
+            return;
+        }
+
+        // Which page we are on, so the list opens where the pilot already is.
+        var (_, current, _, _) = await FireAndRead(null);
+        if (_disposed) return;
+
+        using var picker = new CowsDA40PageJumpForm(entries, _announcer, current);
+        if (picker.ShowDialog(this) != DialogResult.OK) return;
+        if (picker.SelectedKey is not { Length: > 0 } key) return;
+        if (_disposed) return;
+
+        string result = await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.goPage('" + key + "')");
+        if (_disposed) return;
+
+        var parts = result.Split('|');
+        if (parts.Length >= 4)
+        {
+            _lastCursorOn = parts[1] == "1";
+            _lastView = parts[2].Trim();
+            _lastSpokenSummary = string.Join("|", parts, 3, parts.Length - 3).Trim();
+            _announcer.AnnounceImmediate(_lastSpokenSummary);
+        }
+        else
+        {
+            // "not available" comes back for a page whose key the display does not know,
+            // which should be impossible from this list but is worth saying rather than
+            // leaving the key silent.
+            _announcer.AnnounceImmediate(result.Length > 0 ? result : "The page did not open.");
+        }
+
+        await _client.ScrapeNowAsync();
+    }
+
+    /// <summary>
+    /// Types an ident into whatever text field the cursor is on.
+    ///
+    /// THIS IS THE DISPLAY'S OWN KEYBOARD ENTRY, not a way round the knobs. The G1000's
+    /// waypoint boxes take typed input — that is what the small keyboard icon beside them
+    /// is for — and this drives the same input component the icon does, so the aircraft's
+    /// database search, its autocomplete and its facility lookup all run exactly as they do
+    /// for a sighted pilot. Nothing here reimplements any of them.
+    ///
+    /// The knob route is untouched and still works character by character: Control with up
+    /// and down cycles the letter under the edit cursor, Control with left and right moves
+    /// along the box. But spelling a four-letter ident that way is up to twenty-eight knob
+    /// clicks, and a pilot flying an approach does not have twenty-eight knob clicks.
+    ///
+    /// The read-back is DELAYED on purpose. The aeroplane debounces its own database
+    /// search, so asking straight away returns the previous waypoint's name — which is
+    /// exactly how "VCRI" first read back as Bandaranaike.
+    /// </summary>
+    private void ShowTypeDialog()
+    {
+        var dialog = new ValueInputForm(
+            "Type into the G1000", "ident", "Letters and digits, for example VCRI", _announcer,
+            input =>
+            {
+                string clean = Sanitise(input);
+                if (clean.Length == 0) return (false, "Enter letters or digits, for example VCRI");
+                if (clean.Length > 6) return (false, "Six characters at most");
+                return (true, "");
+            });
+
+        dialog.ShowCancelButton = true;
+        if (dialog.ShowDialog(this) != DialogResult.OK || !dialog.IsValidInput) return;
+
+        _ = TypeIntoFieldAsync(Sanitise(dialog.InputValue));
+    }
+
+    /// <summary>Only what the G1000's own character set holds: A to Z and 0 to 9.</summary>
+    private static string Sanitise(string input)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in (input ?? "").ToUpperInvariant())
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) sb.Append(c);
+        return sb.ToString();
+    }
+
+    private async Task TypeIntoFieldAsync(string ident)
+    {
+        if (ident.Length == 0) return;
+
+        string result = await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.typeIdent('" + ident + "')");
+        if (_disposed) return;
+
+        if (result.IndexOf("ok", StringComparison.Ordinal) != 0)
+        {
+            // "no text field" is the common one, and it is worth spelling out: the cursor
+            // has to be ON a box before there is anything to type into.
+            _announcer.AnnounceImmediate(
+                result.IndexOf("no text field", StringComparison.Ordinal) >= 0
+                    ? "Nothing to type into. Put the cursor on a waypoint field first."
+                    : "The display did not take that: " + result);
+            return;
+        }
+
+        await Task.Delay(TypeSearchMs);
+        if (_disposed) return;
+
+        string said = await _client.InvokeAsync(
+            "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.typedResult()");
+        if (_disposed) return;
+
+        _announcer.AnnounceImmediate(said);
+        await _client.ScrapeNowAsync();
+    }
+
+    /// <summary>
+    /// How long the aeroplane's own waypoint search takes to settle.
+    ///
+    /// Measured rather than chosen: typing VCR and reading back at once returned the
+    /// PREVIOUS search's match, and the correct one - autocompleted to VCRAD - arrived a
+    /// few hundred milliseconds later. The wait is only paid when something was typed.
+    /// </summary>
+    private const int TypeSearchMs = 900;
 
     /// <summary>
     /// Presses the softkey on the selected row, if it is one. Returns false for any other

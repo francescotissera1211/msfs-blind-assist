@@ -122,17 +122,28 @@ public partial class CowsDA40Definition
         };
     }
 
+    /// <summary>
+    /// ⚠️ ONLY THE TWO THE G1000 DOES NOT CARRY.
+    ///
+    /// This panel used to hold all ten. Eight of them are on the MFD Engine page's own MENU
+    /// - Failures Mode, State Saving, Engine Damage, Realistic Parking Brake, Panel Shake,
+    /// Steering Mode, Trim Speed and Prop Speed - and that menu now READS and DRIVES
+    /// properly from the display window: the knob moves through it, each row says its name
+    /// and its setting, and the choices announce themselves. So they are duplicates, and
+    /// the rule on this aeroplane is that anything doable on the display does not also get
+    /// a panel.
+    ///
+    /// The two that stay are the two the menu does NOT list, checked against the menu's own
+    /// nine rows rather than assumed. Without them there would be no way to reach these at
+    /// all, which is the opposite failure and the worse one.
+    ///
+    /// The VARIABLES for all ten are still defined and still monitored, so changing one on
+    /// the MFD is announced and can be watched from the Monitor Manager. What went away is
+    /// the second set of CONTROLS for the same eight switches, not the ability to hear them.
+    /// </summary>
     private static readonly List<string> OptionControls = new()
     {
-        "DA40_OPT_STATE_SAVING",
-        "DA40_OPT_DAMAGE",
-        "DA40_OPT_FAILURES_MODE",
-        "DA40_OPT_REALISTIC_PARK_BRAKE",
-        "DA40_OPT_WHEEL_ASSIST",
         "DA40_OPT_TIMER_EXPIRED",
-        "DA40_OPT_TRIM_SPEED",
-        "DA40_OPT_SLOW_PROPS",
-        "DA40_OPT_PANEL_SHAKE",
         "DA40_OPT_KILL_FMA"
     };
 
