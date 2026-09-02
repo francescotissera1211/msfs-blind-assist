@@ -632,6 +632,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// </summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
+        if (TryGetEngineHealthDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFlapsDisplayOverride(varKey, value, out displayText)) return true;

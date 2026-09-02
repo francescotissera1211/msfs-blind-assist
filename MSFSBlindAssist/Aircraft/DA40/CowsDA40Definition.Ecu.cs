@@ -296,6 +296,8 @@ public partial class CowsDA40Definition
         "DA40_HEALTH_BLOCK",
         "DA40_HEALTH_OIL",
         "DA40_HEALTH_FUEL",
+        "DA40_HEALTH_PUMP1",
+        "DA40_HEALTH_PUMP2",
         "DA40_HOBBS",
         "DA40_ECU_RUNTIME_A",
         "DA40_ECU_RUNTIME_B",

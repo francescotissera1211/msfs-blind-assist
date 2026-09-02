@@ -35,11 +35,45 @@ public partial class CowsDA40Definition
     /// <summary>How far health must fall, in percent, before it is said again.</summary>
     private const double HealthStep = 5;
 
+    /// <summary>
+    /// ⚠️ THE BLOCK IS NOT ON THE SAME SCALE AS THE REST, AND TREATING IT AS THOUGH IT WERE WAS
+    /// A BUG IN THE FIRST VERSION OF THIS FILE. The model's own formulas, read out of
+    /// `COWS_DA40NG_Logic.xml`:
+    ///
+    ///     1 (L:DAMAGE_BLOCK:1) 800 / -   (&gt;L:HEALTH_BLOCK:1)      block:  1 - damage/800
+    ///     100 (L:DAMAGE_OIL:1) - 100 /   (&gt;L:HEALTH_OIL:1)        oil:    1 - damage/100
+    ///     100 (L:DAMAGE_FUEL:1) - 100 /  (&gt;L:HEALTH_FUEL:1)       fuel:   1 - damage/100
+    ///
+    /// Damage is capped at 100 on all of them, so oil and fuel health really do run 100 percent
+    /// down to nothing — but the BLOCK divides by 800, so a completely destroyed block reads
+    /// **87.5 percent**. Announced raw beside the others that is actively misleading: a pilot
+    /// hearing "engine block 88 percent" would think it barely marked when in fact it is as bad
+    /// as the model can make it, and the 5-point step meant nothing was said until 40 of its 100
+    /// damage points were already on the clock.
+    ///
+    /// So the block is rescaled onto the same 0-100 the pilot hears everywhere else. This is not
+    /// cosmetic: one number a pilot acts on must mean one thing.
+    /// </summary>
+    private const double BlockHealthSpan = 8.0;
+
     private static readonly Dictionary<string, string> HealthKeys = new(StringComparer.Ordinal)
     {
         ["DA40_HEALTH_BLOCK"] = "Engine block",
         ["DA40_HEALTH_OIL"] = "Oil system",
-        ["DA40_HEALTH_FUEL"] = "Fuel system"
+        ["DA40_HEALTH_FUEL"] = "Fuel system",
+
+        // ⚠️ SETTLED: :11 and :12 are the two FUEL PUMPS, not a mystery. The old note here said
+        // the package never says what they track and guessing was worse than omitting them; the
+        // package does say, one line down in the fuel-pressure calculation —
+        //
+        //   (A:CIRCUIT ON:42) (L:HEALTH_FUEL:11) * (A:CIRCUIT ON:43) (L:HEALTH_FUEL:12) * + ...
+        //     (&gt;L:FUEL_PRESS:1)
+        //
+        // circuits 42 and 43 being the two pumps whose switches are already on the Fuel panel.
+        // A degraded pump makes less pressure, which is a fault a pilot diagnoses and MSFSBA had
+        // no way to show. They damage independently of each other and of the fuel system.
+        ["DA40_HEALTH_PUMP1"] = "Fuel pump 1",
+        ["DA40_HEALTH_PUMP2"] = "Fuel pump 2"
     };
 
     /// <summary>Exposed for the tests, which check each one exists and is polled.</summary>
@@ -50,11 +84,9 @@ public partial class CowsDA40Definition
         Add("DA40_HEALTH_BLOCK", "HEALTH_BLOCK:1", "Engine Block Health");
         Add("DA40_HEALTH_OIL", "HEALTH_OIL:1", "Oil System Health");
 
-        // ⚠️ HEALTH_FUEL has three indices - 1, 11 and 12. Only :1 is exposed, because what
-        // the other two track is not written down anywhere in the package and guessing at a
-        // label for a number a pilot might act on is worse than leaving it out. If they turn
-        // out to be the two tanks, they are one line each to add.
         Add("DA40_HEALTH_FUEL", "HEALTH_FUEL:1", "Fuel System Health");
+        Add("DA40_HEALTH_PUMP1", "HEALTH_FUEL:11", "Fuel Pump 1 Health");
+        Add("DA40_HEALTH_PUMP2", "HEALTH_FUEL:12", "Fuel Pump 2 Health");
 
         void Add(string key, string lvar, string label)
         {
@@ -78,6 +110,32 @@ public partial class CowsDA40Definition
         }
     }
 
+    /// <summary>
+    /// One number, one meaning. Oil, fuel and the two pumps are already a plain fraction of a
+    /// factory part; the block covers its whole damage range in the top eighth (see
+    /// <see cref="BlockHealthSpan"/>), so its shortfall is multiplied back out.
+    /// </summary>
+    internal static double HealthPercent(string varKey, double raw)
+    {
+        double fraction = raw <= 1.5 ? raw : raw / 100.0;
+        if (varKey == "DA40_HEALTH_BLOCK") fraction = 1.0 - (1.0 - fraction) * BlockHealthSpan;
+        return Math.Clamp(fraction, 0, 1) * 100.0;
+    }
+
+    /// <summary>
+    /// The panel row must read the SAME number the announcement said. Without this the block
+    /// row would show the model's raw 87.5 percent for a destroyed engine while the call-out
+    /// said 0 - two readings of one fact, which is the defect this whole codebase treats as
+    /// worse than either reading alone.
+    /// </summary>
+    private static bool TryGetEngineHealthDisplayOverride(string varKey, double value, out string displayText)
+    {
+        displayText = string.Empty;
+        if (!HealthKeys.ContainsKey(varKey)) return false;
+        displayText = $"{HealthPercent(varKey, value):F0}%";
+        return true;
+    }
+
     private readonly Dictionary<string, double> _healthSpoken = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -90,7 +148,7 @@ public partial class CowsDA40Definition
 
         // The value arriving here is the RAW fraction; Scale is applied for display, not
         // for ProcessSimVarUpdate, so it is turned into a percentage here too.
-        double percent = value <= 1.5 ? value * 100 : value;
+        double percent = HealthPercent(varKey, value);
 
         if (!_healthSpoken.ContainsKey(varKey))
         {
