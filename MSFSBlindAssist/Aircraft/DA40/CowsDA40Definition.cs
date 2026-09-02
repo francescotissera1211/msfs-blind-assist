@@ -371,6 +371,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // can be told from one that is - see CowsDA40Definition.LampWatch.
         AddLampCircuits(vars);
 
+        // ⚠️ HOW DAMAGED THE ENGINE IS, which nothing could say. The aeroplane accumulates
+        // damage and it survives a reload; MSFSBA had the switch that enables the model and
+        // the button that resets it, and nothing about the state in between. NG only - the
+        // damage model is the Austro's.
+        if (IsNG) AddEngineHealth(vars);
+
         return vars;
     }
 

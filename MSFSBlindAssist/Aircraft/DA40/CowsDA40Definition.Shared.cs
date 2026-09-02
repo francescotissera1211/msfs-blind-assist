@@ -214,6 +214,9 @@ public partial class CowsDA40Definition
     {
         if (IsSilentCachedReadout(varName)) return true;
 
+        // Engine health, which falls rather than switching. Only a material fall speaks.
+        if (NoteEngineHealth(varName, value, announcer)) return true;
+
         // The three graded failures - percentages, so the numeric-silence rule was keeping
         // a coolant leak and a turbo failure quiet. Onset and worsening only.
         if (NoteGradedFailure(varName, value, announcer)) return true;

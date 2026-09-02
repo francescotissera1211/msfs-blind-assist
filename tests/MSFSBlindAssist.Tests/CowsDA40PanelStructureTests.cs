@@ -674,6 +674,13 @@ public class CowsDA40PanelStructureTests
             // they never reach the generic announcer: NoteRadioChange intercepts them and
             // speaks the settled value the RADIO reported.
             .Where(k => !CowsDA40Definition.RadioAnnouncedKeys.Contains(k))
+            // ENGINE HEALTH is the same shape of exception, one step further on. These
+            // carry IsAnnounced to reach the batch, and NoteEngineHealth intercepts them:
+            // health sitting at 100 percent is not news and a percentage that drifts would
+            // chatter, so only a material FALL speaks. That is a number worth interrupting
+            // a pilot for - damage happens during something, and the moment it starts is
+            // the moment they can still do something about it.
+            .Where(k => !CowsDA40Definition.HealthKeyNames.Contains(k))
             // A DESCRIBED STATE IS NOT A NUMERIC READOUT, and this test is about numbers.
             // The standby gyro's CAGED and TOPPLED flags carry ValueDescriptions and are
             // 0/1: an instrument that has been caged, or has tumbled and is showing a

@@ -199,6 +199,28 @@ public class CowsDA40HotkeyCacheTests
     }
 
     [Fact]
+    public void EveryEngineHealthReadingIsPolled()
+    {
+        // ⚠️ The aeroplane accumulates damage and it SURVIVES A RELOAD, so a health reading
+        // that never reaches the cache means a pilot can fly a damaged engine and never
+        // find out — the same trap the state-saving system sprang with flat batteries.
+        var vars = new CowsDA40Definition(DA40Variant.NG).GetVariables();
+
+        foreach (string key in CowsDA40Definition.HealthKeyNames)
+        {
+            Assert.True(vars.ContainsKey(key), key + " no longer exists");
+
+            var v = vars[key];
+            Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+            Assert.True(v.IsAnnounced, key + " would never be polled");
+            Assert.False(v.ExcludeFromBatch);
+
+            // The model publishes 0 to 1 and a pilot thinks in percent.
+            Assert.Equal(100, v.Scale);
+        }
+    }
+
+    [Fact]
     public void EveryAlarmStateExistsOnAtLeastOneAirframe()
     {
         var known = new CowsDA40Definition(DA40Variant.NG).GetVariables().Keys
