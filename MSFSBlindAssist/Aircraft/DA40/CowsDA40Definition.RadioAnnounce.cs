@@ -174,7 +174,11 @@ public partial class CowsDA40Definition
                     System.Globalization.CultureInfo.InvariantCulture));
             }
 
-        if (parts.Count > 0) _radioAnnouncer.Announce(string.Join(". ", parts));
+        // Immediate for the same reason as the barometric settle: this is the value the
+        // knob came to REST on, 600 ms after the pilot stopped turning, and queueing it
+        // behind the display window's own read-backs is what made the altimeter setting
+        // arrive so late it read as broken.
+        if (parts.Count > 0) _radioAnnouncer.AnnounceImmediate(string.Join(". ", parts));
     }
 
     /// <summary>Stops the settle timer. Called when the aircraft is switched away.</summary>

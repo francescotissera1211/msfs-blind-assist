@@ -223,16 +223,16 @@ public class CowsDA40InteractionSurfaceTests
     [InlineData(DA40Variant.XLS)]
     public void EveryLampWatchedHasBothHalvesDefined(DA40Variant variant)
     {
-        // The lamp/switch comparison is only meaningful if both halves exist and are both
-        // in the cache — a null on either side silently disables the whole check.
+        // The switch/circuit comparison is only meaningful if both halves exist and are
+        // both in the cache — a null on either side silently disables the whole check.
         var vars = new CowsDA40Definition(variant).GetVariables();
 
-        foreach (var (lamp, pair) in CowsDA40Definition.LampPairKeys)
+        foreach (var (sw, circuit, _) in CowsDA40Definition.LampPairKeys)
         {
-            Assert.True(vars.ContainsKey(lamp), lamp + " is watched but not defined");
-            Assert.True(vars.ContainsKey(pair.Switch), pair.Switch + " is watched but not defined");
+            Assert.True(vars.ContainsKey(sw), sw + " is watched but not defined");
+            Assert.True(vars.ContainsKey(circuit), circuit + " is watched but not defined");
 
-            foreach (string key in new[] { lamp, pair.Switch })
+            foreach (string key in new[] { sw, circuit })
             {
                 var v = vars[key];
                 Assert.True(v.UpdateFrequency == MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous

@@ -121,7 +121,15 @@ public partial class CowsDA40Definition
         if (pending.TryGetValue("DA40_STBY_ALTIMETER_SET", out double s))
             parts.Add("Standby " + BaroPhrase(s));
 
-        if (parts.Count > 0) _baroAnnouncer.Announce(string.Join(". ", parts));
+        // ⚠️ IMMEDIATE, NOT QUEUED. Announce() hands NVDA the line with interrupt=false,
+        // so it waits behind everything already speaking - and the moment a pilot turns
+        // the barometric knob is exactly the moment the queue is busy, because they are
+        // working the PFD window and it is reading itself back. Reported from the cockpit
+        // as the setting arriving "very late": it was not late, it was in a queue.
+        //
+        // Interrupting is right here. This fires 700 ms after the pilot STOPPED turning,
+        // so it is the number they are sitting waiting for.
+        if (parts.Count > 0) _baroAnnouncer.AnnounceImmediate(string.Join(". ", parts));
     }
 
     /// <summary>Stops the settle timer. Called when the aircraft is switched away.</summary>
