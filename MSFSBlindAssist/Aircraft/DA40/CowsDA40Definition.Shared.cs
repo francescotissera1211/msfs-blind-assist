@@ -214,6 +214,10 @@ public partial class CowsDA40Definition
     {
         if (IsSilentCachedReadout(varName)) return true;
 
+        // The three graded failures - percentages, so the numeric-silence rule was keeping
+        // a coolant leak and a turbo failure quiet. Onset and worsening only.
+        if (NoteGradedFailure(varName, value, announcer)) return true;
+
         // A LAMP never speaks on its own; a SWITCH always does. NoteLampChange arms the
         // settle for both and returns true only for the lamp, so the switch carries on to
         // the generic announcer exactly as it always has.

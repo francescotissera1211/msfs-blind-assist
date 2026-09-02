@@ -140,6 +140,50 @@ public class CowsDA40HotkeyCacheTests
         }
     }
 
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryFailureEitherSpeaksOrIsDeliberatelyGraded(DA40Variant variant)
+    {
+        // ⚠️ A FAILURE THAT CANNOT SPEAK IS THE WORST KIND OF SILENCE. Every DA40_FAIL_*
+        // variable must either be an announced flag — which is how eighty-five of them
+        // reach the pilot — or a graded percentage handled by NoteGradedFailure, or a reset
+        // BUTTON with no state to announce. Anything else is a failure that happens quietly.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+        var silent = new List<string>();
+
+        foreach (var (key, v) in vars)
+        {
+            if (!key.StartsWith("DA40_FAIL", StringComparison.Ordinal)) continue;
+
+            // A button: UpdateFrequency.Never, nothing to announce.
+            if (v.UpdateFrequency == UpdateFrequency.Never) continue;
+
+            if (CowsDA40Definition.GradedFailureKeys.Contains(key))
+            {
+                // Graded ones must still be POLLED, or the onset is never seen.
+                Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+                continue;
+            }
+
+            if (!v.IsAnnounced) silent.Add(key);
+        }
+
+        Assert.True(silent.Count == 0,
+            $"{variant}: these failures would happen in silence — " + string.Join(", ", silent));
+    }
+
+    [Fact]
+    public void EveryGradedFailureExists()
+    {
+        var known = new CowsDA40Definition(DA40Variant.NG).GetVariables().Keys
+            .Concat(new CowsDA40Definition(DA40Variant.XLS).GetVariables().Keys)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missing = CowsDA40Definition.GradedFailureKeys.Where(k => !known.Contains(k)).ToList();
+        Assert.True(missing.Count == 0, "graded failures that do not exist — " + string.Join(", ", missing));
+    }
+
     [Fact]
     public void ThePromotionListDoesNotNameAVariableThatDoesNotExist()
     {
