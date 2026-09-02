@@ -365,7 +365,91 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             }
         }
 
+        PromoteHotkeyReadouts(vars);
         return vars;
+    }
+
+    /// <summary>
+    /// The readouts a HOTKEY answers from, promoted into the continuous batch.
+    ///
+    /// ⚠️ A HOTKEY CAN ONLY READ WHAT IS IN THE CACHE. Batch membership is Continuous AND
+    /// IsAnnounced AND not ExcludeFromBatch; an OnRequest variable is never polled, so
+    /// GetCachedVariableValue returns null and the key answers "not available yet" for
+    /// ever. That is exactly what Alt+S and Shift+F did on their first flight: every
+    /// variable behind them was OnRequest, so the engine-at-a-glance key said nothing was
+    /// available while the engine was running, and the fuel key reported a flow of zero.
+    ///
+    /// They are IsAnnounced only to earn the batch place, so every one is also in
+    /// <see cref="SilentCachedReadouts"/> and excluded from the Monitor Manager - a row a
+    /// pilot can un-tick that was never going to speak is a row that lies.
+    ///
+    /// ⚠️ NEVER PROMOTE TWO KEYS THAT SHARE ONE SimVar NAME. The continuous batch sorts by
+    /// name, so a duplicate shifts every later variable's struct slot and quietly corrupts
+    /// the whole read. Four of these have OnRequest twins on the same SimVar
+    /// (DA40_START_LOAD, DA40_START_RPM, DA40_ECU_PROP_SENSED, DA40_ECU_PRE_GEARBOX,
+    /// DA40_FUEL_FLOW) and those twins must STAY OnRequest. Two more - standby airspeed and
+    /// standby altitude - are deliberately absent from this list because their twins
+    /// (DA40_AIRSPEED, INDICATED_ALTITUDE) are already batched, and the hotkey reads those.
+    /// </summary>
+    private static readonly string[] HotkeyCachedReadouts =
+    {
+        // Alt+S, the engine at a glance.
+        "DA40_POWER_LOAD",
+        "DA40_POWER_RPM",
+        "DA40_START_OIL_PRESSURE",
+        "DA40_START_OIL_TEMP",
+        "DA40_START_COOLANT_TEMP",
+        "DA40_START_GEARBOX_TEMP",
+        "DA40_POWER_FUEL_FLOW",
+        "DA40_ELEC_BUS_MAIN_VOLT",
+        "DA40_ELEC_DISP_AMPS",
+
+        // Alt+I, the standby instruments.
+        "DA40_STBY_COMPASS",
+        "DA40_STBY_GYRO_PITCH",
+        "DA40_STBY_GYRO_BANK",
+
+        // The Hobbs meter, which a pilot writes down before and after every flight.
+        "DA40_HOBBS"
+    };
+
+    /// <summary>
+    /// Cached for the same reason, and then NOT silenced.
+    ///
+    /// These two are STATES, not moving numbers. A standby gyro that has been caged, or has
+    /// toppled, is showing something that is not the aeroplane's attitude - it interrupts a
+    /// sighted pilot the moment they look at it, so by this aircraft's own announcement rule
+    /// it should interrupt a blind one too. They keep their Monitor Manager row for the same
+    /// reason: a row that can actually speak is a row worth offering.
+    /// </summary>
+    private static readonly string[] HotkeyCachedFlags =
+    {
+        "DA40_STBY_GYRO_CAGED",
+        "DA40_STBY_GYRO_TOPPLE"
+    };
+
+    public static IReadOnlyCollection<string> HotkeyCachedReadoutKeys => HotkeyCachedReadouts;
+
+    private static void PromoteHotkeyReadouts(Dictionary<string, SimConnect.SimVarDefinition> vars)
+    {
+        foreach (string key in HotkeyCachedReadouts)
+        {
+            if (!vars.TryGetValue(key, out var def)) continue;
+
+            def.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
+            def.IsAnnounced = true;
+            def.ExcludeFromBatch = false;
+            def.ExcludeFromMonitorManager = true;
+        }
+
+        foreach (string key in HotkeyCachedFlags)
+        {
+            if (!vars.TryGetValue(key, out var def)) continue;
+
+            def.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
+            def.IsAnnounced = true;
+            def.ExcludeFromBatch = false;
+        }
     }
 
     /// <summary>

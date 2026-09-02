@@ -403,8 +403,14 @@ public partial class CowsDA40Definition
             {
                 var bits = new List<string>();
 
-                Add(bits, simConnect, "DA40_STBY_AIRSPEED", "Standby airspeed");
-                Add(bits, simConnect, "DA40_STBY_ALTITUDE", "altitude");
+                // ⚠️ NOT DA40_STBY_AIRSPEED / DA40_STBY_ALTITUDE. Those read the very same
+                // SimVars as DA40_AIRSPEED and INDICATED_ALTITUDE - the standby ASI and
+                // altimeter share the pitot-static system with the G1000 on this aeroplane
+                // - and those two are ALREADY in the continuous batch. Promoting the
+                // standby copies as well would put two keys with one SimVar name into a
+                // batch that sorts by name, which shifts every later variable's slot.
+                Add(bits, simConnect, "DA40_AIRSPEED", "Standby airspeed");
+                Add(bits, simConnect, "INDICATED_ALTITUDE", "altitude");
                 Add(bits, simConnect, "DA40_STBY_COMPASS", "compass");
 
                 double? pitch = ReadNow(simConnect, "DA40_STBY_GYRO_PITCH");

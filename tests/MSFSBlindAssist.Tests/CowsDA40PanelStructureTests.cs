@@ -659,6 +659,12 @@ public class CowsDA40PanelStructureTests
             // they never reach the generic announcer: NoteRadioChange intercepts them and
             // speaks the settled value the RADIO reported.
             .Where(k => !CowsDA40Definition.RadioAnnouncedKeys.Contains(k))
+            // A DESCRIBED STATE IS NOT A NUMERIC READOUT, and this test is about numbers.
+            // The standby gyro's CAGED and TOPPLED flags carry ValueDescriptions and are
+            // 0/1: an instrument that has been caged, or has tumbled and is showing a
+            // plausible lie, interrupts a sighted pilot the moment they look at it, so by
+            // this aircraft's own announcement rule it must interrupt a blind one too.
+            .Where(k => vars[k].ValueDescriptions is not { Count: > 0 })
             .ToList();
 
         Assert.True(noisy.Count == 0,

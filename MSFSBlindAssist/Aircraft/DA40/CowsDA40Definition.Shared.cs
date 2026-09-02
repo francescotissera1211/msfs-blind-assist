@@ -158,7 +158,15 @@ public partial class CowsDA40Definition
     /// only thing that gets them cached - so the silence has to come from somewhere else,
     /// and ProcessSimVarUpdate is where. Every one is a NUMBER that changes constantly.
     /// </summary>
-    public static IReadOnlyCollection<string> SilentCachedReadoutKeys => SilentCachedReadouts;
+    /// <summary>
+    /// EVERYTHING that is polled and never spoken, from both lists.
+    ///
+    /// It is the union rather than one list because the two have different reasons - these
+    /// are readout plumbing, the others are hotkey plumbing - but only one truthful answer
+    /// to "will this speak", and the tests that ask it must get that one.
+    /// </summary>
+    public static IReadOnlyCollection<string> SilentCachedReadoutKeys =>
+        SilentCachedReadouts.Concat(HotkeyCachedReadouts).ToList();
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
@@ -188,13 +196,23 @@ public partial class CowsDA40Definition
     };
 
     /// <summary>
+    /// Every hotkey-cached readout is silent for the same reason the list above is: they
+    /// carry IsAnnounced only to reach the batch, and they are engine numbers that move
+    /// several times a second. Kept as a separate list so the two reasons stay separate,
+    /// and unioned here so neither can be forgotten.
+    /// </summary>
+    private static bool IsSilentCachedReadout(string varName)
+        => SilentCachedReadouts.Contains(varName)
+           || HotkeyCachedReadouts.Contains(varName);
+
+    /// <summary>
     /// Returning true means "handled" - the generic announcer never runs for that key.
     /// Nothing is announced here; that IS the handling.
     /// </summary>
     public override bool ProcessSimVarUpdate(string varName, double value,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
-        if (SilentCachedReadouts.Contains(varName)) return true;
+        if (IsSilentCachedReadout(varName)) return true;
 
         // Both barometric subscales: recorded and announced once the knob settles, rather
         // than on every 0.01 inHg step. Returns true either way - the generic announcer
