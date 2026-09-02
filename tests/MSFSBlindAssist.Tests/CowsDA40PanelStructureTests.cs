@@ -568,6 +568,14 @@ public class CowsDA40PanelStructureTests
     /// </summary>
     private static readonly string[] SilentNumericControls =
     {
+        // ⚠️ WRITE-ONLY TRANSACTION FIELDS. These are not switches and have no state of
+        // their own to mirror: the pilot types how many gallons they want in a tank and
+        // the fuel goes in. What the tank actually HOLDS is DA40_FUEL_MAIN_ACTUAL and
+        // DA40_FUEL_AUX_ACTUAL, which ARE Continuous and announced - so a tank filling
+        // from GSX, or draining through a leak, still speaks. Announcing the request as
+        // well would say the same number twice.
+        "DA40_FUEL_MAIN_LOAD",
+        "DA40_FUEL_AUX_LOAD",
         // Swept by hardware - a throttle quadrant, a trim wheel.
         "DA40_POWER_LEVER_SET",
         "DA40_TRIM_SET",

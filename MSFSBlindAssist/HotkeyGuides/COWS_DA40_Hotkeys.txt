@@ -58,6 +58,16 @@ Fuel:
              then counts down by fuel USED. It is a flight-planning figure; these
              keys read the tanks.
 
+Refuelling (Center Console > Fuel System):
+  There is no fuel panel in the cockpit - the filler caps are on the wings - so
+  MSFSBA offers the transaction instead, which is what you actually do at a pump:
+  type how many gallons you want in each tank, or press Fill Both Tanks for 19.5
+  each, 39 total. Typed in gallons; read back in whatever unit the G1000 is set
+  to. Ground only with the engine shut down, and it says so if you try otherwise.
+
+  If you use GSX, its own refuelling service is the more realistic road and
+  MSFSBA reads it out in full - open the accessible GSX menu with Alt+G.
+
 Weight:
   W          Read Gross Weight (pounds) + center of gravity
   Shift+W    Read Gross Weight (kilograms) + center of gravity

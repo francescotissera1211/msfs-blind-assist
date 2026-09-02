@@ -65,6 +65,12 @@ public partial class CowsDA40Definition
     private const double FuelMaxTankDifferenceGal = 9.0;
 
     /// <summary>
+    /// What one tank holds. Both are the same size on both variants - the NG's asymmetry is
+    /// in how fuel MOVES, not in how much each wing carries.
+    /// </summary>
+    private const double FuelTankCapacityGal = 19.5;
+
+    /// <summary>
     /// How long the latch is held. This is the duration of the GESTURE, not a wait for
     /// the model to notice — see HandleFuelSet for why holding alone cannot break the
     /// wire. Long enough to read as a deliberate pull, short enough not to become a
@@ -77,6 +83,26 @@ public partial class CowsDA40Definition
     // and what it depends on.
     private double _fuelMainGal;
     private double _fuelAuxGal;
+
+    /// <summary>
+    /// One tank's load, as a number the pilot types. In GALLONS because that is the unit the
+    /// tank is measured in and the number the AFM quotes; the read-back converts into
+    /// whatever the G1000 is set to, so a pilot working in litres hears litres back.
+    /// </summary>
+    private static void AddTankLoad(Dictionary<string, SimVarDefinition> v, string key, string label)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = key,
+            DisplayName = label,
+            Type = SimVarType.LVar,
+            Units = "gallons",
+            UpdateFrequency = UpdateFrequency.Never,
+            IsAnnounced = false,
+            Format = "0.0",
+            HelpText = "0 to 19.5 gallons in this tank. Ground only, engine off."
+        };
+    }
 
     private static Dictionary<string, SimVarDefinition> BuildFuelVariables()
     {
@@ -111,6 +137,42 @@ public partial class CowsDA40Definition
             SuppressRestingButtonState = true,
             IsAnnounced = false,
             HelpText = "Unlocks the fuel valve. Cannot be undone."
+        };
+
+        // ---------- Refuelling ----------
+        //
+        // ⚠️ MSFSBA COULD NOT PUT FUEL IN THIS AEROPLANE AT ALL. The Fuel System panel had
+        // the valve, the wire, the pumps and the transfer pump - everything for MANAGING
+        // fuel and nothing for HAVING any - so a blind pilot could not plan a flight, let
+        // alone fly one. It is the most basic thing there is and it was missing because
+        // nobody had asked for it out loud.
+        //
+        // This is what a GA pilot actually does: they tell the pump how many gallons they
+        // want in each wing, or they say fill it up. There is no fuel PANEL in the
+        // aeroplane to reproduce - the filler caps are on the wings - so the honest model
+        // is the transaction, not a cockpit control.
+        //
+        // ⚠️ ON THE GROUND, ENGINE OFF, and refused otherwise. You do not fuel a running
+        // aeroplane, and this is the second control here that refuses rather than reports
+        // (the ECU reset hold is the other) - because "fuelling while running" is not a
+        // degraded version of what the pilot asked for, it is something nobody should do.
+        // MAIN and AUXILIARY, not left and right: this whole file is NG-only (the XLS's
+        // fuel system is a left/right selector and a different panel, still unbuilt), and
+        // the AFM is explicit that the NG's tanks are named for their ROLE rather than
+        // their wing. Refuel() below says the same words back.
+        AddTankLoad(v, "DA40_FUEL_MAIN_LOAD", "Main Tank Fuel");
+        AddTankLoad(v, "DA40_FUEL_AUX_LOAD", "Auxiliary Tank Fuel");
+
+        v["DA40_FUEL_FILL_FULL"] = new SimVarDefinition
+        {
+            Name = "DA40_FUEL_FILL_FULL",
+            DisplayName = "Fill Both Tanks",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Both tanks to 19.5 gallons. Ground only, engine off."
         };
 
         v["DA40_FUEL_PUMPS"] = new SimVarDefinition
@@ -243,6 +305,9 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> FuelControls = new()
     {
+        "DA40_FUEL_MAIN_LOAD",
+        "DA40_FUEL_AUX_LOAD",
+        "DA40_FUEL_FILL_FULL",
         "DA40_FUEL_VALVE",
         "DA40_FUEL_WIRE",
         "DA40_FUEL_PUMPS",
@@ -271,9 +336,72 @@ public partial class CowsDA40Definition
         "DA40_FUEL_CB_XFER"
     };
 
+    /// <summary>
+    /// Puts fuel in a tank, or refuses and says why.
+    ///
+    /// The refusal is the point. Fuelling a running aeroplane is not a thing a pilot does
+    /// slightly wrong; it is a thing nobody does, so the button says so and stops rather
+    /// than quietly doing it anyway.
+    /// </summary>
+    private bool Refuel(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        double? mainGal, double? auxGal)
+    {
+        // ⚠️ SIM_ON_GROUND, NOT DA40_ECU_PRE_ON_GROUND. Both carry the same SimVar, but the
+        // ECU one is OnRequest - never polled, so the cache has nothing and the ?? default
+        // would have let a pilot refuel in the cruise. The generic key is already batched,
+        // and only ONE of the two may be (the batch sorts by SimVar name), so this is the
+        // one to read.
+        bool onGround = (simConnect.GetCachedVariableValue("SIM_ON_GROUND") ?? 1) > 0.5;
+        bool running = (simConnect.GetCachedVariableValue("DA40_START_COMBUSTION") ?? 0) > 0.5;
+
+        if (!onGround || running)
+        {
+            announcer.AnnounceImmediate(running
+                ? "Shut the engine down before refuelling."
+                : "Refuelling is only possible on the ground.");
+            return true;
+        }
+
+        var said = new List<string>();
+
+        if (mainGal is not null)
+        {
+            double gal = Math.Clamp(mainGal.Value, 0, FuelTankCapacityGal);
+            simConnect.SetSimVar("FUEL TANK LEFT MAIN QUANTITY", gal, "gallons");
+            said.Add((IsNG ? "Main " : "Left ") + Quantity(gal));
+        }
+
+        if (auxGal is not null)
+        {
+            double gal = Math.Clamp(auxGal.Value, 0, FuelTankCapacityGal);
+            simConnect.SetSimVar("FUEL TANK RIGHT MAIN QUANTITY", gal, "gallons");
+            said.Add((IsNG ? "Auxiliary " : "Right ") + Quantity(gal));
+        }
+
+        announcer.AnnounceImmediate(string.Join(", ", said) + ".");
+        return true;
+
+        // Read back in the pilot's own fuel unit - a pilot who set the G1000 to litres
+        // asked to work in litres, and a refuelling figure is exactly where that matters.
+        string Quantity(double gal)
+            => TryUnitText("gallons", gal, "0.0", out string t) ? t : $"{gal:0.0} gallons";
+    }
+
     private bool HandleFuelSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        switch (varKey)
+        {
+            case "DA40_FUEL_MAIN_LOAD":
+                return Refuel(simConnect, announcer, value, null);
+
+            case "DA40_FUEL_AUX_LOAD":
+                return Refuel(simConnect, announcer, null, value);
+
+            case "DA40_FUEL_FILL_FULL":
+                return Refuel(simConnect, announcer, FuelTankCapacityGal, FuelTankCapacityGal);
+        }
+
         switch (varKey)
         {
             case "DA40_FUEL_VALVE":
