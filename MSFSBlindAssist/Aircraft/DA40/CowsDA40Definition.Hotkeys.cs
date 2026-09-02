@@ -535,6 +535,17 @@ public partial class CowsDA40Definition
             // Ctrl+W. Answered from the standing once-a-second GPS frame, so it is instant and
             // costs no round trip - and the SAME data drives the automatic passing call, so the
             // key and the call can never disagree about which waypoint is active.
+            // D and Shift+D. Both were DEAD on this aeroplane - handled by the Airbuses, the
+            // Boeings and the HS787 and by nothing on a Diamond - which is the same class of
+            // gap Ctrl+W turned out to be.
+            case HotkeyAction.ReadDistanceToDest:
+                announcer.AnnounceImmediate(ComposeDestinationReadout());
+                return true;
+
+            case HotkeyAction.ReadDistanceToTOD:
+                announcer.AnnounceImmediate(ComposeTopOfDescentReadout(simConnect));
+                return true;
+
             case HotkeyAction.ReadNDWaypoint:
                 announcer.AnnounceImmediate(ComposeWaypointReadout());
                 return true;

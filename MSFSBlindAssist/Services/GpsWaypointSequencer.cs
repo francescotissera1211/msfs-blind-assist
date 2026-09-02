@@ -137,6 +137,62 @@ public static class GpsWaypointSequencer
         return text + ".";
     }
 
+    /// <summary>
+    /// Distance and time to the DESTINATION — what "D" answers, and what a controller means by
+    /// "how far are you from the field".
+    ///
+    /// ⚠️ THE DISTANCE IS RECOVERED, NOT READ, AND THAT IS NOT A HACK. The G1000 never publishes
+    /// route distance to the destination as a SimVar: `onLnavDistanceToDestinationChanged` takes
+    /// the distance and writes only `GPS ETE` and `GPS ETA` from it, using
+    /// <c>ete = 3600 * distance / groundSpeed</c>. Inverting that returns the distance the
+    /// navigator actually computed, exactly — it is the same number, algebraically, not an
+    /// estimate of it.
+    ///
+    /// ⚠️ IT IS UNRECOVERABLE BELOW ABOUT A KNOT, and honestly so: the same method writes ETE as
+    /// a flat 0 whenever ground speed is at or under 1, so on the ground there is nothing to
+    /// invert. That says "not computed" rather than "zero miles", for the same reason the
+    /// waypoint readout does — a zero that means absence must never be spoken as a measurement.
+    /// </summary>
+    public static string ComposeDestination(SimConnectManager.GpsWaypointData data,
+                                            Func<double, string>? distance = null)
+    {
+        if (data.IsActiveFlightPlan <= 0.5) return "No active flight plan.";
+
+        double ete = data.RouteEteSeconds;
+        double gs = data.GroundSpeedKnots;
+        if (ete < 1 || gs <= 1) return "Distance to destination not computed.";
+
+        double nm = ete * gs / 3600.0;
+        int minutes = (int)Math.Round(ete / 60.0);
+        string time = minutes >= 60
+            ? $"{minutes / 60} hour{(minutes / 60 == 1 ? "" : "s")} {minutes % 60} minutes"
+            : minutes >= 1 ? $"{minutes} minute{(minutes == 1 ? "" : "s")}"
+                           : "less than a minute";
+
+        return $"Destination {(distance ?? DefaultDistance)(nm)}, {time}.";
+    }
+
+    /// <summary>
+    /// Top of descent — what "Shift+D" answers.
+    ///
+    /// This one IS published, but only by the avionics rather than the sim: the G1000's own VNAV
+    /// publisher carries <c>L:WTAP_VNav_Distance_To_TOD</c> alongside a
+    /// <c>L:WTAP_VNav_Path_Available</c> flag. Both names were read out of the running
+    /// instrument's publisher table, never guessed.
+    ///
+    /// ⚠️ A DESCENT THAT HAS NOT BEEN COMPUTED IS NOT A DESCENT ZERO MILES AWAY. Without a VNAV
+    /// path there is no top of descent at all, and the flag is what tells the two apart — the
+    /// distance alone would read 0 in both cases, which is the exact trap the waypoint readout
+    /// fell into.
+    /// </summary>
+    public static string ComposeTopOfDescent(bool pathAvailable, double todMetres,
+                                             Func<double, string>? distance = null)
+    {
+        if (!pathAvailable) return "No vertical path computed.";
+        if (todMetres <= 0) return "Already past top of descent.";
+        return $"Top of descent in {(distance ?? DefaultDistance)(todMetres / MetresPerNauticalMile)}.";
+    }
+
     private static string DefaultDistance(double nm) =>
         nm < 10 ? $"{nm:0.0} miles" : $"{nm:0} miles";
 

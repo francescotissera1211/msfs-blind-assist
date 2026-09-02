@@ -52,6 +52,45 @@ public partial class CowsDA40Definition
         };
     }
 
+    /// <summary>
+    /// The G1000's own VNAV output, for the top-of-descent readout.
+    ///
+    /// ⚠️ BOTH NAMES WERE READ OUT OF THE RUNNING INSTRUMENT'S PUBLISHER TABLE, never guessed —
+    /// `vNavPublisher` maps `vnav_tod_distance` to `L:WTAP_VNav_Distance_To_TOD` and
+    /// `vnav_path_available` to `L:WTAP_VNav_Path_Available`. The flag is not optional: without
+    /// a computed path there IS no top of descent, and the distance reads 0 in that case exactly
+    /// as it does when the aeroplane is sitting on top of one.
+    ///
+    /// ⚠️ THE DISTANCE UNIT IS METRES BY THE WORKING TITLE CONVENTION AND IS NOT YET VERIFIED
+    /// IN FLIGHT. If it turns out to be nautical miles the readout will be wrong by a factor of
+    /// 1852, which is loud rather than subtle — but do not treat it as confirmed until a real
+    /// descent has been flown against it.
+    ///
+    /// Registered `Units = "number"` because they are L:VARS: a converting unit makes SimConnect
+    /// convert from a base unit the variable does not have. Announced only to reach the batch
+    /// cache, and silenced in ProcessSimVarUpdate.
+    /// </summary>
+    private static void AddVnavReadouts(Dictionary<string, SimVarDefinition> v)
+    {
+        Add("DA40_VNAV_TOD_DIST", "WTAP_VNav_Distance_To_TOD", "Distance to Top of Descent");
+        Add("DA40_VNAV_PATH_AVAIL", "WTAP_VNav_Path_Available", "Vertical Path Available");
+
+        void Add(string key, string lvar, string label)
+        {
+            v[key] = new SimVarDefinition
+            {
+                Name = lvar,
+                DisplayName = label,
+                Type = SimVarType.LVar,
+                Units = "number",
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true,
+                RenderAsReadOnlyStatus = true
+            };
+        }
+    }
+
     private ScreenReaderAnnouncer? _wptAnnouncer;
     private SimConnectManager? _wptSimConnect;
     private string? _wptLastNextId;
@@ -111,6 +150,23 @@ public partial class CowsDA40Definition
         if (last == null) return "Waypoint information not available yet.";
         return GpsWaypointSequencer.ComposeReadout(
             GpsWaypointSequencer.Read(last.Value, _wptLastNextId), DistanceText);
+    }
+
+    /// <summary>Answers D — distance and time to the destination, from the standing GPS frame.</summary>
+    private string ComposeDestinationReadout()
+    {
+        var last = _wptSimConnect?.LastGpsWaypoint;
+        return last == null
+            ? "Destination information not available yet."
+            : GpsWaypointSequencer.ComposeDestination(last.Value, DistanceText);
+    }
+
+    /// <summary>Answers Shift+D — top of descent, from the G1000's own VNAV.</summary>
+    private string ComposeTopOfDescentReadout(SimConnectManager simConnect)
+    {
+        double avail = simConnect.GetCachedVariableValue("DA40_VNAV_PATH_AVAIL") ?? 0;
+        double tod = simConnect.GetCachedVariableValue("DA40_VNAV_TOD_DIST") ?? 0;
+        return GpsWaypointSequencer.ComposeTopOfDescent(avail > 0.5, tod, DistanceText);
     }
 
     /// <summary>Distance in whatever the pilot set on the G1000, never a fixed unit.</summary>

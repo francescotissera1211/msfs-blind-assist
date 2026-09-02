@@ -371,6 +371,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // can be told from one that is - see CowsDA40Definition.LampWatch.
         AddLampCircuits(vars);
         AddWaypointMonitorRow(vars);
+        AddVnavReadouts(vars);
 
         // ⚠️ HOW DAMAGED THE ENGINE IS, which nothing could say. The aeroplane accumulates
         // damage and it survives a reload; MSFSBA had the switch that enables the model and
@@ -733,7 +734,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleAutopilotSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
-        if (HandleEngineStartSet(varKey, value, simConnect)) return true;
+        if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

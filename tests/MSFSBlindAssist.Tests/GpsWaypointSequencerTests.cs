@@ -180,6 +180,65 @@ public class GpsWaypointSequencerTests
         Assert.Contains("bearing 000", GpsWaypointSequencer.ComposeReadout(r));
     }
 
+    // ---- D: distance and time to the destination -------------------------------------
+
+    private static SimConnectManager.GpsWaypointData Route(double ete, double gs, bool plan = true)
+        => new() { NextId = "LIKRA", PrevId = "VCBI", IsActiveFlightPlan = plan ? 1 : 0,
+                   RouteEteSeconds = ete, GroundSpeedKnots = gs, PrevValid = 1 };
+
+    [Fact]
+    public void TheDestinationDistanceIsRecoveredExactlyFromTimeAndGroundSpeed()
+    {
+        // The navigator never publishes route distance; it publishes ETE computed as
+        // 3600 * distance / groundSpeed. Inverting returns the SAME number, not an estimate:
+        // 130 nm at 120 kt is 3900 s, and 3900 s at 120 kt must come back as 130 nm.
+        string said = GpsWaypointSequencer.ComposeDestination(Route(ete: 3900, gs: 120));
+        Assert.Contains("130 miles", said);
+        Assert.Contains("1 hour 5 minutes", said);
+    }
+
+    [Fact]
+    public void TheDestinationIsNotComputedWhenStopped()
+    {
+        // ⚠️ The same method writes ETE as a flat 0 at or below 1 knot, so on the ground there
+        // is nothing to invert. Saying "0 miles" there is the waypoint bug all over again.
+        Assert.Equal("Distance to destination not computed.",
+                     GpsWaypointSequencer.ComposeDestination(Route(ete: 0, gs: 0)));
+    }
+
+    [Fact]
+    public void TheDestinationSaysSoWithNoFlightPlan()
+    {
+        Assert.Equal("No active flight plan.",
+                     GpsWaypointSequencer.ComposeDestination(Route(ete: 3900, gs: 120, plan: false)));
+    }
+
+    // ---- Shift+D: top of descent ------------------------------------------------------
+
+    [Fact]
+    public void NoVerticalPathIsSaidPlainlyRatherThanAsZeroMiles()
+    {
+        // Without a computed path there is no top of descent at all, and the distance reads 0
+        // in that case exactly as it does when sitting on top of one. The flag separates them.
+        Assert.Equal("No vertical path computed.",
+                     GpsWaypointSequencer.ComposeTopOfDescent(pathAvailable: false, todMetres: 0));
+    }
+
+    [Fact]
+    public void ATopOfDescentAheadIsGivenInMiles()
+    {
+        // 46,300 m = 25 nm.
+        Assert.Equal("Top of descent in 25 miles.",
+                     GpsWaypointSequencer.ComposeTopOfDescent(pathAvailable: true, todMetres: 46300));
+    }
+
+    [Fact]
+    public void PastTheTopOfDescentSaysThatRatherThanZero()
+    {
+        Assert.Equal("Already past top of descent.",
+                     GpsWaypointSequencer.ComposeTopOfDescent(pathAvailable: true, todMetres: 0));
+    }
+
     [Fact]
     public void DistanceGainsADecimalOnlyWhenItIsClose()
     {

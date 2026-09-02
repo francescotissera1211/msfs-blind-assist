@@ -418,6 +418,21 @@ public sealed class CowsDA40DisplayForm : Form
         [Keys.Control | Keys.Alt | Keys.Right] = ("NAV_Small_INC", "NAV kilohertz up"),
         [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down"),
 
+        // ⚠️ THE SWAP, WITHOUT WHICH THE WHOLE RADIO FEATURE IS DECORATIVE. The knob PUSH
+        // (Alt+Enter, Ctrl+Alt+Enter) moves the tuning cursor between COM 1 and COM 2, and
+        // between NAV 1 and NAV 2 - press it again and it comes back - but nothing here could
+        // ever make a tuned STANDBY frequency ACTIVE. So a pilot could dial 118.7 perfectly,
+        // hear it read back as set, and still be transmitting on the old frequency.
+        //
+        // Reported from the cockpit as "I don't know how to make it go back to NAV 1 ... and I
+        // don't know how to swap it either". The first half was the push doing exactly its job;
+        // the second half was a feature that had never existed.
+        //
+        // Shift is added to the push that already selects the radio, so the family stays
+        // learnable: Alt is COM, Control+Alt is NAV, Enter pushes the knob, Shift+Enter swaps.
+        [Keys.Alt | Keys.Shift | Keys.Enter]                = ("COM_Switch", "COM swapped"),
+        [Keys.Control | Keys.Alt | Keys.Shift | Keys.Enter] = ("NAV_Switch", "NAV swapped"),
+
         // THE BAROMETRIC KNOB, which is on the same bezel and takes the same transport.
         // Ctrl+B still sets both altimeters to a number you type, and that stays the fast
         // way to answer a controller's QNH - but the knob is how the aeroplane is flown,

@@ -730,6 +730,18 @@ public partial class SimConnectManager
         public double IsActiveFlightPlan;
         public double IsDirectTo;
         public double PrevValid;
+        /// <summary>
+        /// Time to the DESTINATION (the whole route), not to the next waypoint - the plain
+        /// `GPS ETE`, distinct from `GPS WP ETE` above.
+        ///
+        /// ⚠️ ROUTE DISTANCE TO THE DESTINATION IS NEVER PUBLISHED AS A SIMVAR AT ALL. The
+        /// G1000's `onLnavDistanceToDestinationChanged` RECEIVES the distance and writes only
+        /// ETE and ETA from it — read out of the running instrument. But its formula is
+        /// `ete = 3600 * distance / groundSpeed`, so the distance is recoverable exactly by
+        /// inverting it, which is why ground speed rides along in this struct.
+        /// </summary>
+        public double RouteEteSeconds;
+        public double GroundSpeedKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

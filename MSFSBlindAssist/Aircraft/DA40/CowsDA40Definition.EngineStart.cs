@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
@@ -257,7 +258,8 @@ public partial class CowsDA40Definition
     /// No timer, no auto-release and no crank limit is imposed here: the AFM's
     /// 10-second limit is information the pilot acts on, not something MSFSBA enforces.
     /// </summary>
-    private bool HandleEngineStartSet(string varKey, double value, SimConnectManager simConnect)
+    private bool HandleEngineStartSet(string varKey, double value, SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer)
     {
         switch (varKey)
         {
@@ -269,12 +271,29 @@ public partial class CowsDA40Definition
                 simConnect.SetLVar("MASTER_COVER:1", value >= 0.5 ? 1 : 0);
                 return true;
 
+            // ⚠️ THESE TWO MUST SPEAK, AND THEY ARE A DELIBERATE EXCEPTION TO THE RULE THAT
+            // BUTTON PRESSES ARE NOT ANNOUNCED. That rule exists because a screen reader already
+            // says "button pressed" — which tells a pilot the BUTTON was activated and nothing
+            // whatever about the KEY. The start key is not a button, it is a two-position hold:
+            // the AFM says crank until 500 RPM and then let go, so "am I still cranking?" is the
+            // whole question, and it is the one thing the reader could not answer.
+            //
+            // A sighted pilot has the key in their hand. Reported from the cockpit as exactly
+            // this gap.
             case "DA40_START_STARTER_ENGAGE":
                 simConnect.ExecuteCalculatorCodeUnique("1 (>L:STARTER_SPAD:1)");
+                announcer.AnnounceImmediate("Cranking");
                 return true;
 
             case "DA40_START_STARTER_RELEASE":
                 simConnect.ExecuteCalculatorCodeUnique("0 (>L:STARTER_SPAD:1)");
+                // The engine normally catches before the pilot lets go — the airframe drops the
+                // starter itself the instant it does — so say which of the two happened rather
+                // than a bare "released" that leaves them guessing.
+                announcer.AnnounceImmediate(
+                    (simConnect.GetCachedVariableValue("DA40_START_COMBUSTION") ?? 0) > 0.5
+                        ? "Start key released, engine running"
+                        : "Start key released");
                 return true;
         }
 

@@ -159,9 +159,18 @@ Transponder:
   X          Read Squawk Code
 
 Distance:
-  D          Read Distance to Destination (from the FMS)
-  Shift+D    Read Distance + time to Top of Descent (once computed in flight,
-             e.g. "145 miles to top of descent: 00:16:58")
+  D          Distance and time to the DESTINATION.
+
+             Needs the aeroplane moving: the G1000 never publishes route
+             distance directly, so it is recovered from the time-to-run and
+             ground speed - exactly, but only above about a knot. Stopped, it
+             says "not computed" rather than inventing a zero.
+
+  Shift+D    Distance to TOP OF DESCENT, from the G1000's own VNAV.
+
+             Says "no vertical path computed" when there is no descent
+             programmed - which is not the same thing as a descent zero miles
+             away, and the difference matters.
 
 Location:
   C          Read Nearest City
@@ -259,6 +268,15 @@ The G1000 windows (Alt+P and Alt+M):
   Ctrl+Alt+Up/Down   NAV megahertz         Ctrl+Alt+Left/Right NAV kilohertz
   Alt+Enter          Move the COM tuning box between COM 1 and COM 2
   Ctrl+Alt+Enter     Move the NAV tuning box between NAV 1 and NAV 2
+
+  Alt+Shift+Enter        SWAP the COM standby into active
+  Ctrl+Alt+Shift+Enter   SWAP the NAV standby into active
+
+             The push keys above only move the CURSOR between radio 1 and
+             radio 2 - press again and it comes back. Tuning alone changes the
+             STANDBY frequency and nothing else, so without a swap you can dial
+             a frequency perfectly, hear it read back, and still be
+             transmitting on the old one. Shift on the same key swaps it.
   Ctrl+Shift+Up/Down The barometric knob, one step at a time
 
   Ctrl+B (input mode) still sets BOTH altimeters to a number you type, and takes

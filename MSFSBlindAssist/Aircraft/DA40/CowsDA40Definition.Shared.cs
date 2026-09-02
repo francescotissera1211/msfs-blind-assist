@@ -196,7 +196,11 @@ public partial class CowsDA40Definition
 
         // Carries the waypoint-passing call's Ctrl+M row and nothing else. The call itself is
         // spoken from the GPS waypoint callback, which checks this key's mute for itself.
-        "DA40_WAYPOINT_PASSING"
+        "DA40_WAYPOINT_PASSING",
+
+        // The G1000's VNAV output, polled for the Shift+D readout and never spoken on its own.
+        "DA40_VNAV_TOD_DIST",
+        "DA40_VNAV_PATH_AVAIL"
     };
 
     /// <summary>
