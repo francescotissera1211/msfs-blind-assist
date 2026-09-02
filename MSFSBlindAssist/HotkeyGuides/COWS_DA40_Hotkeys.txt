@@ -72,6 +72,23 @@ Weight:
   W          Read Gross Weight (pounds) + center of gravity
   Shift+W    Read Gross Weight (kilograms) + center of gravity
 
+V-speeds (output mode). The keys carry Airbus names and DA40 numbers - the
+same aeroplane-specific remapping the display keys use - and every figure comes
+from the AFM:
+
+  Shift+5    Rotate speed, and best rate of climb both with take-off flap and
+             clean. This is the take-off set.
+  Shift+4    Approach speed, short-field approach speed, and best glide. This is
+             the landing set.
+  Shift+6    The flap limit FOR THE FLAP SETTING YOU ARE IN - it reads the
+             selector, so it answers the limit that applies right now.
+  Shift+3    Both flap limits at once, take-off and landing.
+  Shift+2    Manoeuvring speed, never-exceed, and maximum structural cruising.
+
+  The G1000 keeps its own copy of these on the Timer and References window
+  (Ctrl+G on the PFD): VNE, Vg, Vy, Vx, Vr. They agree with the numbers above -
+  two sources, one AFM.
+
 Flaps:
   L          Read Flap Position
 
@@ -137,6 +154,22 @@ Location:
 
 Trim:
   Shift+T    Toggle Trim Announcements On/Off
+
+  How to set take-off trim: press Centre Trim on the Elevator Trim panel, and
+  the read-out says "centred". That IS the take-off position on this aeroplane.
+
+  There is no number to calculate and no table to look up. The real DA40's trim
+  wheel carries a moulded T/O mark and the AFM gives no value for it - a sighted
+  pilot matches the wheel to the mark, and the mark is the middle of the band.
+  Real DA40 pilots take off from neutral for a normal load, and adjust in the
+  climb by feel.
+
+  If you are heavily loaded in the back, expect to need a little nose-down after
+  rotation; light and solo, a little nose-up. That is flying, not arithmetic.
+
+  The autopilot cannot help: the GFC 700 trims only while it is ENGAGED, and it
+  may not be engaged below the AFM's minimum engagement height - so take-off trim
+  is always hand-set.
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode

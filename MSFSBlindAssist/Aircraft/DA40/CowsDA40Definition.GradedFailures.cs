@@ -32,7 +32,13 @@ public partial class CowsDA40Definition
     {
         ["DA40_FAIL_COOLANT_LEAK"] = "Coolant leak",
         ["DA40_FAIL_TURBO"] = "Turbocharger failure",
-        ["DA40_FAIL_BOOST_LEAK"] = "Boost leak"
+        ["DA40_FAIL_BOOST_LEAK"] = "Boost leak",
+
+        // Not a failure, but exactly the same shape: a percentage that climbs, whose ONSET
+        // is the news and whose value is not. The DA40 is not approved for flight into
+        // known icing, and its induction filter blocks with ice unless alternate air is
+        // open - so this is the aeroplane telling the pilot to open it.
+        ["DA40_ICE_FILTER"] = "Induction filter icing"
     };
 
     /// <summary>Exposed for the tests, which check every one exists and is polled.</summary>

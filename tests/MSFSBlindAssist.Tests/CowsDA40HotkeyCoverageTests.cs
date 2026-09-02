@@ -102,6 +102,24 @@ public class CowsDA40HotkeyCoverageTests
     }
 
     [Fact]
+    public void TheGuideDocumentsTheVSpeedKeysAndHowToSetTakeOffTrim()
+    {
+        // ⚠️ FIVE V-SPEED KEYS EXISTED AND THE GUIDE NAMED NONE OF THEM. They carry Airbus
+        // names and DA40 numbers, so a pilot reading an airliner guide would never guess
+        // Shift+5 is rotate speed - and a key nobody can find is a key that does not exist.
+        string guide = Guide();
+
+        foreach (string key in new[] { "Shift+2", "Shift+3", "Shift+4", "Shift+5", "Shift+6" })
+        {
+            Assert.Contains(key, guide, StringComparison.Ordinal);
+        }
+
+        // And the question that kept being asked: what trim do I set for take-off?
+        Assert.Contains("Centre Trim", guide, StringComparison.Ordinal);
+        Assert.Contains("no number to calculate", guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheGuideDocumentsTheGeneralAviationEngineKeys()
     {
         // A key that exists and is not in the guide is a key nobody will ever press. These

@@ -681,6 +681,11 @@ public class CowsDA40PanelStructureTests
             // a pilot for - damage happens during something, and the moment it starts is
             // the moment they can still do something about it.
             .Where(k => !CowsDA40Definition.HealthKeyNames.Contains(k))
+            // GRADED values - the coolant leak, the turbo, the boost leak and the induction
+            // filter restriction. Percentages that CLIMB, whose onset is the news and whose
+            // value is not, so NoteGradedFailure intercepts them and speaks once when they
+            // start rather than on every percent.
+            .Where(k => !CowsDA40Definition.GradedFailureKeys.Contains(k))
             // A DESCRIBED STATE IS NOT A NUMERIC READOUT, and this test is about numbers.
             // The standby gyro's CAGED and TOPPLED flags carry ValueDescriptions and are
             // 0/1: an instrument that has been caged, or has tumbled and is showing a

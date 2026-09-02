@@ -81,6 +81,34 @@ public partial class CowsDA40Definition
 
         AddFlag(v, "DA40_ICE_PITOT_STATE", "STATE_PITOT", "Pitot Heat State", "Off", "On");
         AddFlag(v, "DA40_ICE_ALT_AIR_STATE", "STATE_ALTERNATE_AIR", "Alternate Air State", "Closed", "Open");
+
+        // ⚠️ THE INDUCTION FILTER BLOCKS WITH ICE, AND NOTHING SAID SO. This is the whole
+        // reason the alternate air control exists, and a blind pilot had the control and no
+        // way to know they needed it. The model's own condition, read out of its logic:
+        //
+        //   ice accreting AND relative wind >= 60 kt AND precipitation > 5 mm/h
+        //   AND ALTERNATE AIR CLOSED   ->  restriction builds, capped at 100
+        //
+        // and it clears itself only once the outside air is at or above zero, when the ice
+        // melts off. So it is not a failure a pilot can reset - it is a consequence of
+        // flying in precipitation near freezing with the filter unprotected, and the fix is
+        // to open alternate air BEFORE it happens.
+        //
+        // ⚠️ FILTER_RESRTICTION is spelt that way in the aeroplane. It is their variable
+        // and their typo; renaming it here would simply read nothing.
+        v["DA40_ICE_FILTER"] = new SimVarDefinition
+        {
+            Name = "FILTER_RESRTICTION",
+            DisplayName = "Induction Filter Restriction",
+            Type = SimVarType.LVar,
+            Units = "percent",
+            Format = "F0",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            // Announced only to reach the batch; the graded announcer speaks the onset.
+            IsAnnounced = true,
+            RenderAsReadOnlyStatus = true,
+            HelpText = "Builds in precipitation above 60 knots with alternate air CLOSED."
+        };
         // Moves off 1.00 when alternate air opens — the induction restriction, so the
         // pilot can see the door is actually doing something.
         AddReadout(v, "DA40_ICE_ALT_AIR_FACTOR", "ENG_ALT_AIR_FACTOR", "Induction Air Factor", "", "F2");
@@ -114,6 +142,7 @@ public partial class CowsDA40Definition
     {
         "DA40_ICE_PITOT_STATE",
         "DA40_ICE_ALT_AIR_STATE",
+        "DA40_ICE_FILTER",
         "DA40_ICE_ALT_AIR_FACTOR",
         "DA40_ICE_OAT"
     };
