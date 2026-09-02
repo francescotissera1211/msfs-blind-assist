@@ -409,6 +409,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_STBY_GYRO_PITCH",
         "DA40_STBY_GYRO_BANK",
 
+        // P and E, the single-value engine keys. DA40_POWER_LEVER_SET is already silenced
+        // in SilentCachedReadouts for the panels; naming it here as well is harmless (the
+        // two lists are unioned) and keeps this list a complete record of what the hotkeys
+        // depend on.
+        "DA40_POWER_TARGET_RPM",
+        "DA40_POWER_LEVER_SET",
+
         // The Hobbs meter, which a pilot writes down before and after every flight.
         "DA40_HOBBS"
     };

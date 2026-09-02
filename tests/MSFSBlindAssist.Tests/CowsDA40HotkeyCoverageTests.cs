@@ -60,6 +60,9 @@ public class CowsDA40HotkeyCoverageTests
     [InlineData("ReadFuelInfo")]
     [InlineData("ReadDisplayLowerECAM")]
     [InlineData("ReadDisplayISIS")]
+    [InlineData("ReadEngineRpm")]
+    [InlineData("ReadEnginePower")]
+    [InlineData("ReadEngineTemps")]
     public void TheDA40AnswersThisKeyItself(string action)
     {
         // The base definition implements NONE of these — it does a variable-map lookup and
@@ -96,5 +99,17 @@ public class CowsDA40HotkeyCoverageTests
         Assert.Contains("Alt+S", guide, StringComparison.Ordinal);
         Assert.Contains("Alt+I", guide, StringComparison.Ordinal);
         Assert.Contains("Alt+M", guide, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheGuideDocumentsTheGeneralAviationEngineKeys()
+    {
+        // A key that exists and is not in the guide is a key nobody will ever press. These
+        // three are registered globally, so an undocumented one is also a letter silently
+        // taken away from every other aircraft.
+        string guide = Guide();
+
+        Assert.Contains("Shift+O", guide, StringComparison.Ordinal);
+        Assert.Contains("Engine (single values", guide, StringComparison.Ordinal);
     }
 }

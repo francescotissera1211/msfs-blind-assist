@@ -79,9 +79,29 @@ Vertical:
 Approach:
   Ctrl+0     Read Approach Capability (CAT rating)
 
+Engine (single values, for the questions you ask most often):
+  P          RPM. On the NG it also says what the governor is TARGETING, when
+             that differs from what the sensor reads - the Austro has no
+             propeller lever and the ECU sets the blade angle, so this is how you
+             hear it working. On the XLS there is a blue pitch lever and no
+             target.
+  E          Power: load percent, fuel flow, and the power lever position. The
+             Austro has no manifold pressure gauge and no mixture - one lever.
+  Shift+O    Engine temperatures: oil, coolant and gearbox. A liquid-cooled,
+             geared diesel has two the air-cooled Lycoming does not, and on a hot
+             day the coolant temperature is what limits climb power.
+  Alt+S      All of the above at once, plus oil pressure, volts and amps - the
+             whole engine picture in one press.
+
+These three are GENERAL AVIATION keys, not DA40 keys: the question is the same on
+every propeller aeroplane and only the answer changes. A carburetted or injected
+piston would answer E with manifold pressure and mixture, and a turboprop with
+torque and ITT.
+
 Weather:
   I          Wind Info
-  O          Read Outside Temperature (Celsius)
+  O          Read Outside Temperature (Celsius) - the OUTSIDE air. Shift+O is the
+             engine's own temperatures.
 
 Time:
   Z          Read Local Time at aircraft position. Spoken as

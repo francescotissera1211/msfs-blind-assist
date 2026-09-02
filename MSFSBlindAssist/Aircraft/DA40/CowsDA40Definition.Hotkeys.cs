@@ -361,6 +361,78 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // ---------- P: RPM, and the propeller if there is one ----------
+            //
+            // The single most-asked number in a piston aeroplane, and it means different
+            // things on the two variants. The NG's Austro is a FADEC diesel: there is no
+            // propeller lever, the ECU governs the blade angle, and it publishes the RPM it
+            // is TARGETING as well as the one the sensor reads - so the pilot can hear the
+            // governor working. The XLS has a blue pitch lever and no target.
+            case HotkeyAction.ReadEngineRpm:
+            {
+                var bits = new List<string>();
+                Add(bits, simConnect, "DA40_POWER_RPM", "");
+
+                if (IsNG)
+                {
+                    // Only worth saying when it DIFFERS - a target equal to the reading is
+                    // the governor doing its job and needs no words.
+                    double? target = ReadNow(simConnect, "DA40_POWER_TARGET_RPM");
+                    double? actual = ReadNow(simConnect, "DA40_POWER_RPM");
+                    if (target is not null && actual is not null &&
+                        Math.Abs(target.Value - actual.Value) >= 25)
+                    {
+                        bits.Add($"governor targeting {target.Value:0} RPM");
+                    }
+                }
+
+                announcer.AnnounceImmediate(bits.Count == 0
+                    ? "RPM not available yet"
+                    : string.Join(", ", bits) + ".");
+                return true;
+            }
+
+            // ---------- E: how much power the engine is making ----------
+            //
+            // On the NG this is LOAD PERCENT and the power lever position, because that is
+            // what an Austro has - no manifold pressure gauge, no mixture, one lever. On a
+            // carburetted or injected piston it would be manifold pressure and mixture,
+            // which is why the ACTION is called ReadEnginePower rather than ReadLoad: the
+            // question is the same on every aeroplane and only the answer changes.
+            case HotkeyAction.ReadEnginePower:
+            {
+                var bits = new List<string>();
+                Add(bits, simConnect, "DA40_POWER_LOAD", "Load");
+                Add(bits, simConnect, "DA40_POWER_FUEL_FLOW", "fuel flow");
+
+                if (IsNG) Add(bits, simConnect, "DA40_POWER_LEVER_SET", "power lever");
+
+                announcer.AnnounceImmediate(bits.Count == 0
+                    ? "Engine power not available yet"
+                    : string.Join(", ", bits) + ".");
+                return true;
+            }
+
+            // ---------- Shift+O: the engine's temperatures ----------
+            //
+            // O reads the OUTSIDE air temperature; Shift+O reads the engine's own, which is
+            // the pair of questions a pilot actually asks about heat. The Austro is
+            // liquid-cooled and geared, so it has coolant and gearbox temperatures that no
+            // air-cooled Lycoming has - and on a diesel the coolant temperature is the one
+            // that limits climb power on a hot day.
+            case HotkeyAction.ReadEngineTemps:
+            {
+                var bits = new List<string>();
+                Add(bits, simConnect, "DA40_START_OIL_TEMP", "Oil");
+                Add(bits, simConnect, "DA40_START_COOLANT_TEMP", "coolant");
+                Add(bits, simConnect, "DA40_START_GEARBOX_TEMP", "gearbox");
+
+                announcer.AnnounceImmediate(bits.Count == 0
+                    ? "Engine temperatures not available yet"
+                    : string.Join(", ", bits) + ".");
+                return true;
+            }
+
             // ---------- Alt+S: the engine, at a glance ----------
             //
             // The DA40 has no lower ECAM, and this is what that key is FOR on an aeroplane
