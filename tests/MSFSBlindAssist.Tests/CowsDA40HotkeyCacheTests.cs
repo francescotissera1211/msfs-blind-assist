@@ -173,6 +173,42 @@ public class CowsDA40HotkeyCacheTests
             $"{variant}: these failures would happen in silence — " + string.Join(", ", silent));
     }
 
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryAlarmStateActuallyAnnounces(DA40Variant variant)
+    {
+        // These are the described states a sighted pilot is interrupted by — the engine
+        // stopping, an ECU fault latching, the ECU test's result, the transfer pump
+        // stopping itself. Each was silent, sitting in a panel scan, until it was listed.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (string key in CowsDA40Definition.AlarmStateKeys)
+        {
+            // A key absent on one airframe is correct, not a fault: the ECU states are
+            // the Austro's FADEC and the XLS's Lycoming has none.
+            if (!vars.TryGetValue(key, out var v)) continue;
+
+            Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+            Assert.True(v.IsAnnounced, key + " would go back to being silent");
+            Assert.False(v.ExcludeFromBatch, key + " is excluded from the batch");
+
+            // Silencing one of these anywhere would undo the whole point of the list.
+            Assert.DoesNotContain(key, CowsDA40Definition.SilentCachedReadoutKeys);
+        }
+    }
+
+    [Fact]
+    public void EveryAlarmStateExistsOnAtLeastOneAirframe()
+    {
+        var known = new CowsDA40Definition(DA40Variant.NG).GetVariables().Keys
+            .Concat(new CowsDA40Definition(DA40Variant.XLS).GetVariables().Keys)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missing = CowsDA40Definition.AlarmStateKeys.Where(k => !known.Contains(k)).ToList();
+        Assert.True(missing.Count == 0, "alarm states that do not exist — " + string.Join(", ", missing));
+    }
+
     [Fact]
     public void EveryGradedFailureExists()
     {

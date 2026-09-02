@@ -434,6 +434,43 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// it should interrupt a blind one too. They keep their Monitor Manager row for the same
     /// reason: a row that can actually speak is a row worth offering.
     /// </summary>
+    /// <summary>
+    /// States that INTERRUPT a sighted pilot, and were sitting in a panel scan.
+    ///
+    /// This aeroplane's rule is that switches announce and numbers do not, and it is a good
+    /// rule — but it left a class of DESCRIBED STATES silent that no sighted pilot would
+    /// have to go looking for. Each of these was found by listing every variable with value
+    /// descriptions that never announces and asking, one at a time, whether a pilot in the
+    /// left seat would notice it without trying:
+    ///
+    ///   the engine stopping                    — the emergency, and nothing else said it
+    ///   an ECU fault LATCHING                  — the difference between "try the voter
+    ///                                            switch" and "land as soon as practical",
+    ///                                            and the CAS only ever says ECU FAIL
+    ///   the ECU test's own RESULT              — the whole reason for running it
+    ///   the transfer pump stopping itself      — documented behaviour above ~14 gallons,
+    ///                                            and the aeroplane's Tips page tells the
+    ///                                            pilot to set a timer because of it
+    ///
+    /// ⚠️ A TRIM RUNAWAY IS DELIBERATELY ABSENT and is already covered. DA40_TRIM_RUNAWAY
+    /// shares its SimVar with DA40_FAIL_AFCS_TRIM_RUN, which is already batched and
+    /// announced — so it speaks, and promoting the second copy would put two keys with one
+    /// SimVar name into a batch that sorts by name and corrupt every later variable's slot.
+    /// That is the trap NoTwoBatchedVariablesShareOneSimVarName exists for, sprung and
+    /// caught while writing this list.
+    /// </summary>
+    private static readonly string[] AlarmStates =
+    {
+        "DA40_START_COMBUSTION",
+        "DA40_ECU_LATCH_A",
+        "DA40_ECU_LATCH_B",
+        "DA40_ECU_TEST_FAIL_A",
+        "DA40_ECU_TEST_FAIL_B",
+        "DA40_FUEL_TRANSFER_RUNNING"
+    };
+
+    public static IReadOnlyCollection<string> AlarmStateKeys => AlarmStates;
+
     private static readonly string[] HotkeyCachedFlags =
     {
         "DA40_STBY_GYRO_CAGED",
@@ -454,7 +491,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             def.ExcludeFromMonitorManager = true;
         }
 
-        foreach (string key in HotkeyCachedFlags)
+        foreach (string key in HotkeyCachedFlags.Concat(AlarmStates))
         {
             if (!vars.TryGetValue(key, out var def)) continue;
 
