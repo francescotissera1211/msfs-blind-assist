@@ -115,12 +115,49 @@ namespace MSFSBlindAssist.SimConnect
             _agentInstalled = false;
         }
 
-        /// <summary>Pause/resume polling (e.g. only poll while a display window is open).
-        /// Forces a fresh push on re-activation.</summary>
+        /// <summary>
+        /// Hand the display over to another reader, or take it back.
+        ///
+        /// ⚠️ THIS MUST RELEASE THE SOCKET, NOT MERELY STOP POLLING, AND FOR YEARS IT DID NOT.
+        /// Coherent GT allows ONE inspector socket per view. Setting a flag left this client's
+        /// WebSocket open on AS1000_PFD, so when the PFD window then tried to read the same
+        /// screen its connection was refused and it showed:
+        ///
+        ///     "The G1000 allows only one debugger connection per screen, so the usual cause is
+        ///      that something else is already reading this one - another copy of this window,
+        ///      or a developer tool."
+        ///
+        /// The "something else" was MSFSBA'S OWN CAS MONITOR. The message sent the pilot hunting
+        /// for a developer tool that was never running - live report: restarted the PC to be
+        /// sure, and the display still would not open. The handover was designed (the CAS
+        /// monitor's own comment says "the window therefore takes the socket") and only half
+        /// built: the flag stopped the polling, nothing let go of the connection.
+        ///
+        /// Deactivating therefore tears the socket down the way <see cref="Stop"/> does, but
+        /// leaves the cancellation token alive so RunLoop keeps spinning - it calls
+        /// EnsureConnected on every active pass, so reactivation reconnects by itself with no
+        /// extra plumbing. Aborting without taking _connectLock follows Stop()'s existing
+        /// precedent: this is called from the UI thread, where waiting on that semaphore could
+        /// deadlock against the very loop being released, and EnsureConnected already copes
+        /// with the socket going null underneath it.
+        /// </summary>
         public void SetActive(bool active)
         {
             _active = active;
-            if (active) _lastHash = "";
+            if (active)
+            {
+                // Forces a fresh push once reconnected - the rows have not changed from this
+                // client's point of view, but the window that had the socket may have moved
+                // the display somewhere else entirely.
+                _lastHash = "";
+                return;
+            }
+
+            try { _ws?.Abort(); } catch { /* handover must never throw */ }
+            try { _ws?.Dispose(); } catch { }
+            _ws = null;
+            _connected = false;
+            _agentInstalled = false;
         }
 
         /// <summary>Force a one-shot scrape now and return the rows (used by F5 refresh).</summary>
