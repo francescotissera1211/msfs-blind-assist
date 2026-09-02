@@ -2715,22 +2715,21 @@
     /// after every keystroke. A dialog is a view that is not the open page, which the
     /// instrument already tells us.
     A.M.dialogText = function () {
+        // ⚠️ A WHITELIST, AND IT HAS TO BE. The first version answered for any view with no
+        // controls, no compiled map and short text - and the PAGE SELECTOR is exactly that
+        // while it is fading out: its list has already gone, so A.M.list() returns null, the
+        // view key is still PageSelect, and this read the whole selector back as one run-on
+        // blob. Reported from the cockpit as "Navigation Map IFR/VFR Charts Traffic Map
+        // Weather Data Link TAWS-B Map WPT Aux FPL NRST EIS", over and over.
+        //
+        // There is exactly one view on this instrument whose content IS its text, so it is
+        // named rather than inferred. Guessing which views qualify is what broke it.
+        var key = A.M.viewKey();
+        if (key !== "Auth") return "";
+
         var view = A.M.view();
         var root = view && view.viewContainerRef && view.viewContainerRef.instance;
         if (!root) return "";
-
-        // ⚠️ A MAP IS NOT A MESSAGE. A map page also carries no controls, and reading its
-        // labels back after every keystroke - "AUTO25 NMDRNHDG UPDetail UNRES27..." - is
-        // far worse than saying nothing. Every map-bearing view holds a compiled map, which
-        // is the instrument's own way of saying so, and is exact where a length test was
-        // not: the nav map's text came to 199 characters and slipped straight through one.
-        if (view.compiledMap) return "";
-
-        // A VIEW WITH CONTROLS SPEAKS THROUGH ITS CONTROLS. Navigraph Settings has four,
-        // and with the cursor merely OFF it was falling through to here and reading the
-        // whole page back - alias, subscription, both SimBrief switches and the version -
-        // after every keystroke.
-        try { if (A.M.fields().length > 0) return ""; } catch (e) { }
 
         // spacedText, not text: the Navigraph code sits against the word after it
         // ("BEM7NMMPOR") when the nodes are run together, and a code that cannot be told

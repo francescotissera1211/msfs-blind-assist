@@ -214,6 +214,10 @@ public partial class CowsDA40Definition
     {
         if (IsSilentCachedReadout(varName)) return true;
 
+        // A door is OPEN or CLOSED, never "65.4" - the percentage sweeps as the canopy
+        // swings and used to announce every step of it.
+        if (NoteDoorChange(varName, value, announcer)) return true;
+
         // Engine health, which falls rather than switching. Only a material fall speaks.
         if (NoteEngineHealth(varName, value, announcer)) return true;
 

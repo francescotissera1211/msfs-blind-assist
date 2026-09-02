@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft.DA40;
+using MSFSBlindAssist.SimConnect;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests;
@@ -216,6 +217,47 @@ public class CowsDA40InteractionSurfaceTests
 
         Assert.True(unexplained.Count == 0,
             "omitted with no reason given — " + string.Join(", ", unexplained));
+    }
+
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryDoorAnnouncedIsARealControl(DA40Variant variant)
+    {
+        // ⚠️ A door must never announce a PERCENTAGE. EXIT OPEN sweeps as the canopy
+        // swings, so the settle speaks the state it comes to rest in - and that only works
+        // if every name in the table is a control the announcer will actually see.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+
+        foreach (string key in CowsDA40Definition.DoorAnnounceKeys)
+        {
+            Assert.True(vars.ContainsKey(key), key + " is announced but not defined");
+
+            var v = vars[key];
+            Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+            Assert.True(v.IsAnnounced, key + " would never reach the settle");
+        }
+    }
+
+    [Fact]
+    public void TheDoorToggleIsUniqueOrClosingSilentlyFails()
+    {
+        // Opening a door and then closing it is the SAME calculator string twice running,
+        // and MobiFlight coalesces byte-identical consecutive commands - so the close was
+        // dropped and the door stayed open. Doing another door in between made it work,
+        // which is exactly the shape of that bug.
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        string src = File.ReadAllText(Path.Combine(dir!.FullName, "MSFSBlindAssist",
+            "Aircraft", "DA40", "CowsDA40Definition.Doors.cs"));
+
+        Assert.Contains("ExecuteCalculatorCodeUnique($\"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)\")",
+            src, StringComparison.Ordinal);
     }
 
     [Theory]

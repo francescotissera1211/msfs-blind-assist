@@ -163,7 +163,17 @@ public partial class CowsDA40Definition
         // A comparison here can only ever be wrong in one of two ways - the cache misses
         // and the door looks closed when it is open, or the position is mid-travel and
         // neither branch describes it - and both failures are silent.
-        simConnect.ExecuteCalculatorCode($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)");
+        // ⚠️ UNIQUE, NOT PLAIN, AND THIS IS WHY CLOSING FAILED. Opening a door and then
+        // closing it sends the SAME calculator string twice running - "2 (>K:TOGGLE_
+        // AIRCRAFT_EXIT)" both times - and MobiFlight coalesces byte-identical consecutive
+        // commands, so the second was dropped and the door stayed open. Reported from the
+        // cockpit exactly as it behaves: the canopy would not shut, and doing the REAR door
+        // in between made it work, because that broke the identical pair.
+        //
+        // This codebase's own invariant already said every valueless calc write goes
+        // through the unique form. This call was the exception that proved it, again - the
+        // same trap as the squawk keypad, the softkeys and the wiper switch.
+        simConnect.ExecuteCalculatorCodeUnique($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)");
         return true;
     }
 
@@ -176,6 +186,15 @@ public partial class CowsDA40Definition
     private bool TryGetDoorDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
+
+        // The CONTROL as well as the position readout. Both carry a percentage and neither
+        // should ever say one: a pilot asked for open or closed and that is the whole of
+        // what a door has to tell them.
+        if (DoorAnnounceKeys.Contains(varKey))
+        {
+            displayText = value > 0.5 ? "Open" : "Closed";
+            return true;
+        }
 
         if (varKey.StartsWith("DA40_DOOR_") && varKey.EndsWith("_POS"))
         {
