@@ -111,8 +111,39 @@ public partial class CowsDA40Definition
         _casClient?.SetActive(!suspended);
     }
 
+    /// <summary>
+    /// The CAS messages out of a scrape, and NOTHING ELSE.
+    ///
+    /// ⚠️ INDENTATION ALONE IS NOT THE TEST, and treating it as one was a real fault. The
+    /// scrape indents every nested list it emits — the PFD's popout panes, and now the
+    /// field list that every page carries — so an indentation-only rule announces
+    /// "Weight: Pounds" as a caution the moment a pilot opens a setup page. The block
+    /// starts at the "CAS messages:" header and ends at the first row that is not part
+    /// of it.
+    ///
+    /// Static and separate so the boundary can be tested without a live display.
+    /// </summary>
+    internal static List<string> ExtractCasMessages(IEnumerable<string> rows)
+    {
+        var cas = new List<string>();
+        bool inCas = false;
+
+        foreach (string row in rows)
+        {
+            if (row.StartsWith("CAS messages:", StringComparison.Ordinal)) { inCas = true; continue; }
+            if (!row.StartsWith("  ", StringComparison.Ordinal)) { inCas = false; continue; }
+            if (inCas) cas.Add(row.Trim());
+        }
+
+        return cas;
+    }
+
     private void OnCasRows(List<string> rows)
     {
+        // BEFORE the announcer guard: the units are not an announcement, and they must
+        // still be picked up on a scrape that arrives before the monitor has one.
+        NoteDisplayUnits(rows);
+
         if (_casAnnouncer == null) return;
 
         if (!_casSawRows)
@@ -121,13 +152,14 @@ public partial class CowsDA40Definition
             Log.Debug("DA40", $"CAS monitor: first rows in ({rows.Count} lines)");
         }
 
-        var cas = new List<string>();
+        List<string> cas;
         string fma = "";
+
+        cas = ExtractCasMessages(rows);
 
         foreach (string row in rows)
         {
-            if (row.StartsWith("  ", StringComparison.Ordinal)) cas.Add(row.Trim());
-            else if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = row.Substring(11);
+            if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = row.Substring(11);
         }
 
         // First pass after a connect is the baseline and is never spoken.

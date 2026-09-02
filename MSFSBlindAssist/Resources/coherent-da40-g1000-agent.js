@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 8;
+    A.VERSION = 9;
 
     function visible(el) {
         if (!el) return false;
@@ -2336,6 +2336,72 @@
         return "";
     };
 
+    // ------------------------------------------------------------- the DISPLAY UNITS
+    //
+    // The pilot sets these on the MFD's Aux System Setup page — NAV angle, distance and
+    // speed, altitude and vertical speed, temperature, weight, fuel — and having done so
+    // they expect the whole aeroplane to answer in them. MSFSBA answered in its own units
+    // regardless, so a pilot who had switched the G1000 to kilograms was still told pounds
+    // by every panel.
+    //
+    // WHERE THEY LIVE. Not in a SimVar and not in an L:var: they are Working Title user
+    // settings, held by the instrument's `settingSaveManager` and persisted into the
+    // aeroplane's own profile (`DA40.profile_1`). Nothing outside the instrument can read
+    // them, which is why they reach MSFSBA down this socket and no other way.
+    //
+    // BOTH DISPLAYS CARRY THE SAME SIX, verified live — the settings are shared over the
+    // instrument bus, so the PFD's copy is as good as the MFD's. That matters: the CAS
+    // monitor holds an always-on socket to the PFD, so the units arrive whether or not a
+    // display window is open.
+    A.M.UNIT_KEYS = [
+        ["unitsNavAngle", "bearings"],
+        ["unitsDistance", "distance"],
+        ["unitsAltitude", "altitude"],
+        ["unitsTemperature", "temperature"],
+        ["unitsWeight", "weight"],
+        ["unitsFuel", "fuel"]
+    ];
+
+    A.M.units = function () {
+        var el = A.M.el();
+        var mgr = el && el.settingSaveManager;
+        if (!mgr) return [];
+
+        var found = {};
+        try {
+            var entries = mgr.entries;
+            for (var i = 0; i < entries.length; i++) {
+                var s = entries[i], name = null, value = null;
+                try {
+                    var setting = s.setting || s;
+                    name = setting.definition ? setting.definition.name : setting.name;
+                    value = setting.value;
+                } catch (e) { continue; }
+                if (name) found[name] = value;
+            }
+        } catch (e) { return []; }
+
+        var out = [];
+        for (var k = 0; k < A.M.UNIT_KEYS.length; k++) {
+            var key = A.M.UNIT_KEYS[k][0];
+            if (found[key] !== undefined && found[key] !== null) {
+                out.push(A.M.UNIT_KEYS[k][1] + " " + String(found[key]));
+            }
+        }
+        return out;
+    };
+
+    /// The units as ONE row, readable aloud and parseable by the app.
+    ///
+    /// ⚠️ THE WORDING IS A CONTRACT with CowsDA40Definition.Units.cs, which reads this row
+    /// off the same scrape the CAS monitor already runs and converts every DA40 readout
+    /// into it. "Display units: " and the "<dimension> <value>" pairs are what it matches.
+    A.pushUnits = function (rows) {
+        var u = [];
+        try { u = A.M.units(); } catch (e) { u = []; }
+        if (u.length) rows.push("Display units: " + u.join(", "));
+    };
+
     // ------------------------------------------------------------------- the page map
     //
     // WHY SOME AUX PAGES CANNOT BE REACHED. The page selector's own table gives every page
@@ -2671,6 +2737,7 @@
 
         rows.push("Page: " + (A.pageTitle() || "not shown"));
 
+        A.pushUnits(rows);
         A.pushFields(rows);
 
         var bar = A.navDataBar();
@@ -2759,6 +2826,8 @@
 
         var wins = A.pfdWindows();
         for (var w = 0; w < wins.length; w++) rows.push(wins[w]);
+
+        A.pushUnits(rows);
 
         // The PFD's popouts - the transponder, the timer, the nearest-airport window - are
         // built from the same controls as the MFD's setup pages, so the same reader serves

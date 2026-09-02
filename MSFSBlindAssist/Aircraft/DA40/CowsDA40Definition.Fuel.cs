@@ -72,8 +72,6 @@ public partial class CowsDA40Definition
     /// </summary>
     private const int FuelWireHoldMs = 1500;
 
-    private const double LitresPerGallonFuel = 3.785411784;
-
     // Latest measured tank quantities, captured as their own status rows render, so the
     // difference row can be computed. See TryGetFuelDisplayOverride for why this works
     // and what it depends on.
@@ -375,7 +373,14 @@ public partial class CowsDA40Definition
             case "DA40_FUEL_AUX_IND":
             {
                 // AFM 2.5 gives this gauge a red arc below 1 gallon and green to 14.
-                string band = DA40InstrumentBands.Annotate(varKey, value, $"{value:0.0} gallons");
+                // The arc is a quantity of fuel and does not move with the pilot's chosen
+                // units, so it is annotated from the raw gallons; only the figure changes.
+                if (!TryUnitText("gallons", value, "0.0", out string quantity))
+                {
+                    quantity = $"{value:0.0} gallons";
+                }
+
+                string band = DA40InstrumentBands.Annotate(varKey, value, quantity);
 
                 // On the cap the gauge has stopped measuring. Saying so is the difference
                 // between "the tank holds 14" and "the tank holds at least 14, go and
@@ -407,5 +412,5 @@ public partial class CowsDA40Definition
     /// and the aeroplane is fuelled in whichever the field uses.
     /// </summary>
     private static string DualUnitFuel(double gallons)
-        => $"{gallons:0.0} gallons, {gallons * LitresPerGallonFuel:0} litres";
+        => $"{gallons:0.0} gallons, {gallons * LitresPerGallon:0} litres";
 }

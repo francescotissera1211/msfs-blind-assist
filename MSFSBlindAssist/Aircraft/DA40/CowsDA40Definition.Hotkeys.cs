@@ -29,7 +29,6 @@ public partial class CowsDA40Definition
     private static readonly string[] FlapDetents = { "UP", "T/O", "LDG" };
 
     /// <summary>US gallons to litres, for the dual-unit fuel readouts.</summary>
-    private const double LitresPerGallon = 3.785411784;
 
     /// <summary>
     /// Input mode + B: SET both altimeters.

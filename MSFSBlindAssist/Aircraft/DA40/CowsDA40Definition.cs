@@ -504,8 +504,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         var band = DA40InstrumentBands.For(varKey);
         if (band != null && GetVariables().TryGetValue(varKey, out var def))
         {
-            string number = value.ToString(def.Format);
-            string withUnits = string.IsNullOrWhiteSpace(def.Units) ? number : $"{number} {def.Units}";
+            // ⚠️ THE NUMBER IS CONVERTED AND THE BAND IS NOT. An arc is a physical fact
+            // about the engine - the green on the oil-temperature gauge is the same span of
+            // heat whether it is read in celsius or fahrenheit - so the band is looked up
+            // from the RAW value and only the figure spoken beside it changes.
+            if (!TryUnitText(def.Units, value, def.Format, out string withUnits))
+            {
+                string number = value.ToString(def.Format);
+                withUnits = string.IsNullOrWhiteSpace(def.Units) ? number : $"{number} {def.Units}";
+            }
+
             displayText = DA40InstrumentBands.Annotate(varKey, value, withUnits);
             return true;
         }
@@ -534,7 +542,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             && readout.ValueDescriptions is not { Count: > 0 }
             && !string.IsNullOrWhiteSpace(readout.Units))
         {
-            displayText = $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}";
+            // The pilot's chosen units first; SpokenUnit is the fallback for every
+            // dimension the G1000 has no setting for - volts, amperes, RPM, hours.
+            if (!TryUnitText(readout.Units, value, readout.Format, out displayText))
+            {
+                displayText = $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}";
+            }
             return true;
         }
 

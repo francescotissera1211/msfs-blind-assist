@@ -246,6 +246,11 @@ public sealed class CowsDA40DisplayForm : Form
                 // arriving while the pilot is reading some other part of the display is
                 // exactly the one that has to speak.
                 if (_side == "PFD") _owner?.ProcessCasRows(rows);
+
+                // BOTH displays carry the pilot's chosen units, and only ONE of them can
+                // be read at a time - one inspector socket per view. So whichever window
+                // is open feeds them, and the MFD window is not a special case.
+                else _owner?.NoteDisplayUnits(rows);
             }));
         }
         catch (InvalidOperationException)
