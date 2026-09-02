@@ -43,7 +43,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 public partial class CowsDA40Definition
 {
     /// <summary>How still the tuning must be before the frequency is spoken.</summary>
-    private const int RadioSettleMs = 600;
+    private const int RadioSettleMs = 300;
 
     /// <summary>How long after MSFSBA's own set or swap to stay quiet.</summary>
     private const int RadioOwnWriteGraceMs = 2500;

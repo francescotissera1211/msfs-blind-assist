@@ -495,6 +495,12 @@ public partial class MainForm : Form
             da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+
+            // ⚠️ The DA40 rotates at 67 KIAS, so the stock 80/100 knot roll callouts both land
+            // AFTER it is flying - two announcements during the busiest ten seconds of the
+            // flight, neither marking anything. One call at Vr is what a light single wants.
+            takeoffAssistManager?.ConfigureSpeedCallouts(
+                Aircraft.DA40.DA40Speeds.For(da40Cas.Variant).Vr, "Rotate", null, string.Empty);
         }
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —

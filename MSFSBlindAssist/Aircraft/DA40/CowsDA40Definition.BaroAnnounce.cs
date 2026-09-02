@@ -28,7 +28,18 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 public partial class CowsDA40Definition
 {
     /// <summary>How still the knob must be before the value is spoken.</summary>
-    private const int BaroSettleMs = 700;
+    /// <summary>
+    /// ⚠️ 700 ms WAS TOO LONG AND WAS REPORTED AS A LATE READOUT TWICE. The settle exists so a
+    /// swept knob speaks once instead of forty times, and it still does: a G1000 subscale knob
+    /// steps many times a SECOND, so consecutive steps arrive far closer together than 300 ms
+    /// and coalesce exactly as before. What 700 ms also did was put most of a second of silence
+    /// after a SINGLE nudge — the case where the pilot has already stopped and is waiting for
+    /// the number — and that silence is indistinguishable from a dead key.
+    ///
+    /// The number is the gap between STEPS, not a speech delay, so shortening it costs nothing
+    /// on a sweep and buys back the whole delay on a single press.
+    /// </summary>
+    private const int BaroSettleMs = 300;
 
     /// <summary>How long after MSFSBA's own write to stay quiet about a subscale.</summary>
     private const int OwnWriteGraceMs = 3000;
