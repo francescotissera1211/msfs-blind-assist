@@ -1219,15 +1219,25 @@
     // The selected item carries "highlight-select" (NOT "checklist-focus", which is the
     // display list's own marker - they are different lists with different classes).
     A.checklistSelection = function () {
-        // ⚠️ GUARD FIRST. Both selection lists stay in the DOM with offsetParent set AND
-        // opacity 1 long after the pilot has left the checklist page - measured on the
-        // live MFD sitting on "FPL - Active Flight Plan", where both lists still reported
-        // visible with opacity 1 while the checklist PAGE container reported hidden. So
-        // neither the visibility test nor the opacity test that works for a G1000 popout
-        // dialog can be trusted here; the parent PAGE is the only honest signal. Without
-        // this the readback answered "Currently on: TERMS AND CONDITIONS FOR USE" on
-        // EVERY page of the MFD - a worse fault than the one this function was added for.
-        if (!firstVisible(".Da40-checklist-page-container")) return [];
+        // ⚠️ ASK THE INSTRUMENT WHETHER THE POPUP IS OPEN. Both selection lists stay in the
+        // DOM with offsetParent set AND opacity 1 long after they are closed - measured on
+        // the live MFD, where both still reported visible with opacity 1 while the pilot
+        // was scrolling checklist ITEMS behind them. Gating on the checklist PAGE instead
+        // was the first fix and it was not enough: it stops this leaking onto other pages,
+        // but ON the checklist page it still answered "Currently on: TERMS AND CONDITIONS
+        // FOR USE" over and over while the pilot moved through a checklist. Each popup is a
+        // registered VIEW, so the view key is the honest signal and the only one.
+        var open = A.M.viewKey();
+        if (open === "Da40NgChecklistSelectionPopup" ||
+            open === "Da40NgChecklistCategorySelectionPopup") {
+            // Open - fall through and read it.
+        } else if (open) {
+            // The model answered, and it is not a selection popup. Nothing to report.
+            return [];
+        } else if (!firstVisible(".Da40-checklist-page-container")) {
+            // No model (the instrument is not up yet); the page container is the fallback.
+            return [];
+        }
 
         // ORDER MATTERS, and it is the reverse of the order a pilot meets them. Choosing
         // a GROUP opens the CHECKLIST list ON TOP of it, and both stay visible - measured
@@ -1909,14 +1919,37 @@
         // page's Time Offset and the nearest-airport Minimum Length came to be missing
         // from a field list that claimed to be complete.
         if (c.control && c.control.digitValues !== undefined) return "number";
+        // An ACTION BUTTON carries its own caption in props.text and has nothing else -
+        // "Sign In", "Check Subscription", "Activate?", "Hold?". Without this it went
+        // through the label heuristic, which climbed out of the button into the box around
+        // it and answered "AliasN/ASubscriptionN/ACheck Subscription: Sign In".
+        //
+        // ⚠️ THE CAPTION IS SOMETIMES A SUBJECT rather than a string, because it CHANGES -
+        // Navigraph's button reads "Sign In" or "Sign Out" depending on who is logged in.
+        // A typeof "string" test therefore caught one of the two buttons on that page and
+        // left the other welded to its box.
+        if (A.M.captionOf(c)) return "button";
         if (c.MenuItems !== undefined) return "select";
         if (typeof c.getText === "function" && c.dataEntry) return "input";
         if (A.M.isGroup(c)) return "group";
         return "field";
     };
 
+    /// A button's caption, whether it is a fixed string or a Subject that changes.
+    A.M.captionOf = function (c) {
+        try {
+            var t = c.props && c.props.text;
+            if (t === undefined || t === null) return "";
+            var v = (typeof t.get === "function") ? t.get() : t;
+            return (typeof v === "string" && v.length > 0) ? v : "";
+        } catch (e) { return ""; }
+    };
+
     A.M.valueOf = function (c) {
         try {
+            // A button IS its caption; there is no label-and-value to separate.
+            var caption = A.M.captionOf(c);
+            if (caption) return caption;
             if (c.inputComponentRef && c.inputComponentRef.instance) {
                 return c.inputComponentRef.instance.getText();
             }
@@ -2093,7 +2126,7 @@
                 try { active = !!A.M.get(c.control.isEditing); } catch (e5) { }
             }
 
-            var label = A.M.labelOf(c, value);
+            var label = kind === "button" ? "" : A.M.labelOf(c, value);
             var group = A.M.groupOf(c);
             // A Direct-To box has no label of its own on screen - the pilot is looking at
             // a dialog whose whole subject is the waypoint - so it gets named rather than
@@ -2624,7 +2657,68 @@
         // NOTHING IN THE FLAT FRAMEWORK - so try the other one. This is what makes the
         // flight plan page and the checklist speak: their controls are not in the scroll
         // controller at all.
-        return A.M.f2Say();
+        var f2 = A.M.f2Say();
+
+        // A DIALOG WITH NO CONTROLS IS STILL SOMETHING THE PILOT OPENED. The Navigraph
+        // sign-in is the case that found this: pressing ENT on "Sign In" DOES work - it
+        // opens the Auth view, which shows a device code and the address to type it at -
+        // but that view registers no controls at all, so the readback said nothing and the
+        // button read as dead. Reported as "either it's not clickable, or it's clickable
+        // and it's not being clicked"; it was neither.
+        if (!f2) return A.M.dialogText();
+
+        // A CHECKLIST POPUP HAS TO SAY WHICH LIST IT IS. Both popups are plain lists of
+        // capitals, and "NORMAL OPERATING PROCEDURES" alone does not tell a pilot whether
+        // they are choosing a GROUP or a CHECKLIST inside one - which is two different
+        // presses of ENT away from two different places.
+        if (key === "Da40NgChecklistCategorySelectionPopup") return "Checklist group, " + f2;
+        if (key === "Da40NgChecklistSelectionPopup") return "Checklist, " + f2;
+        return f2;
+    };
+
+    /// The text of a DIALOG that carries no controls - an instruction, a code, a warning.
+    ///
+    /// Bounded to dialogs on purpose: the same call on a PAGE would read the entire page
+    /// after every keystroke. A dialog is a view that is not the open page, which the
+    /// instrument already tells us.
+    A.M.dialogText = function () {
+        var view = A.M.view();
+        var root = view && view.viewContainerRef && view.viewContainerRef.instance;
+        if (!root) return "";
+
+        // ⚠️ A MAP IS NOT A MESSAGE. A map page also carries no controls, and reading its
+        // labels back after every keystroke - "AUTO25 NMDRNHDG UPDetail UNRES27..." - is
+        // far worse than saying nothing. Every map-bearing view holds a compiled map, which
+        // is the instrument's own way of saying so, and is exact where a length test was
+        // not: the nav map's text came to 199 characters and slipped straight through one.
+        if (view.compiledMap) return "";
+
+        // A VIEW WITH CONTROLS SPEAKS THROUGH ITS CONTROLS. Navigraph Settings has four,
+        // and with the cursor merely OFF it was falling through to here and reading the
+        // whole page back - alias, subscription, both SimBrief switches and the version -
+        // after every keystroke.
+        try { if (A.M.fields().length > 0) return ""; } catch (e) { }
+
+        // spacedText, not text: the Navigraph code sits against the word after it
+        // ("BEM7NMMPOR") when the nodes are run together, and a code that cannot be told
+        // from the text around it is no use to anybody.
+        var whole = spacedText(root);
+        if (!whole || whole.length > 200) return "";
+
+        return A.M.spellCodes(whole);
+    };
+
+    /// A one-off CODE has to be spelled, or it is unusable.
+    ///
+    /// Navigraph's sign-in shows an eight-character device code the pilot has to type into
+    /// a phone. Read as a word it is gone; read a letter at a time it can be written down.
+    /// Only runs of capitals and digits with no vowel-shaped word behind them are treated
+    /// this way, so ordinary text is left alone.
+    A.M.spellCodes = function (str) {
+        return str.replace(/\b[A-Z0-9]{6,12}\b/g, function (token) {
+            if (!/[0-9]/.test(token) && /^[A-Z]+$/.test(token) && token.length < 8) return token;
+            return token.split("").join(" ");
+        });
     };
 
     /// Every field on the page as readable rows, so a pilot can SCAN the page in the window

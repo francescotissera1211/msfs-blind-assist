@@ -248,7 +248,15 @@ public sealed class CowsDA40DisplayForm : Form
     private List<string>? _heldRows;
     private System.Windows.Forms.Timer? _rowSettle;
 
-    /// <summary>The keys that move the reader through the list, and nothing else.</summary>
+    /// <summary>
+    /// The keys that move the reader through the list.
+    ///
+    /// ⚠️ EVERY HANDLED KEY DEFERS THE REDRAW TOO, not just these - see ProcessCmdKey. A
+    /// bezel key forces an immediate re-scrape, and rewriting the list under a screen
+    /// reader is what made it read out engine rows nobody asked for ("Oil Temp: green 65
+    /// percent along") in the middle of a page change. The bezel key SPEAKS its own answer,
+    /// so the list can wait until the pilot stops pressing things.
+    /// </summary>
     private static bool IsReadingKey(Keys keyData) => keyData switch
     {
         Keys.Up or Keys.Down or Keys.Left or Keys.Right or
@@ -413,9 +421,13 @@ public sealed class CowsDA40DisplayForm : Form
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
-        // Note that the pilot is READING, so the poll does not rewrite the list under them.
-        // Not handled here - the list still gets the key.
-        if (IsReadingKey(keyData)) _lastNavKeyAt = DateTime.UtcNow;
+        // Note that the pilot is WORKING the display, so the poll does not rewrite the list
+        // under them. Reading keys are not handled here - the list still gets them.
+        if (IsReadingKey(keyData) || BezelKeys.ContainsKey(keyData) ||
+            RadioKnobKeys.ContainsKey(keyData) || keyData == Keys.Enter)
+        {
+            _lastNavKeyAt = DateTime.UtcNow;
+        }
 
         if (keyData == Keys.F5)
         {
@@ -527,7 +539,7 @@ public sealed class CowsDA40DisplayForm : Form
 
         string toSay = summary.Length > 0 ? summary : spoken;
 
-        // THE CURSOR IS ANNOUNCED WHEN IT CHANGES AND AT NO OTHER TIME.
+        // THE CURSOR IS ANNOUNCED WHEN IT CHANGES, WITHIN ONE VIEW, AND AT NO OTHER TIME.
         //
         // It used to prefix "Cursor on." to EVERY field, so a pilot walking fourteen
         // fields down a setup page heard it fourteen times for one bit of information they
@@ -535,14 +547,25 @@ public sealed class CowsDA40DisplayForm : Form
         // itself: turning it off leaves only the page title, which is indistinguishable
         // from a key that did nothing - so a pilot presses the cursor again to check,
         // turns it back on, and cannot tell the two states apart.
-        if (cursorOn != _lastCursorOn) toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
+        //
+        // ⚠️ THE VIEW TEST IS WHAT STOPS IT LYING. Every view owns its OWN scroll
+        // controller, so the flag being read changes the moment a different view is on top
+        // - and the page SELECTOR is a view, opened by the very knob the pilot is turning.
+        // Reported from the cockpit as the cursor switching itself on and off: turning the
+        // knob opened the selector (its flag), the selector closed onto a page (the page's
+        // flag), and each swap read as a cursor the pilot had never touched. A cursor
+        // change only means anything when it happens to the SAME view twice running.
+        if (view == _lastView && cursorOn != _lastCursorOn)
+        {
+            toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
+        }
 
         // THE KNOB DOES NOT WRAP. At the end of a page the G1000 simply stops, and the
         // window then read the same field back on every further turn with nothing to say
         // why - reported from the cockpit as "Minimum Length" fifteen times running. If
         // the cursor is on, the focused field did not move and the key was a knob turn,
-        // say which end of the page it is.
-        else if (cursorOn && focus.Length > 0 && focus == _lastFocus &&
+        // say which end of the page it is. Same view only, for the same reason as above.
+        else if (view == _lastView && cursorOn && focus.Length > 0 && focus == _lastFocus &&
                  KnobDirection(eventSuffix) is int direction)
         {
             toSay += direction > 0 ? ", end of the page" : ", start of the page";

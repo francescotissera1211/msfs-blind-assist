@@ -113,7 +113,13 @@ public class CowsDA40G1000AgentContractTests
         // "Cursor on." used to prefix every single field, which is four syllables of
         // nothing fourteen times down a setup page. The window says it on the TRANSITION.
         Assert.DoesNotContain("\"Cursor on. \" + modelSaid", Agent(), StringComparison.Ordinal);
-        Assert.Contains("if (cursorOn != _lastCursorOn)", Form(), StringComparison.Ordinal);
+
+        // ⚠️ AND ONLY WITHIN ONE VIEW. Every view owns its own scroll controller, and the
+        // page SELECTOR is a view opened by the very knob the pilot is turning - so an
+        // unscoped comparison read the cursor as switching itself on and off while they
+        // changed pages.
+        Assert.Contains("if (view == _lastView && cursorOn != _lastCursorOn)", Form(),
+            StringComparison.Ordinal);
     }
 
     [Fact]
