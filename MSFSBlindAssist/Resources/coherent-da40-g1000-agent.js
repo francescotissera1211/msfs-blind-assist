@@ -2429,7 +2429,15 @@
         ["unitsAltitude", "altitude"],
         ["unitsTemperature", "temperature"],
         ["unitsWeight", "weight"],
-        ["unitsFuel", "fuel"]
+        ["unitsFuel", "fuel"],
+
+        // ⚠️ THE BAROMETRIC UNIT IS A SEPARATE SETTING and it is not in the units box on
+        // the setup page - it lives on the PFD, under PFD Opt, ALT Units. It matters more
+        // than any of the others outside North America: a pilot flying in Europe or Asia is
+        // given QNH in hectopascals by every controller they talk to, and an altimeter
+        // readout in inches is a conversion they have to do in their head on every descent.
+        // It is a boolean rather than a name, so it is turned into one here.
+        ["baroHpa", "pressure"]
     ];
 
     A.M.units = function () {
@@ -2454,9 +2462,11 @@
         var out = [];
         for (var k = 0; k < A.M.UNIT_KEYS.length; k++) {
             var key = A.M.UNIT_KEYS[k][0];
-            if (found[key] !== undefined && found[key] !== null) {
-                out.push(A.M.UNIT_KEYS[k][1] + " " + String(found[key]));
-            }
+            if (found[key] === undefined || found[key] === null) continue;
+
+            var value = found[key];
+            if (key === "baroHpa") value = value ? "hectopascals" : "inches";
+            out.push(A.M.UNIT_KEYS[k][1] + " " + String(value));
         }
         return out;
     };

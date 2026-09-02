@@ -47,6 +47,7 @@ public partial class CowsDA40Definition
     private string _unitWeight = "pounds";
     private string _unitFuel = "gallons";
     private string _unitBearings = "magnetic";
+    private string _unitPressure = "inches";
 
     /// <summary>What the G1000 is set to, for the tests and for anything that wants to ask.</summary>
     public string DisplayUnitWeight => _unitWeight;
@@ -55,6 +56,10 @@ public partial class CowsDA40Definition
     public string DisplayUnitAltitude => _unitAltitude;
     public string DisplayUnitFuel => _unitFuel;
     public string DisplayUnitBearings => _unitBearings;
+    public string DisplayUnitPressure => _unitPressure;
+
+    /// <summary>True when the pilot has the G1000 set to hectopascals.</summary>
+    public bool PressureInHectopascals => _unitPressure == "hectopascals";
 
     /// <summary>
     /// Picks the units off a display scrape. Called from the CAS monitor and from both
@@ -68,7 +73,7 @@ public partial class CowsDA40Definition
             if (!row.StartsWith(UnitsRowPrefix, StringComparison.Ordinal)) continue;
 
             string before = _unitWeight + _unitTemperature + _unitDistance +
-                            _unitAltitude + _unitFuel + _unitBearings;
+                            _unitAltitude + _unitFuel + _unitBearings + _unitPressure;
 
             foreach (string pair in row.Substring(UnitsRowPrefix.Length).Split(','))
             {
@@ -88,11 +93,12 @@ public partial class CowsDA40Definition
                     case "temperature": _unitTemperature = value; break;
                     case "weight": _unitWeight = value; break;
                     case "fuel": _unitFuel = value; break;
+                    case "pressure": _unitPressure = value; break;
                 }
             }
 
             string after = _unitWeight + _unitTemperature + _unitDistance +
-                           _unitAltitude + _unitFuel + _unitBearings;
+                           _unitAltitude + _unitFuel + _unitBearings + _unitPressure;
 
             // NOT ANNOUNCED. The pilot has just changed it on the MFD and the display
             // window read the field back as they did — saying it again from a background

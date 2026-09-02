@@ -39,6 +39,22 @@ public class CowsDA40DisplayUnitsTests
         Assert.Equal("pounds", def.DisplayUnitWeight);
         Assert.Equal("gallons", def.DisplayUnitFuel);
         Assert.Equal("magnetic", def.DisplayUnitBearings);
+        Assert.Equal("inches", def.DisplayUnitPressure);
+    }
+
+    [Fact]
+    public void TheAltimeterFollowsTheG1000sPressureUnit()
+    {
+        // Outside North America every clearance comes in hectopascals, so hearing inches
+        // first means doing the conversion in your head on every descent. The G1000's own
+        // setting (PFD Opt, ALT Units) says which the pilot is working in.
+        var def = Ng();
+        Assert.False(def.PressureInHectopascals);
+
+        def.NoteDisplayUnits(new[] { "Display units: pressure hectopascals" });
+
+        Assert.Equal("hectopascals", def.DisplayUnitPressure);
+        Assert.True(def.PressureInHectopascals);
     }
 
     [Fact]
@@ -50,7 +66,8 @@ public class CowsDA40DisplayUnitsTests
         {
             "Page: Aux – System Setup 1",
             "Display units: bearings true, distance metric, altitude meters, " +
-            "temperature fahrenheit, weight kilograms, fuel liters",
+            "temperature fahrenheit, weight kilograms, fuel liters, " +
+            "pressure hectopascals",
             "Softkey 1: Engine"
         });
 
@@ -60,6 +77,7 @@ public class CowsDA40DisplayUnitsTests
         Assert.Equal("fahrenheit", def.DisplayUnitTemperature);
         Assert.Equal("kilograms", def.DisplayUnitWeight);
         Assert.Equal("liters", def.DisplayUnitFuel);
+        Assert.Equal("hectopascals", def.DisplayUnitPressure);
     }
 
     [Fact]
@@ -233,7 +251,7 @@ public class CowsDA40DisplayUnitsTests
         Assert.Contains("\"Display units: \"", agent, StringComparison.Ordinal);
         foreach (string dimension in new[]
         {
-            "bearings", "distance", "altitude", "temperature", "weight", "fuel"
+            "bearings", "distance", "altitude", "temperature", "weight", "fuel", "pressure"
         })
         {
             Assert.Contains("\"" + dimension + "\"", agent, StringComparison.Ordinal);

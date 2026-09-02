@@ -167,6 +167,27 @@ public partial class CowsDA40Definition
             : (false, "NAV frequencies run from 108.00 to 117.95.");
     }
 
+    /// <summary>
+    /// One variable, rendered the way the PANELS render it - the pilot's chosen units, the
+    /// declared format, and the published arc where the gauge has one - and appended only
+    /// if it could be read at all.
+    ///
+    /// Going through TryGetDisplayOverride rather than formatting here is the whole point:
+    /// a hotkey answering "85 celsius" while the panel beside it says "85 degrees celsius,
+    /// green" would be a second, worse answer to the same question.
+    /// </summary>
+    private void Add(List<string> bits, SimConnectManager simConnect, string varKey, string label)
+    {
+        double? value = ReadNow(simConnect, varKey);
+        if (value is null) return;
+
+        string text = TryGetDisplayOverride(varKey, value.Value, out string rendered)
+            ? rendered
+            : value.Value.ToString("0.#");
+
+        bits.Add(label.Length > 0 ? label + " " + text : text);
+    }
+
     private bool HandleDA40Readout(HotkeyAction action, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
@@ -241,8 +262,13 @@ public partial class CowsDA40Definition
                 return true;
 
             // ---------- F: fuel ----------
+            // ---------- F: how much fuel is in the tanks ----------
+            //
+            // ⚠️ F AND SHIFT+F USED TO BE THE SAME CASE, so both keys said the same
+            // sentence and one of the two was wasted. On an airliner they are pounds and
+            // kilograms; this aeroplane is fuelled in volume, so the second key answers a
+            // different QUESTION instead - see ReadFuelInfo below.
             case HotkeyAction.ReadFuelQuantity:
-            case HotkeyAction.ReadFuelInfo:
             {
                 double? leftOpt = ReadNow(simConnect, "DA40_FUEL_MAIN_ACTUAL");
                 double? rightOpt = ReadNow(simConnect, "DA40_FUEL_AUX_ACTUAL");
@@ -261,9 +287,145 @@ public partial class CowsDA40Definition
                 string a = IsNG ? "Main" : "Left";
                 string b = IsNG ? "Auxiliary" : "Right";
 
+                // THE PILOT'S OWN UNITS, from the G1000's Display Units. The AFM's second
+                // unit is kept ONLY while the setting is the default gallons - the AFM
+                // quotes both and the aeroplane is fuelled in either - because a pilot who
+                // has explicitly chosen litres has already said which one they want.
+                string totalText = TryUnitText("gallons", total, "0.0", out string tt)
+                    ? tt : $"{total:0.0} gallons";
+                string second = DisplayUnitFuel == "gallons"
+                    ? $", {total * LitresPerGallon:0} litres" : "";
+                string leftText = TryUnitText("gallons", left, "0.0", out string lt)
+                    ? lt : $"{left:0.0} gallons";
+                string rightText = TryUnitText("gallons", right, "0.0", out string rt)
+                    ? rt : $"{right:0.0} gallons";
+
                 announcer.AnnounceImmediate(
-                    $"Fuel {total:0.0} gallons, {total * LitresPerGallon:0} litres. " +
-                    $"{a} {left:0.0}, {b} {right:0.0} gallons.");
+                    $"Fuel {totalText}{second}. {a} {leftText}, {b} {rightText}.");
+                return true;
+            }
+
+            // ---------- Shift+F: how long that fuel lasts ----------
+            //
+            // The other half of the fuel question, and the half that matters in the air.
+            // Endurance is computed from the CURRENT flow rather than a book figure,
+            // because that is what the pilot can act on, and it is stated as the assumption
+            // it is.
+            //
+            // ⚠️ IT IS NOT THE G1000's FUEL CALCULATOR AND MUST NOT BE CONFUSED WITH IT.
+            // The MFD's Fuel Calculator is a TOTALIZER - a bookkeeping figure the pilot
+            // sets with the INC/DEC/RST FUEL softkeys and which then counts down by fuel
+            // USED. It reads differently from the tanks on purpose (measured live: tanks
+            // 37.2 gallons, calculator 32.2 remaining), and that difference is the point of
+            // having both. This key answers the TANKS.
+            case HotkeyAction.ReadFuelInfo:
+            {
+                double? mainOpt = ReadNow(simConnect, "DA40_FUEL_MAIN_ACTUAL");
+                double? auxOpt = ReadNow(simConnect, "DA40_FUEL_AUX_ACTUAL");
+                double? flowOpt = ReadNow(simConnect, "DA40_POWER_FUEL_FLOW");
+
+                if (mainOpt is null || auxOpt is null)
+                {
+                    announcer.AnnounceImmediate("Fuel quantity not available yet");
+                    return true;
+                }
+
+                double onBoard = mainOpt.Value + auxOpt.Value;
+                var fuelBits = new List<string>();
+
+                double flow = flowOpt ?? 0;
+                fuelBits.Add(TryUnitText("gallons per hour", flow, "0.0", out string ft)
+                    ? "Flow " + ft : $"Flow {flow:0.0} gallons per hour");
+
+                if (flow >= 0.1)
+                {
+                    double hours = onBoard / flow;
+                    int h = (int)hours;
+                    int m = (int)Math.Round((hours - h) * 60);
+                    if (m == 60) { h++; m = 0; }
+                    fuelBits.Add($"endurance {h} hours {m} minutes at this flow");
+                }
+                else
+                {
+                    fuelBits.Add("engine not burning, no endurance figure");
+                }
+
+                // The tank DIFFERENCE is an AFM limit on this aeroplane, and on the NG the
+                // fuel moves by itself - burnt from the main, returned through the aux - so
+                // it drifts without the pilot doing anything.
+                double diff = Math.Abs(mainOpt.Value - auxOpt.Value);
+                fuelBits.Add($"tank difference {diff:0.0} of {FuelMaxTankDifferenceGal:0} gallons allowed" +
+                             (diff > FuelMaxTankDifferenceGal ? ", OVER the limit" : ""));
+
+                announcer.AnnounceImmediate(string.Join(". ", fuelBits) + ".");
+                return true;
+            }
+
+            // ---------- Alt+S: the engine, at a glance ----------
+            //
+            // The DA40 has no lower ECAM, and this is what that key is FOR on an aeroplane
+            // that does: one press, the whole engine picture. On a single-engine aeroplane
+            // it is the most valuable key on the keyboard - a sighted pilot takes the EIS
+            // strip in with one look, and a blind pilot otherwise has to open a panel and
+            // arrow down it.
+            //
+            // Every gauge with a published arc reports its arc, because the arc IS the
+            // reading a sighted pilot takes: "85 degrees celsius, green" is the answer,
+            // "85" is a number.
+            case HotkeyAction.ReadDisplayLowerECAM:
+            {
+                var bits = new List<string>();
+
+                Add(bits, simConnect, "DA40_POWER_LOAD", "Load");
+                Add(bits, simConnect, "DA40_POWER_RPM", "");
+                Add(bits, simConnect, "DA40_START_OIL_PRESSURE", "Oil pressure");
+                Add(bits, simConnect, "DA40_START_OIL_TEMP", "Oil");
+                Add(bits, simConnect, "DA40_START_COOLANT_TEMP", "Coolant");
+                Add(bits, simConnect, "DA40_START_GEARBOX_TEMP", "Gearbox");
+                Add(bits, simConnect, "DA40_POWER_FUEL_FLOW", "Fuel flow");
+                Add(bits, simConnect, "DA40_ELEC_BUS_MAIN_VOLT", "Bus");
+                Add(bits, simConnect, "DA40_ELEC_DISP_AMPS", "Amps");
+
+                announcer.AnnounceImmediate(bits.Count == 0
+                    ? "Engine readings not available yet"
+                    : string.Join(". ", bits) + ".");
+                return true;
+            }
+
+            // ---------- Alt+I: the standby instruments ----------
+            //
+            // The ISIS key, and on this aeroplane it is not a stand-in for anything: the
+            // DA40 really does carry a standby airspeed indicator, altimeter, attitude gyro
+            // and compass, and the AFM's own descent check is "Altimeters (2) SET". A
+            // reversion to standbys is the one moment a pilot needs all four at once and
+            // has no G1000 to read them from.
+            case HotkeyAction.ReadDisplayISIS:
+            {
+                var bits = new List<string>();
+
+                Add(bits, simConnect, "DA40_STBY_AIRSPEED", "Standby airspeed");
+                Add(bits, simConnect, "DA40_STBY_ALTITUDE", "altitude");
+                Add(bits, simConnect, "DA40_STBY_COMPASS", "compass");
+
+                double? pitch = ReadNow(simConnect, "DA40_STBY_GYRO_PITCH");
+                double? bank = ReadNow(simConnect, "DA40_STBY_GYRO_BANK");
+                if (pitch is not null && bank is not null)
+                {
+                    // Sign, not a bare number: "minus three" is not an attitude.
+                    bits.Add($"attitude {Math.Abs(pitch.Value):0} degrees nose " +
+                             (pitch.Value >= 0 ? "up" : "down") +
+                             $", {Math.Abs(bank.Value):0} degrees bank " +
+                             (Math.Abs(bank.Value) < 1 ? "level" : bank.Value > 0 ? "right" : "left"));
+                }
+
+                // A CAGED or TOPPLED gyro is the whole point of reading it - the
+                // instrument is showing something that is not the aeroplane's attitude.
+                if (ReadNow(simConnect, "DA40_STBY_GYRO_CAGED") is > 0.5) bits.Add("gyro CAGED");
+                if (ReadNow(simConnect, "DA40_STBY_GYRO_TOPPLE") is > 0.5) bits.Add("gyro TOPPLED");
+
+                announcer.AnnounceImmediate(bits.Count == 0
+                    ? "Standby instruments not available yet"
+                    : string.Join(", ", bits) + ".");
                 return true;
             }
 
@@ -361,10 +523,24 @@ public partial class CowsDA40Definition
     /// A barometric setting in BOTH units. ATIS gives one or the other depending where you
     /// are, and converting in your head while flying is not the pilot's job.
     /// </summary>
-    private static string BaroPhrase(double? inHg)
-        => inHg is null
-            ? "not available yet"
-            : $"{inHg.Value * 33.8639:0} hectopascals, {inHg.Value:0.00} inches";
+    /// <summary>
+    /// An altimeter setting, LEADING with the unit the pilot set on the G1000.
+    ///
+    /// Both are still given, because this aeroplane has two altimeters and a pilot
+    /// cross-checking a controller's QNH against a chart's field elevation wants whichever
+    /// one is in front of them. But the order is not cosmetic: outside North America every
+    /// clearance comes in hectopascals, and hearing inches first means doing the conversion
+    /// in your head on every descent. The G1000's own setting (PFD Opt, ALT Units) says
+    /// which the pilot is working in, so that is the one that comes first.
+    /// </summary>
+    private string BaroPhrase(double? inHg)
+    {
+        if (inHg is null) return "not available yet";
+
+        string hpa = $"{inHg.Value * 33.8639:0} hectopascals";
+        string inches = $"{inHg.Value:0.00} inches";
+        return PressureInHectopascals ? $"{hpa}, {inches}" : $"{inches}, {hpa}";
+    }
 
     /// <summary>
     /// Reads a variable straight from the cache. Readout hotkeys must answer immediately -

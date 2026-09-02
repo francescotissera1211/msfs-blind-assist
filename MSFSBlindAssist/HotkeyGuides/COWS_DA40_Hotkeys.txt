@@ -44,8 +44,19 @@ Navigation:
   Ctrl+W     Read ND active (TO) waypoint: name, distance, bearing
 
 Fuel:
-  F          Read Fuel On Board (pounds)
-  Shift+F    Read Fuel On Board (kilograms)
+  F          Fuel in the TANKS - total and each tank. Answers in the units set on
+             the MFD's Aux System Setup page; while that is the default gallons
+             the AFM's litres figure is given beside it, as the AFM does.
+  Shift+F    How long that fuel LASTS - current flow, endurance at that flow, and
+             the difference between the tanks against the 9 gallon AFM limit.
+             On the NG the tanks drift apart on their own: fuel is burnt from the
+             main and returned through the aux.
+
+             These two do NOT match the MFD's Fuel Calculator, and are not meant
+             to. The calculator is a TOTALIZER - a figure you set yourself with
+             the INC FUEL / DEC FUEL / RST FUEL softkeys on the Engine page, which
+             then counts down by fuel USED. It is a flight-planning figure; these
+             keys read the tanks.
 
 Weight:
   W          Read Gross Weight (pounds) + center of gravity
@@ -120,9 +131,60 @@ Waypoint Tracking (use Fix Track window or EFB route viewer to add):
   5          Track Slot 5
 
 Displays:
-  Alt+P      Read PFD
+  Alt+P      Open the PFD window - the whole primary flight display, read a line
+             at a time, with the bezel on the keyboard. See the G1000 section.
+  Alt+M      Open the MFD window - pages, softkeys, the engine strip, checklists.
   Alt+N      Read Navigation Display
   Alt+E      Read CAS messages (the DA40's equivalent of an E/WD)
+
+  Two keys that are named for an Airbus and do something else here, because this
+  aeroplane has no lower ECAM and no ISIS but does have the things those keys are
+  FOR:
+
+  Alt+S      The ENGINE, at a glance. Load, RPM, oil pressure and temperature,
+             coolant, gearbox, fuel flow, bus volts and amps - one press, the
+             whole engine picture, each gauge with its arc. This is the single
+             most useful key on a single-engine aeroplane: a sighted pilot takes
+             the EIS strip in with one look.
+  Alt+I      The STANDBY instruments. Airspeed, altitude, compass and the standby
+             attitude gyro, plus a warning if that gyro is CAGED or has TOPPLED.
+             The DA40 really carries all four, and a reversion to standbys is the
+             one moment you need them together with no G1000 to read them from.
+
+The G1000 windows (Alt+P and Alt+M):
+
+  These are not read-outs - they are the DISPLAY, with its bezel on the keyboard.
+  Arrow keys read the window; Enter presses the softkey on the selected row.
+
+  Shift+Enter        The FMS cursor (CRSR). Nothing on a setup page can be
+                     changed until this is on.
+  Ctrl+Left/Right    Lower knob - moves BETWEEN fields with the cursor on, and
+                     steps the page GROUP with it off.
+  Ctrl+Up/Down       Upper knob - CHANGES the field you are on (opens its list of
+                     choices, or cycles a letter in a text box), and steps the
+                     PAGE with the cursor off.
+  Ctrl+Enter         ENT - accepts the choice in an open list.
+  Ctrl+G             List every page in the G1000 and open the one you pick. On
+                     the PFD it lists that display's fifteen windows, five of
+                     which have no bezel button at all.
+  Ctrl+T             Type an ident straight into the waypoint box under the
+                     cursor. The aircraft autocompletes it and reads back the
+                     facility it found.
+  Ctrl+D / Ctrl+F / Ctrl+P / Ctrl+E / Ctrl+L
+                     Direct-To / Flight Plan / Procedures / Menu / Clear.
+  Ctrl+PageUp/Down   Map range out / in.
+  F5 / Escape        Refresh / close.
+
+  Tuning the radios (PFD only - the G1000 tunes on the PFD and the MFD has no COM
+  or NAV knob at all, for a sighted pilot either):
+
+  Alt+Up/Down        COM megahertz         Alt+Left/Right      COM kilohertz
+  Ctrl+Alt+Up/Down   NAV megahertz         Ctrl+Alt+Left/Right NAV kilohertz
+  Alt+Enter          Move the COM tuning box between COM 1 and COM 2
+  Ctrl+Alt+Enter     Move the NAV tuning box between NAV 1 and NAV 2
+
+  The frequency speaks itself when the knob comes to rest. The Radios panel keeps
+  its typed entry for when you already know the frequency.
 
 Autopilot (GFC 700):
   The GFC 700 has NO absolute altitude set - the altitude preselect only moves in
@@ -144,6 +206,15 @@ DA40-specific notes:
   can open and close, but they do not physically block their switches in the
   simulator, and the model opens the engine-master guard by itself when that
   switch is operated.
+
+  Cycling the propeller is an XLS item and does NOT exist on the NG. On the XLS
+  the Lycoming drives a constant-speed propeller with its own blue pitch lever,
+  and the run-up cycles it two or three times at about 1800 to 2000 RPM: it
+  proves the governor responds, and it pushes the cold, thick oil out of the
+  propeller hub so the blades will change pitch in flight. The NG has no
+  propeller lever at all - the Austro's FADEC governs the propeller through the
+  single power lever - so there is nothing to cycle. What the NG has in its place
+  is the ECU test, which the Engine Start panel runs for you.
 
   Cold starts. On a cold engine the glow plugs run and the GLOW annunciation
   lights; the AFM has you wait for it to go out before cranking. The Engine Start
