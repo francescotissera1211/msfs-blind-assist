@@ -186,6 +186,16 @@ public partial class CowsDA40Definition
         AddFlag(v, "DA40_ECU_LATCH_A", "FADEC_ECU_FAIL_LATCH_A:1", "ECU A Fault Latched", "No", "Yes, latched");
         AddFlag(v, "DA40_ECU_LATCH_B", "FADEC_ECU_FAIL_LATCH_B:1", "ECU B Fault Latched", "No", "Yes, latched");
 
+        // THE HOBBS METER. The aeroplane has a whole gauge for it - its own VCockpit view
+        // beside the two G1000 screens - and MSFSBA had no way to read it. It is the number
+        // that decides when the aeroplane is due maintenance and, on a rented aeroplane,
+        // what the flight costs; a pilot writes it down before and after every flight.
+        //
+        // ⚠️ NOT the same as the MFD Engine page's "Total Service", which read 0.0 hours
+        // while L:HOBBS read 45.9 on the same airframe. Both are in the aeroplane; only
+        // this one is the Hobbs.
+        AddReadout(v, "DA40_HOBBS", "HOBBS", "Hobbs Meter", "hours", "F1");
+
         AddReadout(v, "DA40_ECU_RUNTIME_A", "STATE_ECU_A_RUNTIME:1", "ECU A Runtime", "hours", "F1");
         AddReadout(v, "DA40_ECU_RUNTIME_B", "STATE_ECU_B_RUNTIME:1", "ECU B Runtime", "hours", "F1");
 
@@ -250,6 +260,7 @@ public partial class CowsDA40Definition
         "DA40_ECU_FAIL_B",
         "DA40_ECU_LATCH_A",
         "DA40_ECU_LATCH_B",
+        "DA40_HOBBS",
         "DA40_ECU_RUNTIME_A",
         "DA40_ECU_RUNTIME_B",
         // Preconditions last — the pilot reads down to them when the test will not run.

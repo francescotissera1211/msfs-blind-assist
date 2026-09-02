@@ -416,7 +416,16 @@ public sealed class CowsDA40DisplayForm : Form
         [Keys.Control | Keys.Alt | Keys.Up]    = ("NAV_Large_INC", "NAV megahertz up"),
         [Keys.Control | Keys.Alt | Keys.Down]  = ("NAV_Large_DEC", "NAV megahertz down"),
         [Keys.Control | Keys.Alt | Keys.Right] = ("NAV_Small_INC", "NAV kilohertz up"),
-        [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down")
+        [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down"),
+
+        // THE BAROMETRIC KNOB, which is on the same bezel and takes the same transport.
+        // Ctrl+B still sets both altimeters to a number you type, and that stays the fast
+        // way to answer a controller's QNH - but the knob is how the aeroplane is flown,
+        // and a pilot nudging the setting a hectopascal at a time down an approach should
+        // not have to open a dialog to do it. Verified live: one INC moved the G1000 from
+        // 1011.85 to 1012.19 hPa, which is the aeroplane's own 0.01 inHg step.
+        [Keys.Control | Keys.Shift | Keys.Up]   = ("BARO_INC", "barometric setting up"),
+        [Keys.Control | Keys.Shift | Keys.Down] = ("BARO_DEC", "barometric setting down")
     };
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -472,8 +481,11 @@ public sealed class CowsDA40DisplayForm : Form
             {
                 // Said rather than swallowed: the G1000 tunes on the PFD and the MFD has
                 // no COM or NAV knob at all, which is a real answer to "why does this key
-                // do nothing here" and one a sighted pilot can see at a glance.
-                _announcer.AnnounceImmediate("The radios are tuned on the PFD, not the MFD.");
+                // do nothing here" and one a sighted pilot can see at a glance. The
+                // barometric knob is on the same bezel and the same is true of it.
+                _announcer.AnnounceImmediate(knob.Event.StartsWith("BARO", StringComparison.Ordinal)
+                    ? "The barometric knob is on the PFD, not the MFD."
+                    : "The radios are tuned on the PFD, not the MFD.");
                 return true;
             }
 

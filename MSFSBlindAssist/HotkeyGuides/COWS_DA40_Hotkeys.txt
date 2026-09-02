@@ -182,6 +182,12 @@ The G1000 windows (Alt+P and Alt+M):
   Ctrl+Alt+Up/Down   NAV megahertz         Ctrl+Alt+Left/Right NAV kilohertz
   Alt+Enter          Move the COM tuning box between COM 1 and COM 2
   Ctrl+Alt+Enter     Move the NAV tuning box between NAV 1 and NAV 2
+  Ctrl+Shift+Up/Down The barometric knob, one step at a time
+
+  Ctrl+B (input mode) still sets BOTH altimeters to a number you type, and takes
+  either unit - anything above 100 is read as hectopascals, below it as inches.
+  That is the fast way to answer a controller's QNH; the knob above is how the
+  aeroplane is actually flown.
 
   The frequency speaks itself when the knob comes to rest. The Radios panel keeps
   its typed entry for when you already know the frequency.

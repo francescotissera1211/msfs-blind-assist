@@ -42,6 +42,29 @@ public partial class CowsDA40Definition
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
+        // ---------- TO/GA ----------
+        //
+        // The go-around button on the power lever. It had no way into MSFSBA at all, which
+        // means a blind pilot could not fly a go-around the way the aeroplane is flown -
+        // and the go-around is the one manoeuvre where you have no time to work out an
+        // attitude for yourself.
+        //
+        // It is a BUTTON, not a state: pressing it again does not un-press it. There is no
+        // variable to read back either, so the button carries no resting state and the
+        // aeroplane answers through the flight director's own pitch command, which the
+        // Flight Director panel already reads.
+        v["DA40_AP_TOGA"] = new SimVarDefinition
+        {
+            Name = "DA40_AP_TOGA",
+            DisplayName = "Go Around (TO/GA)",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Flight director to wings level, 10 degrees nose up. Verified live."
+        };
+
         AddApMode(v, "DA40_AP_MASTER", "AUTOPILOT MASTER", "Autopilot",
             "Engages the GFC 700. The stick disconnect button also releases it.");
         AddApMode(v, "DA40_AP_YAW_DAMPER", "AUTOPILOT YAW DAMPER", "Yaw Damper",
@@ -184,6 +207,7 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> AutopilotControls = new()
     {
+        "DA40_AP_TOGA",
         "DA40_AP_MASTER",
         "DA40_AP_YAW_DAMPER",
         "DA40_AP_HDG",
@@ -256,6 +280,28 @@ public partial class CowsDA40Definition
             "DA40_AP_FLC" => on ? "FLIGHT_LEVEL_CHANGE_ON" : "FLIGHT_LEVEL_CHANGE_OFF",
             _ => null
         };
+
+        // ---------- TO/GA ----------
+        //
+        // The go-around button on the power lever, and the one control on this autopilot
+        // that had no way in at all. The vendor's own bindings name it
+        // KEY_AUTO_THROTTLE_TO_GA, which is a misleading name on an aeroplane with no
+        // autothrottle: what it actually does here is command the FLIGHT DIRECTOR.
+        //
+        // Verified live rather than assumed: with the flight director off and its pitch
+        // command at zero, one AUTO_THROTTLE_TO_GA turned the director ON and set the pitch
+        // command to 10 degrees NOSE UP - wings level, ten degrees, which is the go-around
+        // attitude. (The SimVar reports -10; MSFS signs flight-director pitch the other way
+        // round, which is why DescribeFlightDirector negates it.)
+        //
+        // It is a BUTTON, not a switch: pressing it again does not un-press it, and the way
+        // out of the mode is to select another one or to disconnect.
+        if (varKey == "DA40_AP_TOGA")
+        {
+            simConnect.ExecuteCalculatorCodeUnique("1 (>K:AUTO_THROTTLE_TO_GA)");
+            announcer.AnnounceImmediate("Go around, flight director 10 degrees nose up");
+            return true;
+        }
 
         if (onOff != null)
         {
