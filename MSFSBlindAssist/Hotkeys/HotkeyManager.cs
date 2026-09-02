@@ -913,8 +913,31 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
+            // Alt+M. Its two siblings on the line above were released and this one was not —
+            // a plain omission, and PRE-EXISTING rather than part of the engine-key leak. Less
+            // damaging than the bare letters (a pilot rarely needs Alt+M for anything else) but
+            // the same defect, and the sweep above is what found it.
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_MFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            // ⚠️ THESE THREE LEAKED, AND ONE BUG PRODUCED TWO SEPARATE COCKPIT SYMPTOMS.
+            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+O,
+            // and the matching releases were never added here. So one use of output mode held
+            // P and E globally FOR THE REST OF THE SESSION: reported from the cockpit as
+            // "Q and E don't work at all, I can't even type with them".
+            //
+            // The second symptom is worse and looks unrelated. Hand fly's quick-access set
+            // also claims BARE P (pitch), so a leaked P made its RegisterHotKey fail —
+            // "Hand fly mode active, quick keys failed" — while the other EIGHT keys, Q among
+            // them, registered fine and stayed held. The pilot is told the keys failed and
+            // simultaneously loses the keyboard to them. Measured in debug.log: exactly one
+            // failure, "failed to register P (id=9083)", with allOk=False.
+            //
+            // It needed output mode to have been used once first, which is why it did not
+            // happen every time and why it never showed up in testing.
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);

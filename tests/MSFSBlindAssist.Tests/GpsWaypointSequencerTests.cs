@@ -142,6 +142,45 @@ public class GpsWaypointSequencerTests
     }
 
     [Fact]
+    public void AnUncomputedLegNamesTheFixAndRefusesToInventTheNumbers()
+    {
+        // ⚠️ FOUND BY PRESSING THE KEY, NOT BY READING THE CODE. On the ground at VCBI with the
+        // whole route loaded and the TO waypoint correctly reading LIKRA, every geometry field
+        // the navigator publishes was exactly zero - distance, bearing, desired track,
+        // cross-track and ETE - because the G1000's LNAV does not begin computing until it is
+        // tracking a leg. The readout said "LIKRA, 0.0 miles, bearing 000", which a pilot hears
+        // as being ON TOP OF THE FIX: the opposite of the truth, in the voice of a measurement.
+        var r = GpsWaypointSequencer.Read(Frame("LIKRA", "VCBI", distanceMetres: 0, bearing: 0, ete: 0),
+                                          previousNextId: "LIKRA");
+        string said = GpsWaypointSequencer.ComposeReadout(r);
+
+        Assert.Equal("L I K R A, distance not computed.", said);
+        Assert.DoesNotContain("miles", said);
+        Assert.DoesNotContain("bearing", said);
+    }
+
+    [Fact]
+    public void APassingOntoAnUncomputedLegNamesTheNextFixWithoutADistance()
+    {
+        var r = GpsWaypointSequencer.Read(Frame("VEKIN", "SOXOM", distanceMetres: 0),
+                                          previousNextId: "SOXOM");
+        string said = GpsWaypointSequencer.ComposePassing(r);
+
+        Assert.Equal("Passing S O X O M. Next V E K I N.", said);
+        Assert.DoesNotContain("miles", said);
+    }
+
+    [Fact]
+    public void BearingZeroIsStillARealBearingWhenThereIsADistanceBehindIt()
+    {
+        // Distance is the discriminator and bearing must never be: due north is 000, and
+        // suppressing a reading because of it would lose a legitimate one.
+        var r = GpsWaypointSequencer.Read(Frame("SOXOM", "", distanceMetres: 9260, bearing: 0),
+                                          previousNextId: "SOXOM");
+        Assert.Contains("bearing 000", GpsWaypointSequencer.ComposeReadout(r));
+    }
+
+    [Fact]
     public void DistanceGainsADecimalOnlyWhenItIsClose()
     {
         var near = GpsWaypointSequencer.Read(Frame("SOXOM", "", distanceMetres: 5556), previousNextId: "SOXOM");

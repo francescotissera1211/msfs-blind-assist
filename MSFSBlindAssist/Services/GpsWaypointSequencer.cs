@@ -44,6 +44,23 @@ public static class GpsWaypointSequencer
         public double EteSeconds { get; init; }
         /// <summary>True when a flight plan is active at all.</summary>
         public bool HasPlan { get; init; }
+        /// <summary>
+        /// True when the navigator has actually COMPUTED the leg geometry.
+        ///
+        /// ⚠️ A PLAN CAN BE LOADED AND ACTIVE WITH NO GEOMETRY BEHIND IT, and reporting the
+        /// zeros as though they were a reading is worse than saying nothing. Measured on the
+        /// ground at VCBI with the whole route loaded and the TO waypoint correctly reading
+        /// LIKRA: distance, bearing, desired track, cross-track and ETE were ALL exactly zero,
+        /// because the G1000's LNAV does not begin computing until it is tracking a leg.
+        /// The readout said "LIKRA, 0.0 miles, bearing 000", which a pilot hears as BEING ON
+        /// TOP OF THE FIX — the opposite of the truth, spoken with the confidence of a
+        /// measurement. Found by pressing the key rather than by reading the code.
+        ///
+        /// Distance is the discriminator, never bearing: 000 is a real bearing, and 0.0 miles
+        /// is not a real distance — LNAV that is tracking always publishes something above
+        /// zero, even overhead the fix.
+        /// </summary>
+        public bool HasGeometry { get; init; }
         /// <summary>The waypoint just passed, empty unless this frame IS a passing.</summary>
         public string PassedId { get; init; }
     }
@@ -74,6 +91,7 @@ public static class GpsWaypointSequencer
             BearingDeg = data.BearingDegrees,
             EteSeconds = data.EteSeconds,
             HasPlan = data.IsActiveFlightPlan > 0.5,
+            HasGeometry = data.DistanceMeters > 0,
             PassedId = passed ? prev : string.Empty
         };
     }
@@ -87,9 +105,11 @@ public static class GpsWaypointSequencer
     public static string ComposePassing(Reading r, Func<double, string>? distance = null)
     {
         if (r.PassedId.Length == 0) return string.Empty;
-        string next = r.NextId.Length > 0
-            ? $" Next {Spell(r.NextId)}, {(distance ?? DefaultDistance)(r.DistanceNm)}."
-            : string.Empty;
+        string next = r.NextId.Length == 0
+            ? string.Empty
+            : r.HasGeometry
+                ? $" Next {Spell(r.NextId)}, {(distance ?? DefaultDistance)(r.DistanceNm)}."
+                : $" Next {Spell(r.NextId)}.";
         return $"Passing {Spell(r.PassedId)}.{next}";
     }
 
@@ -101,6 +121,10 @@ public static class GpsWaypointSequencer
     public static string ComposeReadout(Reading r, Func<double, string>? distance = null)
     {
         if (!r.HasPlan || r.NextId.Length == 0) return "No active waypoint.";
+
+        // The fix is known, the geometry is not. Naming it is still worth saying - it answers
+        // "what am I going to next" - but the numbers must not be invented from the zeros.
+        if (!r.HasGeometry) return $"{Spell(r.NextId)}, distance not computed.";
 
         string text = $"{Spell(r.NextId)}, {(distance ?? DefaultDistance)(r.DistanceNm)}, bearing {r.BearingDeg:000}";
         if (r.EteSeconds >= 1)
