@@ -2064,18 +2064,41 @@
     /// `groupbox` + `groupbox-title` is the instrument's own pairing and is used on every
     /// page family - the setup pages, Direct-To, the page menus, the procedure pages - so
     /// this is one rule rather than a per-page table.
-    A.M.groupOf = function (c) {
-        var e = A.M.hostOf(c);
+    A.M.groupOf = function (c, label) {
+        var host = A.M.hostOf(c);
+
+        // FIRST PASS: the real box. The setup pages, Direct-To, the page menus and the
+        // procedure pages all use groupbox + groupbox-title, and that pairing is exact.
+        var e = host;
         for (var d = 0; d < 8 && e; d++) {
             if (hasClassContaining(e, "groupbox")) {
-                var title = e.querySelector(".groupbox-title");
-                if (title) {
-                    var v = text(title);
-                    if (v && v.length <= 40) return v;
+                var boxed = e.querySelector(".groupbox-title");
+                if (boxed) {
+                    var bv = text(boxed);
+                    if (bv && bv.length <= 40) return bv;
                 }
             }
             e = e.parentElement;
         }
+
+        // SECOND PASS, and ONLY when there was no box at all. The PFD's own windows name
+        // their rows with their own classes - "timerref-timer-title", "timerref-mins-title"
+        // - so a groupbox-only lookup left every field in the timer window with no label,
+        // "0:00:00" with nothing to say what it was.
+        //
+        // ⚠️ IT MUST NOT RUN WHEN A BOX EXISTS. The setup page's ROWS also carry a title
+        // element, so letting this pass run there answered "Time Format, Time Format: UTC" -
+        // the label twice. Anything matching the label is rejected for the same reason.
+        e = host;
+        for (var d2 = 0; d2 < 8 && e; d2++) {
+            var titled = e.querySelector("[class*=title]");
+            if (titled && titled !== host && !titled.contains(host)) {
+                var tv = text(titled);
+                if (tv && tv.length <= 40 && tv !== label) return tv;
+            }
+            e = e.parentElement;
+        }
+
         return "";
     };
 
@@ -2127,7 +2150,7 @@
             }
 
             var label = kind === "button" ? "" : A.M.labelOf(c, value);
-            var group = A.M.groupOf(c);
+            var group = A.M.groupOf(c, label);
             // A Direct-To box has no label of its own on screen - the pilot is looking at
             // a dialog whose whole subject is the waypoint - so it gets named rather than
             // read out as a bare ident with no idea what it is.
