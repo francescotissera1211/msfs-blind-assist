@@ -370,6 +370,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // The four light CIRCUITS. They exist only so a switched-on light that is not lit
         // can be told from one that is - see CowsDA40Definition.LampWatch.
         AddLampCircuits(vars);
+        AddWaypointMonitorRow(vars);
 
         // ⚠️ HOW DAMAGED THE ENGINE IS, which nothing could say. The aeroplane accumulates
         // damage and it survives a reload; MSFSBA had the switch that enables the model and

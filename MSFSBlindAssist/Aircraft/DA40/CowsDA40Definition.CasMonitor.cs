@@ -89,6 +89,7 @@ public partial class CowsDA40Definition
         StopRadioAnnounce();
         StopLampWatch();
         StopDoorAnnounce();
+        StopWaypointSequencer();
 
         if (_casClient == null) return;
 

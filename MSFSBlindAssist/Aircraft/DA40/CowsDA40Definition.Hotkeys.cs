@@ -532,6 +532,13 @@ public partial class CowsDA40Definition
             }
 
             // ---------- W: weight ----------
+            // Ctrl+W. Answered from the standing once-a-second GPS frame, so it is instant and
+            // costs no round trip - and the SAME data drives the automatic passing call, so the
+            // key and the call can never disagree about which waypoint is active.
+            case HotkeyAction.ReadNDWaypoint:
+                announcer.AnnounceImmediate(ComposeWaypointReadout());
+                return true;
+
             case HotkeyAction.ReadGrossWeightKg:
             {
                 double? lbOpt = ReadNow(simConnect, "DA40_GROSS_WEIGHT");

@@ -192,7 +192,11 @@ public partial class CowsDA40Definition
         // in flight, and a pilot flying the bars reads them from the scan, not from a
         // running commentary of every tenth of a degree.
         "DA40_AP_FD_PITCH",
-        "DA40_AP_FD_BANK"
+        "DA40_AP_FD_BANK",
+
+        // Carries the waypoint-passing call's Ctrl+M row and nothing else. The call itself is
+        // spoken from the GPS waypoint callback, which checks this key's mute for itself.
+        "DA40_WAYPOINT_PASSING"
     };
 
     /// <summary>

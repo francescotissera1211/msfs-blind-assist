@@ -41,7 +41,21 @@ Heading:
 
 Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
-  Ctrl+W     Read ND active (TO) waypoint: name, distance, bearing
+  Ctrl+W     Read the waypoint you are flying to: ident (spelt out), distance,
+             magnetic bearing, and time to run. Everything a position report
+             needs, in one sentence.
+
+             You do NOT have to press this to know you have passed one. When
+             the flight plan sequences, MSFSBA says so by itself - "Passing
+             SOXOM. Next VEKIN, 14 miles." - because a sighted pilot sees that
+             happen on the map and a controller expects the call within
+             seconds of it.
+
+             MSFSBA never makes the radio call. It tells you the waypoint went
+             by; what to report, and whether to report it at all, is yours.
+
+             Untick "Waypoint Passing Call" in Ctrl+M to stop the automatic
+             announcement. Ctrl+W keeps working either way.
 
 Fuel:
   F          Fuel in the TANKS - total and each tank. Answers in the units set on

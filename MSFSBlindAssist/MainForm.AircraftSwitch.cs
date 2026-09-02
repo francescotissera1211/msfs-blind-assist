@@ -928,6 +928,7 @@ public partial class MainForm
         {
             da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from

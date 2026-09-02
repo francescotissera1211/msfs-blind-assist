@@ -494,6 +494,7 @@ public partial class MainForm : Form
         {
             da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
         }
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
