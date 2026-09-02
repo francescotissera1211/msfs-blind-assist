@@ -100,6 +100,78 @@ public partial class CowsDA40Definition
         AddApValue(v, "DA40_AP_CRS_SET", "NAV OBS:1", "Course",
             "degrees", "F0", "0 to 359. The NAV 1 course pointer.");
 
+        // ---------- The GFC 700's pre-flight test ----------
+        //
+        // ⚠️ NOTHING IN MSFSBA COULD SEE THIS, and on a real GFC 700 it is the thing that
+        // says whether the autopilot may be relied on at all. The PFD annunciates PFT while
+        // it runs, and a pilot who takes off without seeing it pass has an autopilot of
+        // unknown health.
+        //
+        // The state machine is the model's own, read out of its logic rather than guessed:
+        //
+        //   AFCS_TEST   0 idle, 1 running (10 s), 2 complete, -1 the AFCS itself failed
+        //   AFCS_PFT    0 not started, 1 running, 2 passed, 3 passed and latched,
+        //               -1 failed, -2 failed and latched
+        //
+        // ⚠️ AND PRESSING THE DISCONNECT DURING THE TEST FAILS IT. The model is explicit:
+        // while AFCS_PFT is 1, INPUT_AP_DISC - or an elevator, aileron or trim servo
+        // failure reaching 2 - drives it to -1. It needs five seconds undisturbed. That is
+        // the opposite of what the disconnect button does at any other moment, which is
+        // exactly why it is worth saying out loud.
+        v["DA40_AP_PFT"] = new SimVarDefinition
+        {
+            Name = "AFCS_PFT",
+            DisplayName = "Autopilot Pre-flight Test",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [-2] = "FAILED",
+                [-1] = "FAILED",
+                [0] = "not started",
+                [1] = "running - do not touch the disconnect",
+                [2] = "passed",
+                [3] = "passed"
+            },
+            HelpText = "Needs five seconds undisturbed. The disconnect button fails it."
+        };
+
+        v["DA40_AP_SELFTEST"] = new SimVarDefinition
+        {
+            Name = "AFCS_TEST",
+            DisplayName = "Autopilot Self Test",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [-1] = "FAILED - partial panel",
+                [0] = "not started",
+                [1] = "running",
+                [2] = "complete"
+            },
+            HelpText = "Runs for ten seconds after power-up, before the pre-flight test."
+        };
+
+        // ⚠️ NOT AddFlag's defaults. That helper leaves a flag OnRequest and unannounced,
+        // which is right for a state a pilot looks up and wrong for this one: an autopilot
+        // that has failed is the definition of something that interrupts a sighted pilot,
+        // and it would otherwise sit in a panel nobody had open.
+        v["DA40_AP_FAILED"] = new SimVarDefinition
+        {
+            Name = "AFCS_FAILED",
+            DisplayName = "Autopilot Failed",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "YES" },
+            HelpText = "Set when the AFCS drops out, including on a partial-panel failure."
+        };
+
         // ---------- Flight Director ----------
         v["DA40_AP_FD"] = new SimVarDefinition
         {
@@ -204,6 +276,18 @@ public partial class CowsDA40Definition
             HelpText = help
         };
     }
+
+    /// <summary>
+    /// The GFC 700's own health, which is read-only and belongs in the scan rather than
+    /// among the controls: there is nothing for a pilot to press here, only something to
+    /// check before relying on the autopilot.
+    /// </summary>
+    private static readonly List<string> AutopilotDisplayRows = new()
+    {
+        "DA40_AP_SELFTEST",
+        "DA40_AP_PFT",
+        "DA40_AP_FAILED"
+    };
 
     private static readonly List<string> AutopilotControls = new()
     {

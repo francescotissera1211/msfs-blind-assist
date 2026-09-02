@@ -489,9 +489,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[FlapsPanel] = new List<string>(FlapsDisplay);
         d[TrimPanel] = new List<string>(TrimDisplay);
         d[FlightControlsPanel] = new List<string>(FlightControlDisplay);
-        // The GFC 700 gets NO display entry at all, rather than an empty one. Every item
-        // on that panel is a control, so there is no read-only state to sweep, and a
-        // Status Display field with nothing in it reads as broken rather than as absent.
+        // The GFC 700 gets a display entry now, and only now: for a long time every item on
+        // that panel was a CONTROL, so there was no read-only state to sweep and an empty
+        // Status Display field reads as broken rather than as absent. The autopilot's own
+        // health - its self test, its pre-flight test and whether it has failed - is the
+        // first thing here that is genuinely read-only.
+        d[AutopilotPanel] = new List<string>(AutopilotDisplayRows);
         d[FlightDirectorPanel] = new List<string>(FlightDirectorDisplay);
         d[BrakesPanel] = new List<string>(BrakeDisplay);
         d[AudioPanel] = new List<string>(AudioDisplay);
