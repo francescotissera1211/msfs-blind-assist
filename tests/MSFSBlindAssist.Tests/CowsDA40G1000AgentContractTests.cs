@@ -97,14 +97,23 @@ public class CowsDA40G1000AgentContractTests
     }
 
     [Fact]
-    public void TheStateAnswerCarriesFourFields()
+    public void TheStateAnswerCarriesFiveFields()
     {
-        // "ok|cursor|view|summary". The window splits on '|' and reads index 2 as the view
-        // and 3 onwards as the summary, so the agent growing or losing a field silently
-        // shifts every one of them.
-        Assert.Contains("\"ok|\" + cursor + \"|\" + key + \"|\" + summary", Agent(),
-            StringComparison.Ordinal);
-        Assert.Contains("if (parts.Length < 4)", Form(), StringComparison.Ordinal);
+        // "ok|cursor|view|focus|summary". The window splits on '|' and reads index 2 as the
+        // view, 3 as the focused field and 4 onwards as the summary, so the agent growing
+        // or losing a field silently shifts every one of them. It has grown once already.
+        Assert.Contains("\"ok|\" + cursor + \"|\" + key + \"|\" + focus + \"|\" + summary",
+            Agent(), StringComparison.Ordinal);
+        Assert.Contains("if (parts.Length < 5)", Form(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheCursorIsNotAnnouncedOnEveryField()
+    {
+        // "Cursor on." used to prefix every single field, which is four syllables of
+        // nothing fourteen times down a setup page. The window says it on the TRANSITION.
+        Assert.DoesNotContain("\"Cursor on. \" + modelSaid", Agent(), StringComparison.Ordinal);
+        Assert.Contains("if (cursorOn != _lastCursorOn)", Form(), StringComparison.Ordinal);
     }
 
     [Fact]

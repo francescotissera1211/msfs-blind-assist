@@ -1704,7 +1704,17 @@
         var key = "";
         try { key = A.M.viewKey(); } catch (e) { key = ""; }
 
-        return "ok|" + cursor + "|" + key + "|" + summary;
+        // WHICH field the cursor is on, as a number. Without it the window cannot tell a
+        // knob turn that moved from one that could not - the knob does NOT wrap at the end
+        // of a page, so a pilot at the bottom of a setup page heard the same field read
+        // back a dozen times with nothing to say it was the last one.
+        var focus = "";
+        try {
+            var f = A.M.fields();
+            for (var i = 0; i < f.length; i++) if (f[i].focused) { focus = String(i); break; }
+        } catch (e) { focus = ""; }
+
+        return "ok|" + cursor + "|" + key + "|" + focus + "|" + summary;
     };
 
     /// Type an ident into whatever text field the cursor is on.
@@ -2011,6 +2021,31 @@
         return "";
     };
 
+    /// The BOX a field lives in - "Date / Time", "Display Units", "Nearest Airport".
+    ///
+    /// A pilot turning the knob down a setup page hears fourteen field names with nothing
+    /// to hang them on, and "Minimum Length" means very little until you know it is the
+    /// NEAREST AIRPORT box. A sighted pilot never has to ask: the boxes are drawn round the
+    /// fields and the heading is right there.
+    ///
+    /// `groupbox` + `groupbox-title` is the instrument's own pairing and is used on every
+    /// page family - the setup pages, Direct-To, the page menus, the procedure pages - so
+    /// this is one rule rather than a per-page table.
+    A.M.groupOf = function (c) {
+        var e = A.M.hostOf(c);
+        for (var d = 0; d < 8 && e; d++) {
+            if (hasClassContaining(e, "groupbox")) {
+                var title = e.querySelector(".groupbox-title");
+                if (title) {
+                    var v = text(title);
+                    if (v && v.length <= 40) return v;
+                }
+            }
+            e = e.parentElement;
+        }
+        return "";
+    };
+
     /// Every field on the page, in the order the knob walks them.
     A.M.fields = function () {
         var view = A.M.view();
@@ -2059,6 +2094,7 @@
             }
 
             var label = A.M.labelOf(c, value);
+            var group = A.M.groupOf(c);
             // A Direct-To box has no label of its own on screen - the pilot is looking at
             // a dialog whose whole subject is the waypoint - so it gets named rather than
             // read out as a bare ident with no idea what it is.
@@ -2067,6 +2103,7 @@
             out.push({
                 p: path,
                 kind: kind,
+                group: group,
                 label: label,
                 value: value,
                 ctrl: c,
@@ -2558,7 +2595,10 @@
 
         var f = A.M.focused();
         if (f) {
-            var s = (f.label ? f.label + ": " : "") + (f.value || "blank");
+            // The BOX first, then the field. "Nearest Airport, Minimum Length: 3000FT"
+            // answers what a pilot actually wants to know, and it is what the screen says.
+            var s = (f.group ? f.group + ", " : "") +
+                    (f.label ? f.label + ": " : "") + (f.value || "blank");
             if (f.able === false) s += ", not available";
             if (f.active) {
                 // "Editing" is not decoration. It is the difference between the next turn
@@ -2592,9 +2632,20 @@
     A.M.fieldRows = function () {
         var rows = [];
         var f = A.M.fields();
+        var lastGroup = null;
+
         for (var i = 0; i < f.length; i++) {
             if (f[i].kind === "group") continue;
-            var line = (f[i].label ? f[i].label + ": " : "") + (f[i].value || "blank");
+
+            // The box heading, once, above the fields it contains - the same shape the
+            // screen has, so arrowing the window reads like looking at the page.
+            if (f[i].group && f[i].group !== lastGroup) {
+                rows.push(f[i].group);
+                lastGroup = f[i].group;
+            }
+
+            var line = (f[i].group ? "  " : "") +
+                       (f[i].label ? f[i].label + ": " : "") + (f[i].value || "blank");
             if (f[i].able === false) line += " (not available)";
             if (f[i].focused) line += "   <-- cursor" + (f[i].active ? ", editing" : "");
             rows.push(line);
@@ -2616,16 +2667,16 @@
         // the PFD's popouts.
         var modelSaid = "";
         try { modelSaid = A.M.say(); } catch (e) { modelSaid = ""; }
-        if (modelSaid) {
-            var on = false;
-            try { on = A.M.cursor() === true; } catch (e) { on = false; }
-            return (on ? "Cursor on. " : "") + modelSaid;
-        }
+        // ⚠️ NO "Cursor on." PREFIX. It was on EVERY field, and a pilot walking fourteen
+        // fields down a setup page heard it fourteen times for one bit of information they
+        // already had. The window announces the cursor when it CHANGES, which is the only
+        // moment it is news; the rest of the time the answer to "where am I" is the field.
+        if (modelSaid) return modelSaid;
 
         // THE CURSOR OUTRANKS EVERYTHING. If it is on, the pilot is editing a field and
         // the only thing a keystroke has to answer is which field and what it now says.
         var cursor = A.cursorField();
-        if (cursor) return "Cursor on. " + cursor;
+        if (cursor) return cursor;
 
         // The PFD's open window, before the MFD-only branches below it - which on the PFD
         // all miss and drop through to a page title the PFD does not have.
@@ -2682,6 +2733,14 @@
         // map pointer - and answering with the page title alone is indistinguishable from a
         // key that did nothing, which is the complaint that started all of this. Say which
         // it is.
+        // ⚠️ THE PFD HAS NO PAGES, only windows, so its FMS knob and cursor do nothing at
+        // all until one is open - and a key that does nothing in silence is the fault this
+        // whole file exists to avoid. Say what would make it work.
+        if (A.side() === "PFD" && !A.M.viewKey()) {
+            return "No window open. The PFD cursor works inside a window - " +
+                   "press Control G, or a softkey such as Nearest or Timer and References.";
+        }
+
         var title = A.pageTitle();
         var on = false;
         try { on = A.M.cursor() === true; } catch (e) { on = false; }
@@ -2854,9 +2913,14 @@
         try { fields = A.M.fieldRows(); } catch (e) { fields = []; }
         if (!fields.length) return;
 
+        // The COUNT is fields, not rows: the box headings are in the list too and counting
+        // them said "Fields (19)" over fourteen fields.
+        var n = 0;
+        try { n = A.M.fields().length; } catch (e) { n = fields.length; }
+
         var on = null;
         try { on = A.M.cursor(); } catch (e) { on = null; }
-        rows.push("Fields (" + fields.length + "), cursor " +
+        rows.push("Fields (" + n + "), cursor " +
             (on === null ? "unknown" : on ? "on" : "off") + ":");
         for (var i = 0; i < fields.length; i++) rows.push("  " + fields[i]);
     };

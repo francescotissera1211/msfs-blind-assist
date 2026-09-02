@@ -479,6 +479,20 @@ public partial class MainForm : Form
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
 
+        // ⚠️ THE DA40's CAS WATCHER HAD TO BE HERE TOO, and its absence is why cautions
+        // never auto-announced. SwitchAircraft starts it — but SwitchAircraft runs ONLY
+        // when the pilot picks an aircraft from the menu. The startup path sets
+        // currentAircraft directly from the saved setting (see the constructor), so a
+        // session that opens with the DA40 already selected — which is every session for a
+        // DA40 pilot — never called it. Measured from the log: the aircraft registered, the
+        // display window worked, and "CAS monitor: started" was never written once.
+        //
+        // The A380 and HS787 monitors two blocks up exist for exactly this reason. This is
+        // the third, and the pattern is now: a background monitor must be started in BOTH
+        // places or it does not run for the aircraft the app opens with.
+        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+            da40Cas.StartCasMonitor(announcer);
+
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.

@@ -203,6 +203,8 @@ public sealed class CowsDA40DisplayForm : Form
         {
             _connectWatchdog.Stop();
             _connectWatchdog.Dispose();
+            try { _rowSettle?.Stop(); _rowSettle?.Dispose(); } catch { }
+            _rowSettle = null;
             _client.RowsUpdated -= OnRowsUpdated;
             _client.Error -= OnClientError;
             _client.Stop();
@@ -226,10 +228,77 @@ public sealed class CowsDA40DisplayForm : Form
         catch (InvalidOperationException) { }
     }
 
+    /// <summary>
+    /// How long after the last arrow key the list is left alone.
+    ///
+    /// ⚠️ THIS IS WHY THE READER KEPT SAYING "NOT SELECTED". The window re-reads the
+    /// display about once a second, and rows legitimately appear and disappear as it does -
+    /// the field list arrives when the cursor is armed, a box heading arrives with it, a
+    /// caution clears. <see cref="DisplayList.UpdateInPlace"/> then has to move the
+    /// selection to follow the row the pilot was on, and a ListBox whose selection is
+    /// re-set under a screen reader re-announces the item WITH its state.
+    ///
+    /// So while the pilot is actually moving through the list, the list holds still. The
+    /// scrape keeps running - the CAS watcher and the units reader are fed from it and are
+    /// never delayed - only the redraw waits, and only until they pause.
+    /// </summary>
+    private const int RowQuietMs = 2500;
+
+    private DateTime _lastNavKeyAt = DateTime.MinValue;
+    private List<string>? _heldRows;
+    private System.Windows.Forms.Timer? _rowSettle;
+
+    /// <summary>The keys that move the reader through the list, and nothing else.</summary>
+    private static bool IsReadingKey(Keys keyData) => keyData switch
+    {
+        Keys.Up or Keys.Down or Keys.Left or Keys.Right or
+        Keys.Home or Keys.End or Keys.PageUp or Keys.PageDown => true,
+        _ => false
+    };
+
     private void OnRowsUpdated(List<string> rows)
     {
         if (_disposed || !IsHandleCreated) return;
         _gotRows = true;
+
+        // ANNOUNCEMENTS FIRST, AND NEVER HELD. This window holds one of the two inspector
+        // sockets, so the always-on CAS watcher cannot have it; feeding the watcher here is
+        // what keeps cautions speaking while the window is open. Delaying that to tidy up
+        // the list would trade a caution for a redraw.
+        if (_side == "PFD") _owner?.ProcessCasRows(rows);
+        else _owner?.NoteDisplayUnits(rows);
+
+        // Hold the redraw while the pilot is reading. The rows themselves are NOT held
+        // back from anything else - the caller has already fed the CAS watcher and the
+        // units reader by the time this runs.
+        if ((DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs)
+        {
+            _heldRows = rows;
+
+            if (_rowSettle == null)
+            {
+                _rowSettle = new System.Windows.Forms.Timer { Interval = 400 };
+                _rowSettle.Tick += (_, _) =>
+                {
+                    if (_disposed) { _rowSettle?.Stop(); return; }
+                    if ((DateTime.UtcNow - _lastNavKeyAt).TotalMilliseconds < RowQuietMs) return;
+
+                    _rowSettle!.Stop();
+                    var held = _heldRows;
+                    _heldRows = null;
+                    if (held != null) ApplyRows(held);
+                };
+            }
+
+            _rowSettle.Start();
+            return;
+        }
+
+        ApplyRows(rows);
+    }
+
+    private void ApplyRows(List<string> rows)
+    {
 
         // The client raises this on the thread that created it, which is this UI thread —
         // but a handle can be destroyed between the check and the call on a close race, so
@@ -240,17 +309,6 @@ public sealed class CowsDA40DisplayForm : Form
             {
                 if (_disposed) return;
                 _text.SetLines(rows.Count > 0 ? rows : new List<string> { "No data from the display." });
-
-                // This window holds the PFD socket, so the always-on CAS watcher cannot.
-                // Feed it what we just read instead of leaving it blind - a caution
-                // arriving while the pilot is reading some other part of the display is
-                // exactly the one that has to speak.
-                if (_side == "PFD") _owner?.ProcessCasRows(rows);
-
-                // BOTH displays carry the pilot's chosen units, and only ONE of them can
-                // be read at a time - one inspector socket per view. So whichever window
-                // is open feeds them, and the MFD window is not a special case.
-                else _owner?.NoteDisplayUnits(rows);
             }));
         }
         catch (InvalidOperationException)
@@ -304,26 +362,67 @@ public sealed class CowsDA40DisplayForm : Form
         // Right the SMALL one (kHz), and Enter is the knob PUSH, which moves the tuning
         // box between radio 1 and 2 - it does NOT swap. Swapping stays on the Radios
         // panel's own buttons, which drive the stock events and are already proven.
-        [Keys.Alt | Keys.Up]                 = ("COM_Large_INC", "COM megahertz up"),
-        [Keys.Alt | Keys.Down]               = ("COM_Large_DEC", "COM megahertz down"),
-        [Keys.Alt | Keys.Right]              = ("COM_Small_INC", "COM kilohertz up"),
-        [Keys.Alt | Keys.Left]               = ("COM_Small_DEC", "COM kilohertz down"),
-        [Keys.Alt | Keys.Enter]              = ("COM_Push", "COM tuning box"),
-
-        [Keys.Control | Keys.Alt | Keys.Up]    = ("NAV_Large_INC", "NAV megahertz up"),
-        [Keys.Control | Keys.Alt | Keys.Down]  = ("NAV_Large_DEC", "NAV megahertz down"),
-        [Keys.Control | Keys.Alt | Keys.Right] = ("NAV_Small_INC", "NAV kilohertz up"),
-        [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down"),
+        // ⚠️ ONLY THE PUSH. The four TURN events of each radio knob are NOT here - see
+        // RadioKnobKeys below, and the measurement that put them there.
+        [Keys.Alt | Keys.Enter]                = ("COM_Push", "COM tuning box"),
         [Keys.Control | Keys.Alt | Keys.Enter] = ("NAV_Push", "NAV tuning box"),
 
         [Keys.Control | Keys.PageUp]   = ("RANGE_INC", "range out"),
         [Keys.Control | Keys.PageDown] = ("RANGE_DEC", "range in")
     };
 
+    /// <summary>
+    /// THE RADIO TUNING KNOBS, WHICH GO BACK OVER SIMCONNECT.
+    ///
+    /// ⚠️ This is the second measured exception on this display and it is the OPPOSITE of
+    /// the first. The FMS knob and the named bezel buttons reach the instrument ONLY
+    /// through its own <c>onInteractionEvent</c>; the radio knobs reach the radio ONLY
+    /// through a SimConnect H-event write, and firing them down the socket does nothing at
+    /// all. Measured both ways on COM 2's standby, minutes apart:
+    ///
+    ///   onInteractionEvent("AS1000_PFD_COM_Small_INC")  →  124.850, unchanged
+    ///   1 (&gt;H:AS1000_PFD_COM_Small_INC) over SimConnect →  124.855
+    ///
+    /// The likeliest reason is that these are consumed by the aeroplane's own gauge logic
+    /// rather than by the JavaScript instrument, but the reason does not matter — the
+    /// measurement does. What DOES matter is that moving the whole bezel onto the socket
+    /// silently killed radio tuning from this window, which is exactly what "how do I tune
+    /// the radios?" meant.
+    ///
+    /// The knob PUSH is the exception to the exception: it moves the tuning box between
+    /// radio 1 and 2, it works over the socket, and it reads back there, so it stays in
+    /// <see cref="BezelKeys"/>.
+    ///
+    /// NOTHING IS SPOKEN HERE. Every frequency is Continuous and announced, and the settle
+    /// announcer speaks the value the knob comes to rest on — announcing the keystroke as
+    /// well would put a word in front of the only thing the pilot is waiting for. That is
+    /// the same reasoning that removed the swap's prediction.
+    /// </summary>
+    private static readonly Dictionary<Keys, (string Event, string Spoken)> RadioKnobKeys = new()
+    {
+        [Keys.Alt | Keys.Up]                   = ("COM_Large_INC", "COM megahertz up"),
+        [Keys.Alt | Keys.Down]                 = ("COM_Large_DEC", "COM megahertz down"),
+        [Keys.Alt | Keys.Right]                = ("COM_Small_INC", "COM kilohertz up"),
+        [Keys.Alt | Keys.Left]                 = ("COM_Small_DEC", "COM kilohertz down"),
+
+        [Keys.Control | Keys.Alt | Keys.Up]    = ("NAV_Large_INC", "NAV megahertz up"),
+        [Keys.Control | Keys.Alt | Keys.Down]  = ("NAV_Large_DEC", "NAV megahertz down"),
+        [Keys.Control | Keys.Alt | Keys.Right] = ("NAV_Small_INC", "NAV kilohertz up"),
+        [Keys.Control | Keys.Alt | Keys.Left]  = ("NAV_Small_DEC", "NAV kilohertz down")
+    };
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
+        // Note that the pilot is READING, so the poll does not rewrite the list under them.
+        // Not handled here - the list still gets the key.
+        if (IsReadingKey(keyData)) _lastNavKeyAt = DateTime.UtcNow;
+
         if (keyData == Keys.F5)
         {
+            // F5 means "give me it NOW", so it also cancels the read-quiet hold - otherwise
+            // a refresh pressed straight after an arrow key would sit in the queue for two
+            // and a half seconds and look like a dead key.
+            _lastNavKeyAt = DateTime.MinValue;
             _ = _client.ScrapeNowAsync();
             return true;
         }
@@ -352,6 +451,31 @@ public sealed class CowsDA40DisplayForm : Form
             return true;
         }
 
+        // The radio knobs, over SimConnect. UNIQUE because a knob is turned in bursts and
+        // two identical calc strings in a row are what MobiFlight coalesces - which on a
+        // radio means every second click of a sweep goes missing.
+        if (RadioKnobKeys.TryGetValue(keyData, out var knob))
+        {
+            if (_side != "PFD")
+            {
+                // Said rather than swallowed: the G1000 tunes on the PFD and the MFD has
+                // no COM or NAV knob at all, which is a real answer to "why does this key
+                // do nothing here" and one a sighted pilot can see at a glance.
+                _announcer.AnnounceImmediate("The radios are tuned on the PFD, not the MFD.");
+                return true;
+            }
+
+            if (!_simConnect.IsConnected)
+            {
+                _announcer.AnnounceImmediate("Not connected to simulator.");
+                return true;
+            }
+
+            _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_PFD_{knob.Event})");
+            _ = _client.ScrapeNowAsync();
+            return true;
+        }
+
         if (BezelKeys.TryGetValue(keyData, out var bezel))
         {
             _ = PressBezel(bezel.Event, bezel.Spoken);
@@ -377,7 +501,7 @@ public sealed class CowsDA40DisplayForm : Form
         // ONE round trip: fire the key and get the read-back together. This was four -
         // summary before, key, wait, summary again, scrape - and each is a full socket
         // exchange with the Coherent debugger.
-        var (cursorOn, view, summary, accepted) = await FireAndRead(name);
+        var (cursorOn, view, focus, summary, accepted) = await FireAndRead(name);
         if (_disposed || !accepted) return;
 
         // THE DISPLAY NEEDS A FRAME, and reading before it has had one is what made this
@@ -397,20 +521,37 @@ public sealed class CowsDA40DisplayForm : Form
             await Task.Delay(selector ? PageSelectSettleMs : BezelSettleMs);
             if (_disposed) return;
 
-            (cursorOn, view, summary, accepted) = await FireAndRead(null);
+            (cursorOn, view, focus, summary, accepted) = await FireAndRead(null);
             if (_disposed || !accepted) return;
         }
 
-        // CURSOR OFF has to be said, because nothing else marks it. Turning it on
-        // announces itself; turning it off just produced the page title, which is
-        // indistinguishable from a key that did nothing - so a pilot presses the cursor
-        // again to check, turning it back ON, and the two states cannot be told apart.
         string toSay = summary.Length > 0 ? summary : spoken;
-        if (_lastCursorOn && !cursorOn) toSay = "Cursor off. " + toSay;
+
+        // THE CURSOR IS ANNOUNCED WHEN IT CHANGES AND AT NO OTHER TIME.
+        //
+        // It used to prefix "Cursor on." to EVERY field, so a pilot walking fourteen
+        // fields down a setup page heard it fourteen times for one bit of information they
+        // already had. But the two transitions are both real news and neither marks
+        // itself: turning it off leaves only the page title, which is indistinguishable
+        // from a key that did nothing - so a pilot presses the cursor again to check,
+        // turns it back on, and cannot tell the two states apart.
+        if (cursorOn != _lastCursorOn) toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
+
+        // THE KNOB DOES NOT WRAP. At the end of a page the G1000 simply stops, and the
+        // window then read the same field back on every further turn with nothing to say
+        // why - reported from the cockpit as "Minimum Length" fifteen times running. If
+        // the cursor is on, the focused field did not move and the key was a knob turn,
+        // say which end of the page it is.
+        else if (cursorOn && focus.Length > 0 && focus == _lastFocus &&
+                 KnobDirection(eventSuffix) is int direction)
+        {
+            toSay += direction > 0 ? ", end of the page" : ", start of the page";
+        }
 
         _lastCursorOn = cursorOn;
         _lastSpokenSummary = summary;
         _lastView = view;
+        _lastFocus = focus;
         _announcer.AnnounceImmediate(toSay);
 
         // The window's own text last, off the critical path: it is not what a pilot is
@@ -422,32 +563,37 @@ public sealed class CowsDA40DisplayForm : Form
     /// Fires a bezel key (or just re-reads, when <paramref name="name"/> is null) and
     /// unpacks the agent's "ok|cursor|summary" answer.
     /// </summary>
-    private async Task<(bool CursorOn, string View, string Summary, bool Accepted)> FireAndRead(string? name)
+    private async Task<(bool CursorOn, string View, string Focus, string Summary, bool Accepted)> FireAndRead(string? name)
     {
         string call = name is null
             ? "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.state()"
             : $"window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.press('{name}')";
 
         string result = await _client.InvokeAsync(call);
-        if (_disposed) return (false, "", "", false);
+        if (_disposed) return (false, "", "", "", false);
 
         // A.key answers "no instrument" when the view has no G1000 element to drive, which
         // is the one failure a pilot could otherwise mistake for a dead key.
         if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
         {
             _announcer.AnnounceImmediate("The display did not accept that key.");
-            return (false, "", "", false);
+            return (false, "", "", "", false);
         }
 
-        // "ok|cursor|view|summary". The VIEW key arrived with the agent's model rewrite and
-        // is what decides how long to wait: only the page SELECTOR holds its choice for
-        // about a second before committing, and paying that wait on every key is what made
-        // the window feel slow enough to be broken.
+        // "ok|cursor|view|focus|summary".
+        //
+        // The VIEW key decides how long to wait: only the page SELECTOR holds its choice
+        // for about a second before committing, and paying that wait on every key is what
+        // made the window feel slow enough to be broken.
+        //
+        // The FOCUS index is which field the cursor is on. The G1000's knob does NOT wrap
+        // at the end of a page, so without it a pilot at the bottom of a setup page heard
+        // the same field read back a dozen times with nothing to say it was the last one.
         var parts = result.Split('|');
-        if (parts.Length < 4) return (false, "", "", true);
+        if (parts.Length < 5) return (false, "", "", "", true);
 
-        return (parts[1] == "1", parts[2].Trim(),
-            string.Join("|", parts, 3, parts.Length - 3).Trim(), true);
+        return (parts[1] == "1", parts[2].Trim(), parts[3].Trim(),
+            string.Join("|", parts, 4, parts.Length - 4).Trim(), true);
     }
 
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
@@ -458,6 +604,21 @@ public sealed class CowsDA40DisplayForm : Form
 
     /// <summary>Which view the display was showing at the last read-back.</summary>
     private string _lastView = "";
+
+    /// <summary>Which field the cursor was on at the last read-back, as the agent numbers them.</summary>
+    private string _lastFocus = "";
+
+    /// <summary>
+    /// Whether a bezel key is a FIELD-MOVING knob turn, and which way. Only those can run
+    /// off the end of a page; a value key that leaves the focus where it was has not hit
+    /// any kind of end and must not be told it has.
+    /// </summary>
+    private static int? KnobDirection(string eventSuffix) => eventSuffix switch
+    {
+        "FMS_Lower_INC" => 1,
+        "FMS_Lower_DEC" => -1,
+        _ => null
+    };
 
     /// <summary>
     /// How long to wait before reading back a bezel press.
@@ -514,7 +675,7 @@ public sealed class CowsDA40DisplayForm : Form
         }
 
         // Which page we are on, so the list opens where the pilot already is.
-        var (_, current, _, _) = await FireAndRead(null);
+        var (_, current, _, _, _) = await FireAndRead(null);
         if (_disposed) return;
 
         using var picker = new CowsDA40PageJumpForm(entries, _announcer, current);
