@@ -927,6 +927,7 @@ public partial class MainForm
         if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
         {
             da40Cas.StartCasMonitor(announcer);
+            da40Cas.AttachLampWatch(simConnectManager);
         }
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from

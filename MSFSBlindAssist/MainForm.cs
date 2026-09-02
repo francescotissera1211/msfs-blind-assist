@@ -491,7 +491,10 @@ public partial class MainForm : Form
         // the third, and the pattern is now: a background monitor must be started in BOTH
         // places or it does not run for the aircraft the app opens with.
         if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
             da40Cas.StartCasMonitor(announcer);
+            da40Cas.AttachLampWatch(simConnectManager);
+        }
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements

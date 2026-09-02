@@ -214,6 +214,11 @@ public partial class CowsDA40Definition
     {
         if (IsSilentCachedReadout(varName)) return true;
 
+        // A LAMP never speaks on its own; a SWITCH always does. NoteLampChange arms the
+        // settle for both and returns true only for the lamp, so the switch carries on to
+        // the generic announcer exactly as it always has.
+        if (NoteLampChange(varName, announcer)) return true;
+
         // Both barometric subscales: recorded and announced once the knob settles, rather
         // than on every 0.01 inHg step. Returns true either way - the generic announcer
         // must not also read them.

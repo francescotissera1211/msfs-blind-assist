@@ -87,6 +87,7 @@ public partial class CowsDA40Definition
         // definition the app has finished with.
         StopBaroAnnounce();
         StopRadioAnnounce();
+        StopLampWatch();
 
         if (_casClient == null) return;
 

@@ -429,6 +429,21 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// it should interrupt a blind one too. They keep their Monitor Manager row for the same
     /// reason: a row that can actually speak is a row worth offering.
     /// </summary>
+    /// <summary>
+    /// The light LAMPS, cached so they can be compared with their switches.
+    ///
+    /// They are promoted and then kept OUT of the generic announcer by NoteLampChange: a
+    /// lamp agreeing with its switch is the same news twice, and only a DISAGREEMENT - a
+    /// failed bulb or a pulled breaker - is worth a word. See CowsDA40Definition.LampWatch.
+    /// </summary>
+    private static readonly string[] LampStateReadouts =
+    {
+        "DA40_LIGHT_LGN_STATE",
+        "DA40_LIGHT_TXI_STATE",
+        "DA40_LIGHT_POS_STATE",
+        "DA40_LIGHT_STB_STATE"
+    };
+
     private static readonly string[] HotkeyCachedFlags =
     {
         "DA40_STBY_GYRO_CAGED",
@@ -456,6 +471,19 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             def.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
             def.IsAnnounced = true;
             def.ExcludeFromBatch = false;
+        }
+
+        foreach (string key in LampStateReadouts)
+        {
+            if (!vars.TryGetValue(key, out var def)) continue;
+
+            def.UpdateFrequency = SimConnect.UpdateFrequency.Continuous;
+            def.IsAnnounced = true;
+            def.ExcludeFromBatch = false;
+
+            // No Monitor Manager row of its own: muting a light means muting the SWITCH,
+            // and its lamp follows that choice (FlushLampWatch checks the switch's row).
+            def.ExcludeFromMonitorManager = true;
         }
     }
 
