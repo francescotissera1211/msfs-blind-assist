@@ -2734,9 +2734,20 @@
                     who = text(firstVisible(".wpt-entry-name")) || "";
                 }
 
-                if (!fresh) {
-                    // Mid-edit: the character, and the match ONLY when it has changed.
-                    var quiet = cs || (f.value || "");
+                // ⚠️ ONLY A FIELD BEING SPELT EARNS THE SHORT FORM, AND DROPPING THAT TEST
+                // BROKE A DIFFERENT FIELD IMMEDIATELY. The short form exists because spelling
+                // an ident is dozens of knob clicks and the only news each time is the
+                // character. A field that CYCLES A VALUE - the approach's runway box, a units
+                // choice - has no character position at all, so the short form fell back to the
+                // bare value and announced a runway field as, in full, "none". Reported from
+                // the cockpit exactly that way, and it is worse than the verbosity it replaced:
+                // a value with no label is a word with no meaning.
+                //
+                // The presence of a character position IS the test for "being spelt", so it
+                // gates the whole thing rather than merely decorating it.
+                if (!fresh && cs) {
+                    // Mid-spell: the character, and the match ONLY when it has changed.
+                    var quiet = cs;
                     if (who && who !== A.M._edWho) quiet += ", " + who;
                     A.M._edWho = who;
                     return quiet;
