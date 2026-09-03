@@ -120,7 +120,24 @@ public static class GpsWaypointSequencer
     /// </summary>
     public static string ComposeReadout(Reading r, Func<double, string>? distance = null)
     {
-        if (!r.HasPlan || r.NextId.Length == 0) return "No active waypoint.";
+        if (!r.HasPlan) return "No active flight plan.";
+
+        // ⚠️ AN UNNAMED LEG IS NOT AN ABSENT ONE, AND SAYING SO WAS WRONG ON EVERY SID.
+        // ARINC 424 path/terminator legs - climb to an altitude, fly a heading to an
+        // intercept - carry NO FIX, so the navigator publishes an empty ident for them. They
+        // are most of a departure: measured live at VCBI on the ANUT1D, where the active leg
+        // was DER22 with LNAV computing a perfectly good 1.0 miles and the ident blank.
+        //
+        // "No active waypoint" there is a lie a pilot would act on - it says the flight plan
+        // has run out - so the distance and bearing are given instead, which are exactly what
+        // the aeroplane is flying. This codebase already learned the same lesson in the EFB,
+        // where dropping fix-less legs silently deleted the initial climb of most SIDs.
+        if (r.NextId.Length == 0)
+        {
+            return r.HasGeometry
+                ? $"Unnamed leg, {(distance ?? DefaultDistance)(r.DistanceNm)}, bearing {r.BearingDeg:000}."
+                : "No active waypoint.";
+        }
 
         // The fix is known, the geometry is not. Naming it is still worth saying - it answers
         // "what am I going to next" - but the numbers must not be invented from the zeros.

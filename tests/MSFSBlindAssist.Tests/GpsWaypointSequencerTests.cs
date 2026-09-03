@@ -116,7 +116,7 @@ public class GpsWaypointSequencerTests
     public void TheReadoutSaysSoWhenThereIsNoWaypoint()
     {
         var r = GpsWaypointSequencer.Read(Frame("", "", plan: false), previousNextId: null);
-        Assert.Equal("No active waypoint.", GpsWaypointSequencer.ComposeReadout(r));
+        Assert.Equal("No active flight plan.", GpsWaypointSequencer.ComposeReadout(r));
     }
 
     [Fact]
@@ -237,6 +237,37 @@ public class GpsWaypointSequencerTests
     {
         Assert.Equal("Already past top of descent.",
                      GpsWaypointSequencer.ComposeTopOfDescent(pathAvailable: true, todMetres: 0));
+    }
+
+    [Fact]
+    public void AnUnnamedLegGivesTheGeometryRatherThanClaimingThereIsNoWaypoint()
+    {
+        // ⚠️ Measured live at VCBI on the ANUT1D departure: the active leg was DER22 - an
+        // ARINC path/terminator leg with NO FIX - so the navigator published an empty ident
+        // while LNAV computed a perfectly good 1.0 miles. "No active waypoint" there says the
+        // flight plan has run out, which is a lie a pilot would act on. Fix-less legs are most
+        // of a departure.
+        var r = GpsWaypointSequencer.Read(Frame("", "", distanceMetres: 1852, bearing: 220),
+                                          previousNextId: "");
+        string said = GpsWaypointSequencer.ComposeReadout(r);
+
+        Assert.Equal("Unnamed leg, 1.0 miles, bearing 220.", said);
+        Assert.DoesNotContain("No active waypoint", said);
+    }
+
+    [Fact]
+    public void AnUnnamedLegWithNoGeometryStillSaysThereIsNoWaypoint()
+    {
+        // Nothing named AND nothing computed is genuinely nothing to report.
+        var r = GpsWaypointSequencer.Read(Frame("", "", distanceMetres: 0), previousNextId: "");
+        Assert.Equal("No active waypoint.", GpsWaypointSequencer.ComposeReadout(r));
+    }
+
+    [Fact]
+    public void NoFlightPlanAtAllIsNamedAsSuch()
+    {
+        var r = GpsWaypointSequencer.Read(Frame("", "", plan: false), previousNextId: null);
+        Assert.Equal("No active flight plan.", GpsWaypointSequencer.ComposeReadout(r));
     }
 
     [Fact]
