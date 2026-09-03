@@ -1766,6 +1766,24 @@
             var map = A.M.pageMap();
             for (var g = 0; g < map.length; g++) {
                 for (var p = 0; p < map[g].pages.length; p++) {
+                    // ⚠️ STUBS ARE LEFT OUT OF THE JUMP LIST, AND THAT DOES NOT CONTRADICT THE
+                    // RULE ABOUT NEVER HIDING THEM - the two are different questions.
+                    //
+                    // Fifteen of this G1000's thirty-two advertised pages have an EMPTY KEY:
+                    // Weather Data Link, TAWS-B, Trip Planning, Utility, GPS Status, XM Radio,
+                    // System Status, Connext Setup, Databases, VRP and User WPT Information,
+                    // and four of the Nearest pages. The instrument draws their names and never
+                    // built them, so a sighted pilot's knob lands on them and nothing happens.
+                    //
+                    // When the KNOB lands on one, the readout must still say so - "not in this
+                    // G1000" - because a page the aeroplane never built has to be tellable from
+                    // one MSFSBA is failing to read. That rule is untouched.
+                    //
+                    // A JUMP LIST is a different thing: it is a menu of places you can GO, and
+                    // an entry that cannot be gone to is a dead key with a name on it. Offering
+                    // fifteen of them means a pilot picks one, hears nothing happen, and has to
+                    // learn by trial which half of the list is real.
+                    if (!map[g].pages[p].key) continue;
                     out.push(map[g].group + "|" + map[g].pages[p].name + "|" + map[g].pages[p].key);
                 }
             }
