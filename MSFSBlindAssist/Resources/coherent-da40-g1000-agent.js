@@ -215,9 +215,30 @@
             var e = firstVisible(sel);
             return e ? text(e) : "";
         }
+        // ⚠️ THE LATERAL HALF OF THE FMA HAS NO CSS CLASS, AND WAS THEREFORE NEVER READ.
+        // The vertical modes carry `.fma-ap-vertical-modes`; the lateral mode - GPS, HDG, ROL,
+        // LOC, VOR, and whether each is ARMED or CAPTURED - sits in an unclassed sibling. So
+        // MSFSBA announced "FLC116KTALTS" faithfully while the entire left half of the strip
+        // was invisible, which is why a NAV mode that was engaged and NOT capturing looked
+        // exactly like one that was working. Measured live: that sibling read "GPS".
+        //
+        // Anchored on `.fma-ap-displayed`, which DOES have a class and sits immediately after
+        // it - a position relative to a named neighbour, rather than a bare nth-child that
+        // would silently pick up the wrong box the moment the layout gains an element.
+        function lateral() {
+            var anchor = firstVisible(".fma-ap-displayed");
+            if (!anchor || !anchor.parentElement) return "";
+            var kids = anchor.parentElement.children;
+            for (var i = 0; i < kids.length; i++) {
+                if (kids[i] === anchor) return i > 0 ? text(kids[i - 1]) : "";
+            }
+            return "";
+        }
+
         return {
             autopilot: one(".fma-ap-label"),
             yawDamper: one(".fma-yd-label"),
+            lateral: lateral(),
             vertical: one(".fma-ap-vertical-modes")
         };
     };
@@ -3135,7 +3156,11 @@
         }
 
         var f = A.fma();
-        var modes = [f.autopilot, f.vertical, f.yawDamper].filter(function (x) { return x; });
+        // LATERAL BEFORE VERTICAL, which is the order the strip is drawn in and the order a
+        // pilot reads it. Its absence is what made an uncaptured NAV indistinguishable from a
+        // captured one - see A.fma().
+        var modes = [f.autopilot, f.lateral, f.vertical, f.yawDamper]
+            .filter(function (x) { return x; });
         rows.push("Autopilot: " + (modes.length ? modes.join(", ") : "off"));
 
         var n = A.nav();

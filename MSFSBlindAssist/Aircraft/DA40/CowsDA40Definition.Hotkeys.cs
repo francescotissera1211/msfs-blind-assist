@@ -373,6 +373,16 @@ public partial class CowsDA40Definition
                 var bits = new List<string>();
                 Add(bits, simConnect, "DA40_POWER_RPM", "");
 
+                // ⚠️ THE LEVER BELONGS WITH THE RPM ON THIS AEROPLANE, because it is the ONLY
+                // engine control there is. A FADEC diesel has no mixture, no propeller lever
+                // and no boost - the single power lever commands LOAD, and the governor picks
+                // the RPM from it. So "2100 RPM" alone answers half a question: a pilot needs
+                // to know what they asked for as well as what they got, and on a non-monotonic
+                // curve (2150 at idle, 1800 at 20 percent, 2300 at full) the two cannot be
+                // inferred from each other in either direction.
+                double? lever = ReadNow(simConnect, "DA40_POWER_LEVER_SET");
+                if (lever is not null) bits.Add($"lever {lever.Value:0} percent");
+
                 if (IsNG)
                 {
                     // Only worth saying when it DIFFERS - a target equal to the reading is

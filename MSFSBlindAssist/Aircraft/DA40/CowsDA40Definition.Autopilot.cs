@@ -67,8 +67,21 @@ public partial class CowsDA40Definition
 
         AddApMode(v, "DA40_AP_MASTER", "AUTOPILOT MASTER", "Autopilot",
             "Engages the GFC 700. The stick disconnect button also releases it.");
-        AddApMode(v, "DA40_AP_YAW_DAMPER", "AUTOPILOT YAW DAMPER", "Yaw Damper",
-            "Engages with the autopilot; can be run on its own.");
+        // ⚠️ NO YAW DAMPER CONTROL. THIS AEROPLANE HAS NONE, AND THE CONTROL WAS INERT.
+        //
+        // It read as a normal GFC 700 switch and did NOTHING. Measured in flight: firing
+        // K:YAW_DAMPER_ON left AUTOPILOT YAW DAMPER at 0, and systems.cfg carries
+        // `yaw_damper_gain = 0` - so there is no damper to engage and no authority if there
+        // were. The G1000 draws a YD slot on the FMA because the stock strip has one; the
+        // label scrapes empty.
+        //
+        // A control that answers a keypress with silence is worse than no control at all: a
+        // blind pilot cannot tell it from a control they pressed wrongly, and this codebase's
+        // own playbook says to confirm by READ-BACK rather than by the absence of complaint.
+        // Removed rather than left as a decoration.
+        //
+        // A real DA40 NG is right to lack one - a yaw damper belongs on twins and faster
+        // singles, not a fixed-gear four-seat trainer.
 
         // ---------- Lateral modes ----------
         AddApMode(v, "DA40_AP_HDG", "AUTOPILOT HEADING LOCK", "Heading Mode",
@@ -293,7 +306,6 @@ public partial class CowsDA40Definition
     {
         "DA40_AP_TOGA",
         "DA40_AP_MASTER",
-        "DA40_AP_YAW_DAMPER",
         "DA40_AP_HDG",
         "DA40_AP_NAV",
         "DA40_AP_APR",
@@ -354,7 +366,6 @@ public partial class CowsDA40Definition
         string? onOff = varKey switch
         {
             "DA40_AP_MASTER" => on ? "AUTOPILOT_ON" : "AUTOPILOT_OFF",
-            "DA40_AP_YAW_DAMPER" => on ? "YAW_DAMPER_ON" : "YAW_DAMPER_OFF",
             "DA40_AP_HDG" => on ? "AP_HDG_HOLD_ON" : "AP_HDG_HOLD_OFF",
             "DA40_AP_NAV" => on ? "AP_NAV1_HOLD_ON" : "AP_NAV1_HOLD_OFF",
             "DA40_AP_APR" => on ? "AP_APR_HOLD_ON" : "AP_APR_HOLD_OFF",
