@@ -370,17 +370,28 @@ To ground the "flyPad agent serves both FBW jets" claim, this session drove the 
 - **"Can I reuse this scraper for another aircraft?"** → §9: transport + generic scrape core are universal; the aircraft-specific selector/nav/input layer must be re-derived (recipe in §9.3).
 - **Crash** → §8: read `%APPDATA%\MSFSBlindAssist\logs\startup.log`, then Event Viewer for native faults.
 
-## G1000 read-coverage probe (`tools/g1000-coverage.js`)
+## Coherent display read-coverage probe (`tools/coherent-coverage.js`)
 
 Answers one question for a whole instrument at once: **what is on the screen that MSFSBA never
 says?** It visits every page the instrument actually has and, for each, subtracts everything the
 display agent emits from everything a sighted pilot can see.
 
 ```bash
-node tools/g1000-coverage.js AS1000_MFD
-node tools/g1000-coverage.js AS1000_PFD
-node tools/g1000-coverage.js AS1000_MFD __MSFSBA_DA42G1000 Resources/coherent-da42-agent.js
+node tools/coherent-coverage.js AS1000_MFD
+node tools/coherent-coverage.js AS1000_PFD
 ```
+
+⚠️ **It is not a G1000 tool** — it was one only by accident of implementation. Every argument
+after the first exists so it is not: the agent and its global differ per aircraft, and the
+*says* expression differs per **display**, because no two agents in this codebase share an entry
+point (only the DA40's publishes `rows()`). For another display, pass its own:
+
+```bash
+node tools/coherent-coverage.js A380X_EWD __MSFSBA_EWD MSFSBlindAssist/Resources/coherent-ewd-agent.js "A.scrape()"
+```
+
+A display that cannot enumerate its own pages — an E/WD, a CDU, a flyPad — sweeps whatever is
+**on screen**: drive it to the page you care about and run it again.
 
 ⚠️ **Every read-coverage hole in this project was previously found by a pilot flying into it**,
 one at a time, months apart — the CAS block read off a hidden duplicate, the flight plan page
