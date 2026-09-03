@@ -258,6 +258,15 @@ The G1000 windows (Alt+P and Alt+M):
                      facility it found.
   Ctrl+D / Ctrl+F / Ctrl+P / Ctrl+E / Ctrl+L
                      Direct-To / Flight Plan / Procedures / Menu / Clear.
+  Ctrl+Shift+L       Close a window that has opened OVER the page.
+
+                     You will need this. A view stacked on the page - Waypoint
+                     Information, a duplicate-ident picker, the page selector -
+                     SWALLOWS the bezel buttons underneath it, so Ctrl+P for
+                     procedures and Ctrl+F for the flight plan go silently dead
+                     while it is up, with no clue why. CLR does NOT close one.
+                     This does, and it names the page it left you on.
+
   Ctrl+PageUp/Down   Map range out / in.
   F5 / Escape        Refresh / close.
 
