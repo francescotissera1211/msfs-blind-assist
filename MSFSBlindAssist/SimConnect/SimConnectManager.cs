@@ -104,6 +104,12 @@ public partial class SimConnectManager
     /// </summary>
     public GpsWaypointData? LastGpsWaypoint { get; private set; }
 
+    /// <summary>
+    /// Attitude, once a second, for the unusual-attitude alert. Universal: every aircraft has
+    /// an attitude and every pilot can lose track of it.
+    /// </summary>
+    public event EventHandler<FlightAttitudeData>? FlightAttitudeReceived;
+
     internal void SetLastGpsWaypoint(GpsWaypointData data) => LastGpsWaypoint = data;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
@@ -441,6 +447,7 @@ public partial class SimConnectManager
         // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
         REQUEST_GSX_COUATL_STARTED = 340,
         REQUEST_GPS_WAYPOINT = 341,
+        REQUEST_FLIGHT_ATTITUDE = 342,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -502,6 +509,7 @@ public partial class SimConnectManager
         // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
         DEF_GSX_COUATL_STARTED = 340,
         DEF_GPS_WAYPOINT = 341,
+        DEF_FLIGHT_ATTITUDE = 342,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -717,6 +725,27 @@ public partial class SimConnectManager
     /// of it is COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would
     /// look like "no flight plan" to anything trusting it.
     /// </summary>
+    /// <summary>
+    /// Bank, pitch and air/ground, once a second, for <see cref="Services.UnusualAttitudeMonitor"/>.
+    ///
+    /// ⚠️ THIS EXISTS AS ITS OWN DEFINITION BECAUSE THE OBVIOUS SOURCE IS NOT USABLE.
+    /// <c>BaseAircraftDefinition</c> already carries PLANE_BANK_DEGREES, but it is OnRequest —
+    /// polled only while hand fly mode is running — so an alert built on it would be silent
+    /// exactly when a pilot is NOT already flying manually and watching. It is also declared in
+    /// RADIANS ("Note: Despite name, returns radians!"), which is the kind of detail that turns
+    /// a 65-degree bank into a 1.1 and an alert into silence.
+    ///
+    /// Asking for Degrees here lets SimConnect do that conversion once, at the boundary.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FlightAttitudeData
+    {
+        /// <summary>⚠️ LEFT-POSITIVE. A right bank is negative. See UnusualAttitudeMonitor.</summary>
+        public double BankDegrees;
+        public double PitchDegrees;
+        public double OnGround;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct GpsWaypointData
     {

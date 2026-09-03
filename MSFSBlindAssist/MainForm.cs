@@ -344,6 +344,14 @@ public partial class MainForm : Form
 
     private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
 
+    /// <summary>
+    /// ⚠️ THE ALERT THAT DID NOT EXIST WHEN AN AEROPLANE WAS LOST TO A SPIRAL DIVE. Every
+    /// attitude channel in this app is a QUERY - the hand fly bank tone, the B readout - and a
+    /// query is useless for the attitude nobody noticed. State is carried here rather than in
+    /// the monitor so the monitor stays pure and testable.
+    /// </summary>
+    private MSFSBlindAssist.Services.UnusualAttitudeMonitor.State _attitudeState;
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -601,6 +609,7 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.FlightAttitudeReceived += OnFlightAttitude;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;

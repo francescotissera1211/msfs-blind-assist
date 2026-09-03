@@ -112,6 +112,31 @@ public partial class SimConnectManager
     /// so a pilot who loaded their route before MSFSBA connected would get no waypoint calls
     /// at all. A hundred and forty-four bytes a second is the price of self-healing.
     /// </summary>
+    /// <summary>
+    /// Attitude at 1 Hz for the unusual-attitude alert. An unusual attitude develops over tens
+    /// of seconds, so a second's resolution is ample and the cost is 24 bytes a second.
+    /// </summary>
+    private void RegisterFlightAttitudeDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            // ⚠️ Degrees, explicitly. The SimVar's native unit is RADIANS despite its name.
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE BANK DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE PITCH DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "SIM ON GROUND", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<FlightAttitudeData>(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FLIGHT_ATTITUDE,
+                DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered flight attitude definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Flight attitude registration failed (unusual-attitude alert unavailable): {ex.Message}");
+        }
+    }
+
     private void RegisterGpsWaypointDefinition()
     {
         try
@@ -370,6 +395,8 @@ public partial class SimConnectManager
         RegisterGsxCouatlStartedDefinition();
 
         RegisterGpsWaypointDefinition();
+
+        RegisterFlightAttitudeDefinition();
 
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
