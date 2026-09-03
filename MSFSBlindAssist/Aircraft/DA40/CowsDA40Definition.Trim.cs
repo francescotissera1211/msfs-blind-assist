@@ -174,13 +174,26 @@ public partial class CowsDA40Definition
             DisplayName = "Electric Trim Circuit",
             Type = SimVarType.SimVar,
             Units = "bool",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            // ⚠️ WAS OnRequest AND SILENT, AND LOSING IT COSTS THE PILOT THE AUTOPILOT.
+            // Circuit 37 powers the electric trim, and the GFC 700 cannot engage without the
+            // ability to trim — so when this goes away the autopilot stops engaging AND the
+            // stick trim switch stops working, together, for one invisible reason.
+            //
+            // Live, 2026-09-02: a pilot spent a long stretch unable to engage the autopilot and
+            // unable to trim, reset failures trying to fix it, and only found the cause by
+            // opening a panel and reading this row. It was the avionics master being off. The
+            // line said exactly the right thing and nothing ever spoke it.
+            //
+            // This is a described STATE, not a number, so announcing it breaks no rule here —
+            // and it is the textbook case for interrupting: a sighted pilot has the trim wheel
+            // in their hand and finds out the moment they touch it.
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "Off — wheel still works, stick switch does not",
-                [1] = "Powered"
+                [0] = "Electric trim circuit off, autopilot will not engage",
+                [1] = "Electric trim circuit powered"
             }
         };
 

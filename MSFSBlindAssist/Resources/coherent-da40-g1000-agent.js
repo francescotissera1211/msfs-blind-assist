@@ -2204,7 +2204,7 @@
     /// page can hold several boxes and only the open one is being typed into.
     A.M.input = function () {
         var view = A.M.view();
-        if (!view || !view.scrollController) return null;
+        if (!view) return null;
 
         var best = null, fallback = null;
 
@@ -2231,7 +2231,34 @@
             }
         }
 
-        try { scan(view.scrollController, 0); } catch (e) { }
+        if (view.scrollController) { try { scan(view.scrollController, 0); } catch (e) { } }
+        if (best) return best;
+
+        // ⚠️ AND NOW THE OTHER FRAMEWORK, WITHOUT WHICH TYPING WAS DEAD ON THE ONE PAGE THAT
+        // NEEDS IT MOST. This function used to give up at the top on `!view.scrollController`,
+        // so on the FLIGHT PLAN PAGE - whose scroll controller is EMPTY, because it is built on
+        // G1000UiControl - it always returned null and Ctrl+T answered "Nothing to type into.
+        // Put the cursor on a waypoint field first." at a pilot whose cursor was sitting
+        // exactly where it should be, on the destination box.
+        //
+        // The READER was taught to walk both frameworks when the flight plan page first read
+        // as dead. This, the WRITER, was not, and the split went unnoticed because reading the
+        // field worked perfectly - the announcement said "Destination, blank" and then refused
+        // to let anybody fill it in. Live report, 2026-09-03, with the speech dump to prove the
+        // cursor was on the right field.
+        //
+        // Deepest link first: the focus chain ends at the control actually being edited, and a
+        // parent group can carry a stale input reference from a sibling field.
+        try {
+            var roots = A.M.f2Roots(view);
+            for (var r = 0; r < roots.length; r++) {
+                var chain = A.M.f2Chain(roots[r]);
+                for (var k = chain.length - 1; k >= 0; k--) {
+                    if (consider(chain[k]) && best) return best;
+                }
+            }
+        } catch (e) { }
+
         return best || fallback;
     };
 
