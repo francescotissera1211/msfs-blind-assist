@@ -270,6 +270,55 @@ public class GpsWaypointSequencerTests
         Assert.Equal("No active flight plan.", GpsWaypointSequencer.ComposeReadout(r));
     }
 
+    // ---- the flight plan is the ident source on a procedure -------------------------
+
+    [Fact]
+    public void ThePlansLegNameIsUsedWhenTheSimVarIsEmpty()
+    {
+        // ⚠️ THE CASE THAT MATTERS ON EVERY IFR FLIGHT. Measured live on a hand-built ANUT1D
+        // departure: GPS WP NEXT ID and GPS WP PREV ID were BOTH empty strings while the
+        // flight plan's own getLeg(activeLateralLeg).name returned "BI583". The navigator
+        // writes those SimVars off a plan-change event that does not fire as a procedure
+        // sequences, so on a SID, STAR or approach they are the only thing missing.
+        var r = GpsWaypointSequencer.Read(Frame("", "", distanceMetres: 25928),
+                                          previousNextId: "BI582",
+                                          legNext: "BI583", legPrev: "BI582");
+
+        Assert.Equal("BI583", r.NextId);
+        Assert.Equal("BI582", r.PassedId);   // the passing the aeroplane made in silence
+    }
+
+    [Fact]
+    public void ThePlanWinsOverAStaleSimVarIdent()
+    {
+        var r = GpsWaypointSequencer.Read(Frame("OLD", "OLDER"),
+                                          previousNextId: "BI582",
+                                          legNext: "BI583", legPrev: "BI582");
+        Assert.Equal("BI583", r.NextId);
+    }
+
+    [Fact]
+    public void APlanSourcedPassingDoesNotNeedThePrevValidFlag()
+    {
+        // ⚠️ PREV VALID guards the SIMVAR's previous ident. Requiring it for a plan-sourced
+        // name would keep the call silent on exactly the procedures it was built for.
+        var r = GpsWaypointSequencer.Read(Frame("", "", prevValid: false),
+                                          previousNextId: "BI582",
+                                          legNext: "BI583", legPrev: "BI582");
+        Assert.Equal("BI582", r.PassedId);
+    }
+
+    [Fact]
+    public void TheSimVarIsStillUsedWhenThePlanHasNoName()
+    {
+        // A Direct-To DOES populate the SimVars, and a fix-less leg has no name in either -
+        // so the fallback has to keep working rather than being replaced.
+        var r = GpsWaypointSequencer.Read(Frame("VEKIN", "SOXOM"), previousNextId: "SOXOM",
+                                          legNext: "", legPrev: "");
+        Assert.Equal("VEKIN", r.NextId);
+        Assert.Equal("SOXOM", r.PassedId);
+    }
+
     [Fact]
     public void DistanceGainsADecimalOnlyWhenItIsClose()
     {

@@ -91,6 +91,58 @@ public partial class CowsDA40Definition
         }
     }
 
+    /// <summary>
+    /// The active leg's name and the one before it, read from the FLIGHT PLAN rather than from
+    /// the stock GPS SimVars.
+    ///
+    /// ⚠️ THE SIMVAR IDENTS ARE EMPTY ON EVERY PROCEDURE, WHICH IS MOST OF IFR FLYING.
+    /// `GPS WP NEXT ID` and `GPS WP PREV ID` are written by the G1000's GpsSynchronizer from
+    /// `plan.getLeg(plan.activeLateralLeg).name`, off a plan-change event that does NOT fire as
+    /// a procedure sequences. Measured live on a hand-built ANUT1D departure: both SimVars were
+    /// empty strings while the flight plan's own getLeg(5).name returned "BI583", and the
+    /// aeroplane passed BI551 and BI582 in total silence - which is exactly the call this
+    /// feature exists to make.
+    ///
+    /// Distance, bearing and time were correct throughout, because those ride continuous LNAV
+    /// events. Only the IDENT is missing, so only the ident is fetched here; everything else
+    /// still comes from the standing SimConnect frame and needs no socket at all.
+    ///
+    /// ⚠️ Best-effort by design. The socket belongs to the CAS monitor and the PFD window can
+    /// take it, so a failed or absent read leaves the names as they were rather than clearing
+    /// them - a momentarily stale ident is worth far more than a passing call that vanishes
+    /// whenever the pilot opens a display.
+    /// </summary>
+    private string _wptLegNext = "";
+    private string _wptLegPrev = "";
+    private DateTime _wptLegAskedAt = DateTime.MinValue;
+    private int _wptLegBusy;
+
+    /// <summary>How often to ask the display for the leg names. They change on sequencing only.</summary>
+    private const int LegPollMs = 1500;
+
+    private void RequestActiveLegNames()
+    {
+        if ((DateTime.UtcNow - _wptLegAskedAt).TotalMilliseconds < LegPollMs) return;
+        if (System.Threading.Interlocked.Exchange(ref _wptLegBusy, 1) == 1) return;
+        _wptLegAskedAt = DateTime.UtcNow;
+
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                string r = await InvokeOnCasClientAsync("A.M.activeLeg()");
+                if (!string.IsNullOrEmpty(r) && r.IndexOf('|') >= 0)
+                {
+                    var parts = r.Split('|');
+                    _wptLegPrev = parts[0].Trim();
+                    _wptLegNext = parts.Length > 1 ? parts[1].Trim() : "";
+                }
+            }
+            catch (Exception ex) { Utils.Logging.Log.Debug("DA40", $"Active leg read: {ex.Message}"); }
+            finally { System.Threading.Volatile.Write(ref _wptLegBusy, 0); }
+        });
+    }
+
     private ScreenReaderAnnouncer? _wptAnnouncer;
     private SimConnectManager? _wptSimConnect;
     private string? _wptLastNextId;
@@ -118,7 +170,9 @@ public partial class CowsDA40Definition
     {
         try
         {
-            var reading = GpsWaypointSequencer.Read(data, _wptLastNextId);
+            RequestActiveLegNames();
+
+            var reading = GpsWaypointSequencer.Read(data, _wptLastNextId, _wptLegNext, _wptLegPrev);
             _wptLastNextId = reading.NextId;
 
             if (reading.PassedId.Length == 0) return;
@@ -149,7 +203,8 @@ public partial class CowsDA40Definition
         var last = _wptSimConnect?.LastGpsWaypoint;
         if (last == null) return "Waypoint information not available yet.";
         return GpsWaypointSequencer.ComposeReadout(
-            GpsWaypointSequencer.Read(last.Value, _wptLastNextId), DistanceText);
+            GpsWaypointSequencer.Read(last.Value, _wptLastNextId, _wptLegNext, _wptLegPrev),
+            DistanceText);
     }
 
     /// <summary>Answers D — distance and time to the destination, from the standing GPS frame.</summary>

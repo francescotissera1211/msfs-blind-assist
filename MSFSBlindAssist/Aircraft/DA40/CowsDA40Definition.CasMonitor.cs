@@ -105,6 +105,21 @@ public partial class CowsDA40Definition
     /// The PFD window calls this while it is open, to hand over the SOCKET only. The
     /// announcements do not stop - the window feeds <see cref="ProcessCasRows"/> instead.
     /// </summary>
+    /// <summary>
+    /// Run one expression on the CAS monitor's own Coherent socket, or return empty.
+    ///
+    /// Shared rather than opening a second connection, because Coherent allows ONE inspector
+    /// socket per view - a second would be refused, which is the whole reason the PFD window
+    /// and this monitor hand the socket back and forth in the first place.
+    /// </summary>
+    internal async System.Threading.Tasks.Task<string> InvokeOnCasClientAsync(string expression)
+    {
+        var c = _casClient;
+        if (c == null) return "";
+        try { return await c.InvokeAsync(expression); }
+        catch { return ""; }
+    }
+
     public void SuspendCasMonitor(bool suspended)
     {
         // Only the SOCKET is handed over. The detector keeps running on the window's rows,

@@ -2648,6 +2648,42 @@
     /// out at all - reported from the cockpit as "I got stuck, can't select the procedure".
     /// The close loop existed, but only buried inside goPage, so it could only be reached by
     /// navigating somewhere else entirely.
+    /// THE ACTIVE LEG, AND THE ONE BEFORE IT, STRAIGHT OUT OF THE FLIGHT PLAN.
+    ///
+    /// ⚠️ THIS EXISTS BECAUSE THE STOCK GPS IDENT SIMVARS ARE EMPTY ON EVERY PROCEDURE.
+    /// The waypoint readout and the passing call were built on `GPS WP NEXT ID` and
+    /// `GPS WP PREV ID`, which the G1000's GpsSynchronizer writes from
+    /// `plan.getLeg(plan.activeLateralLeg).name` - and measured live on a hand-built ANUT1D
+    /// departure, they were BOTH EMPTY STRINGS while the flight plan's own
+    /// `getLeg(5).name` returned "BI583" perfectly.
+    ///
+    /// Distance and bearing were correct throughout, because those ride continuous LNAV
+    /// events; the IDENT rides a plan-change event that does not fire as a procedure
+    /// sequences. So the aeroplane passed BI551 and BI582 in silence, which is precisely
+    /// the call the whole feature exists to make.
+    ///
+    /// Read from the planner instead. Returns "prev|next", either half possibly empty -
+    /// a fix-less path/terminator leg genuinely has no name and must stay empty rather
+    /// than be invented.
+    A.M.activeLeg = function () {
+        try {
+            var e = A.M.el();
+            var p = e && e.planner;
+            if (!p || !p.hasActiveFlightPlan()) return "|";
+
+            var fp = p.getActiveFlightPlan();
+            var a = fp.activeLateralLeg;
+            if (!(a >= 0) || a >= fp.length) return "|";
+
+            function nameAt(n) {
+                if (!(n >= 0) || n >= fp.length) return "";
+                try { var lg = fp.getLeg(n); return (lg && lg.name) ? lg.name : ""; }
+                catch (e) { return ""; }
+            }
+            return nameAt(a - 1) + "|" + nameAt(a);
+        } catch (e) { return "|"; }
+    };
+
     A.M.escape = function () {
         var vs = A.M.vs();
         if (!vs) return "no instrument";

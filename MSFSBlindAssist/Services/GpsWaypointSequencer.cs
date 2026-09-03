@@ -71,17 +71,36 @@ public static class GpsWaypointSequencer
     /// an aeroplane already established on a leg must not announce a passing that happened
     /// before MSFSBA was watching, the same rule every other monitor here follows.
     /// </summary>
-    public static Reading Read(SimConnectManager.GpsWaypointData data, string? previousNextId)
+    /// <param name="legNext">
+    /// The active leg's name read from the FLIGHT PLAN, which overrides the SimVar when it has
+    /// one. ⚠️ The SimVar idents are EMPTY ON EVERY PROCEDURE - the navigator writes them off a
+    /// plan-change event that does not fire as a SID or STAR sequences - so on real IFR flying
+    /// this is the only source there is. Measured live: both SimVars blank while the plan's own
+    /// getLeg(activeLateralLeg).name returned "BI583".
+    /// </param>
+    /// <param name="legPrev">The leg before it, same source and same reason.</param>
+    public static Reading Read(SimConnectManager.GpsWaypointData data, string? previousNextId,
+                               string? legNext = null, string? legPrev = null)
     {
-        string next = (data.NextId ?? string.Empty).Trim();
-        string prev = (data.PrevId ?? string.Empty).Trim();
+        // The plan wins when it has a name; the SimVar is the fallback, not the other way
+        // round. Neither is trusted to be non-empty - a fix-less path/terminator leg genuinely
+        // has no name in EITHER, and inventing one would be worse than the silence.
+        string next = (legNext ?? string.Empty).Trim();
+        if (next.Length == 0) next = (data.NextId ?? string.Empty).Trim();
+
+        string prev = (legPrev ?? string.Empty).Trim();
+        if (prev.Length == 0) prev = (data.PrevId ?? string.Empty).Trim();
 
         bool passed =
             previousNextId != null &&                       // not the baseline frame
             previousNextId.Length > 0 &&
             next.Length > 0 &&
             !string.Equals(next, previousNextId, StringComparison.OrdinalIgnoreCase) &&
-            data.PrevValid > 0.5 &&
+            // ⚠️ PREV VALID guards the SIMVAR's previous ident only. When the name came from
+            // the flight plan the flag is irrelevant - and on a procedure it is the ONLY path
+            // that produces a name at all, so requiring the flag would keep the call silent
+            // for exactly the flights it was built for.
+            (!string.IsNullOrWhiteSpace(legPrev) || data.PrevValid > 0.5) &&
             string.Equals(prev, previousNextId, StringComparison.OrdinalIgnoreCase);
 
         return new Reading
