@@ -2639,6 +2639,25 @@
     /// Open a page by its key. This is the same call the page selector makes when the knob
     /// lands on a page and its timer commits, so nothing is being bypassed - the pilot
     /// simply does not have to count knob clicks through five groups to get there.
+    /// ⚠️ GET ME OUT. A view opened over a page - Waypoint Information, a duplicate-ident
+    /// picker, the page selector - swallows the bezel buttons underneath it, so PROC, FPL and
+    /// the rest silently do nothing while it is up. And CLR does NOT close one: measured live,
+    /// firing AS1000_MFD_CLR at a stuck WptInfo left it exactly where it was.
+    ///
+    /// A pilot who typed an ident that resolved to somewhere unexpected therefore had no way
+    /// out at all - reported from the cockpit as "I got stuck, can't select the procedure".
+    /// The close loop existed, but only buried inside goPage, so it could only be reached by
+    /// navigating somewhere else entirely.
+    A.M.escape = function () {
+        var vs = A.M.vs();
+        if (!vs) return "no instrument";
+        var guard = 0;
+        try {
+            while (A.M.viewKey() !== A.M.pageKey() && guard++ < 6) vs.closeActiveView();
+        } catch (e) { return "error " + e; }
+        return guard > 0 ? "closed" : "nothing open";
+    };
+
     A.M.goPage = function (key) {
         var vs = A.M.vs();
         if (!vs) return "no instrument";
@@ -2687,6 +2706,7 @@
         }
 
         var f = A.M.focused();
+        if (!f || !f.active) { A.M._edKey = null; A.M._edWho = null; }
         if (f) {
             // The BOX first, then the field. "Nearest Airport, Minimum Length: 3000FT"
             // answers what a pilot actually wants to know, and it is what the screen says.
@@ -2697,9 +2717,34 @@
                 // "Editing" is not decoration. It is the difference between the next turn
                 // moving to the next field and the next turn changing this one, and a pilot
                 // who cannot see the box has nothing else to tell them which.
+                // ⚠️ SAY THE WHOLE FIELD ONCE, NOT ON EVERY KNOB CLICK. Spelling one ident is
+                // dozens of clicks, and each was answering with the box, the value, the word
+                // "editing", the character position AND the autocomplete - "Waypoint: VCRI__,
+                // editing, character 4, I, Mattala Rajapaksa Intl" - twenty-eight times over.
+                // Reported from the cockpit as "verbose as hell", and it is: the pilot chose
+                // this field and is holding the knob, so the only NEWS is the character under
+                // it and any facility the aeroplane has just matched.
+                var key = (f.group || "") + "|" + (f.label || "");
+                var fresh = (A.M._edKey !== key);
+                A.M._edKey = key;
+
+                var cs = A.M.charSay();
+                var who = "";
+                if (f.kind === "waypoint" || f.kind === "input") {
+                    who = text(firstVisible(".wpt-entry-name")) || "";
+                }
+
+                if (!fresh) {
+                    // Mid-edit: the character, and the match ONLY when it has changed.
+                    var quiet = cs || (f.value || "");
+                    if (who && who !== A.M._edWho) quiet += ", " + who;
+                    A.M._edWho = who;
+                    return quiet;
+                }
+
+                A.M._edWho = who;
                 s += ", editing";
                 if (f.kind === "waypoint" || f.kind === "input") {
-                    var cs = A.M.charSay();
                     if (cs) s += ", " + cs;
 
                     // AUTOCOMPLETE HAS TO BE HEARD, not just happen. The aeroplane fills

@@ -350,6 +350,13 @@ public sealed class CowsDA40DisplayForm : Form
         [Keys.Control | Keys.P]     = ("PROC_Push", "procedures"),
         [Keys.Control | Keys.E]     = ("MENU_Push", "menu"),
         [Keys.Control | Keys.L]     = ("CLR", "clear"),
+        // ⚠️ THE WAY OUT OF A STUCK POPUP, WHICH DID NOT EXIST. A view opened over a page -
+        // Waypoint Information, a duplicate-ident picker - swallows the bezel buttons beneath
+        // it, so PROC and FPL silently do nothing while it is up, and CLR does NOT close one
+        // (measured: firing AS1000_MFD_CLR at a stuck WptInfo left it exactly where it was).
+        // A pilot who typed an ident that resolved somewhere unexpected had no way back.
+        // Not plain Escape - that closes this window, which a pilot mid-entry does not want.
+        [Keys.Control | Keys.Shift | Keys.L] = ("__ESCAPE__", "closed"),
 
         // NO function-key aliases. Two ways to press one button is two things to learn
         // and two things to document, and the F-keys were never mnemonic. F5 survives
@@ -517,7 +524,11 @@ public sealed class CowsDA40DisplayForm : Form
 
         if (BezelKeys.TryGetValue(keyData, out var bezel))
         {
-            _ = PressBezel(bezel.Event, bezel.Spoken);
+            // Not a bezel button at all — it closes whatever view is sitting OVER the page.
+            // Routed through the same table so it inherits the read-quiet hold and the
+            // read-back, and so there is one place to look for "what does this key do".
+            if (bezel.Event == "__ESCAPE__") _ = CloseStuckView();
+            else _ = PressBezel(bezel.Event, bezel.Spoken);
             return true;
         }
 
@@ -533,6 +544,32 @@ public sealed class CowsDA40DisplayForm : Form
     /// confirmation of the keystroke: "Aux - System Setup 1" is the answer to what the
     /// knob did, and "next page group" is only what was asked for.
     /// </summary>
+    /// <summary>
+    /// Shut any view stacked over the page, and say where that left the pilot.
+    ///
+    /// ⚠️ This is not something a bezel button can do. A view opened over a page swallows the
+    /// buttons underneath it, so PROC and FPL go silently dead while it is up, and CLR does
+    /// NOT dismiss one — measured live against a stuck Waypoint Information window. Without
+    /// this key a pilot whose typed ident resolved somewhere unexpected had no way back at all.
+    /// </summary>
+    private async Task CloseStuckView()
+    {
+        try
+        {
+            string r = await _client.InvokeAsync("A.M.escape()");
+            // Naming the page is the useful half: "closed" alone leaves a pilot wondering
+            // what they closed and where they now are.
+            string page = await _client.InvokeAsync("A.M.pageKey()");
+            _announcer.AnnounceImmediate(
+                r == "nothing open" ? "Nothing to close." : $"Closed. {page}");
+        }
+        catch (Exception ex)
+        {
+            Utils.Logging.Log.Debug("DA40", $"Close view: {ex.Message}");
+            _announcer.AnnounceImmediate("Could not close the window.");
+        }
+    }
+
     private async Task PressBezel(string eventSuffix, string spoken)
     {
         string name = $"AS1000_{_side}_{eventSuffix}";
