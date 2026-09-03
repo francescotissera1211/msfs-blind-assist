@@ -2705,6 +2705,23 @@
                    ", " + (L.sel + 1) + " of " + L.len;
         }
 
+        // ⚠️ THE PAGE SELECTOR MUST BE READ AS A SELECTOR, NOT WALKED AS CONTROLS.
+        //
+        // Turning the knob with the cursor OFF opens PageSelect, and its list is not always
+        // reachable through listRef the instant the key lands. When it is not, the generic
+        // walk below takes over and lands on whatever control it can find on the page
+        // UNDERNEATH - which on the system-setup page is a field whose value is the word
+        // "NONE". So a pilot changing pages heard, in full, "none": measured live as
+        // A.press("AS1000_MFD_FMS_Upper_INC") answering "ok|1|PageSelect||NONE".
+        //
+        // The selector's own DOM carries its active tab and highlighted entry whether or not
+        // the list component is ready - that is the same reading pageTitle() already falls
+        // back on while the selector is CLOSED - so it is used here rather than guessing.
+        if (A.M.viewKey() === "PageSelect") {
+            var sel = A.pageTitle();
+            return sel ? ("Page selector, " + sel) : "Page selector";
+        }
+
         var f = A.M.focused();
         if (!f || !f.active) { A.M._edKey = null; A.M._edWho = null; }
         if (f) {
