@@ -92,11 +92,45 @@ public partial class CowsDA40Definition
             default: return false;
         }
 
-        int pct = (int)Math.Round(Math.Abs(value) * 100.0);
+        // ⚠️ THE DA40's ELEVATOR IS NOT CENTRED AT ZERO, AND READING IT RAW SENT A PILOT
+        // CHASING THEIR OWN HARDWARE FOR DAYS. The model's chain, read out of
+        // COWS_DA40NG_Inputs.xml and then measured live with the axis UNBOUND:
+        //
+        //   ELEVATOR_ANG_TOT   = ELEVATOR_OUT_ANG + ELEVATOR_MATH_NEUTRAL+TRIM
+        //   ELEVATOR_POSITION  = ELEVATOR_ANG_TOT / 30 * 100
+        //
+        // with ELEVATOR_MATH_NEUTRAL = 4 degrees. So a perfectly centred stick puts the
+        // surface at 4 of its 30 degrees - 13.3 percent - and this readout announced
+        // "13 percent nose up" over a stick sitting in the middle. The pilot reinstalled
+        // drivers, rebuilt sensitivity curves and unbound the axis entirely chasing it; the
+        // aeroplane was right every time and the app was the one lying.
+        //
+        // The elevator is therefore reported RELATIVE TO ITS OWN NEUTRAL, so "centred" means
+        // centred. Aileron and rudder are genuinely zero-centred and are left alone.
+        double neutral = varKey == "DA40_CTL_ELEVATOR" ? ElevatorNeutralPosition : 0.0;
+        double fromNeutral = value - neutral;
+
+        // Scaled against the travel that side of neutral, or a 13 percent nose-down input
+        // would read as 100 percent while a nose-up one read as 87.
+        double span = fromNeutral >= 0 ? (1.0 - neutral) : (1.0 + neutral);
+        if (span <= 0) span = 1.0;
+
+        int pct = (int)Math.Round(Math.Abs(fromNeutral) / span * 100.0);
         displayText = pct == 0
             ? "centred"
-            : $"{pct} percent {(value > 0 ? high : low)}"
+            : $"{pct} percent {(fromNeutral > 0 ? high : low)}"
               + (pct >= 99 ? ", at the stop" : "");
         return true;
     }
+
+    /// <summary>
+    /// Where this aeroplane's elevator sits with the stick centred, as a fraction of full
+    /// travel: 4 degrees of neutral offset over a 30-degree range.
+    ///
+    /// ⚠️ Both numbers are the MODEL's own, not a calibration of anybody's hardware -
+    /// ELEVATOR_MATH_NEUTRAL read live as 4 while ELEVATOR_OUT_ANG (the stick's own
+    /// contribution) read 0, with the elevator axis unbound in the simulator. A real DA40
+    /// rigs its elevator slightly trailing-edge-up at neutral; this is that, modelled.
+    /// </summary>
+    internal const double ElevatorNeutralPosition = 4.0 / 30.0;
 }
