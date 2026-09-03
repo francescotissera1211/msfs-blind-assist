@@ -130,7 +130,13 @@ public partial class CowsDA40Definition
         {
             try
             {
-                string r = await InvokeOnCasClientAsync("A.M.activeLeg()");
+                string r = await InvokeOnCasClientAsync(
+                    // ⚠️ THE FULL GLOBAL, NEVER A BARE "A". The agent keeps its namespace in a
+                    // closure and publishes only window.__MSFSBA_DA40G1000 - so "A.M.x()" is a
+                    // ReferenceError that a catch swallows, leaving the feature silently dead.
+                    // That is exactly how this shipped: the leg names never arrived and every
+                    // readout said "Unnamed leg" through a whole flight.
+                    "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.M.activeLeg()");
                 if (!string.IsNullOrEmpty(r) && r.IndexOf('|') >= 0)
                 {
                     var parts = r.Split('|');

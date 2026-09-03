@@ -556,10 +556,12 @@ public sealed class CowsDA40DisplayForm : Form
     {
         try
         {
-            string r = await _client.InvokeAsync("A.M.escape()");
+            string r = await _client.InvokeAsync(
+                "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.M.escape()");
             // Naming the page is the useful half: "closed" alone leaves a pilot wondering
             // what they closed and where they now are.
-            string page = await _client.InvokeAsync("A.M.pageKey()");
+            string page = await _client.InvokeAsync(
+                "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.M.pageKey()");
             _announcer.AnnounceImmediate(
                 r == "nothing open" ? "Nothing to close." : $"Closed. {page}");
         }
