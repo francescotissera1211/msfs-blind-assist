@@ -177,6 +177,11 @@ public partial class CowsDA40Definition
         "DA40_CTL_AILERON",
         "DA40_CTL_RUDDER",
 
+        // The elevator STICK. Never a row and never spoken on its own - it exists so the
+        // surface can be checked against it, which is the only way to tell a jam from an
+        // axis sitting off centre. See DescribeElevatorStickAgreement.
+        "DA40_CTL_YOKE_Y",
+
         // DA40_G1000_BARO is deliberately NOT here any more. It was, and that is why a
         // subscale changed on external hardware said nothing at all. It is handled by the
         // settle-timer announcer instead, which speaks the value the knob came to rest on.
@@ -220,6 +225,10 @@ public partial class CowsDA40Definition
     public override bool ProcessSimVarUpdate(string varName, double value,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // Captured BEFORE the silence gate: the stick is silent by design, and a gate that
+        // returns first would leave the elevator comparison with nothing to compare against.
+        NoteFlightControlValue(varName, value);
+
         if (IsSilentCachedReadout(varName)) return true;
 
         // A door is OPEN or CLOSED, never "65.4" - the percentage sweeps as the canopy

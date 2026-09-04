@@ -41,6 +41,15 @@ public partial class CowsDA40Definition
         AddSurface(v, "DA40_CTL_AILERON", "AILERON POSITION", "Ailerons");
         AddSurface(v, "DA40_CTL_RUDDER", "RUDDER POSITION", "Rudder");
 
+        // ⚠️ THE STICK, SO THE SURFACE CAN BE CHECKED AGAINST IT. A surface reading alone
+        // cannot tell a jammed control from an off-centre axis, and this project has now
+        // spent days on each: a pilot reinstalled drivers and rebuilt sensitivity curves
+        // over a DA40 elevator reading 13 percent, and the same reading turned up on an
+        // A380 where the surface was measured bit-for-bit IDENTICAL to YOKE Y POSITION
+        // (0.09099859930574894 both) while aileron and rudder sat at zero - i.e. the axis
+        // itself was off centre and the aeroplane was reporting it faithfully.
+        AddSurface(v, "DA40_CTL_YOKE_Y", "YOKE Y POSITION", "Elevator stick input");
+
         return v;
     }
 
@@ -92,45 +101,74 @@ public partial class CowsDA40Definition
             default: return false;
         }
 
-        // ⚠️ THE DA40's ELEVATOR IS NOT CENTRED AT ZERO, AND READING IT RAW SENT A PILOT
-        // CHASING THEIR OWN HARDWARE FOR DAYS. The model's chain, read out of
-        // COWS_DA40NG_Inputs.xml and then measured live with the axis UNBOUND:
-        //
-        //   ELEVATOR_ANG_TOT   = ELEVATOR_OUT_ANG + ELEVATOR_MATH_NEUTRAL+TRIM
+        // ⚠️ RETRACTED: THIS USED TO SUBTRACT A FIXED "MODEL NEUTRAL" OF 4/30 AND THAT WAS
+        // NOT SAFE. The reasoning was that the model's chain
+        //   ELEVATOR_ANG_TOT   = ELEVATOR_OUT_ANG + ELEVATOR_MATH_NEUTRAL
         //   ELEVATOR_POSITION  = ELEVATOR_ANG_TOT / 30 * 100
+        // puts a centred stick at 4 of 30 degrees, 13.3 percent - and ELEVATOR_MATH_NEUTRAL
+        // really does read 4 while ELEVATOR_OUT_ANG reads 0 with the axis unbound. What was
+        // never checked is whether the STOCK `ELEVATOR POSITION` SimVar this readout actually
+        // reads follows that model chain at all, or is simply the raw stick.
         //
-        // with ELEVATOR_MATH_NEUTRAL = 4 degrees. So a perfectly centred stick puts the
-        // surface at 4 of its 30 degrees - 13.3 percent - and this readout announced
-        // "13 percent nose up" over a stick sitting in the middle. The pilot reinstalled
-        // drivers, rebuilt sensitivity curves and unbound the axis entirely chasing it; the
-        // aeroplane was right every time and the app was the one lying.
+        // Measured later on an A380: `ELEVATOR POSITION` and `YOKE Y POSITION` were IDENTICAL
+        // to every digit (0.09099859930574894) while aileron and rudder sat at zero - the
+        // stock SimVar is a pass-through of the axis, and that 9 percent was the pilot's own
+        // elevator axis sitting off centre. If the DA40's SimVar behaves the same way, the
+        // 13 percent was the same fault and subtracting a constant ANNOUNCED "centred" OVER A
+        // DEFLECTED SURFACE - the exact failure the rule about reading the surface rather than
+        // the stick exists to prevent.
         //
-        // The elevator is therefore reported RELATIVE TO ITS OWN NEUTRAL, so "centred" means
-        // centred. Aileron and rudder are genuinely zero-centred and are left alone.
-        double neutral = varKey == "DA40_CTL_ELEVATOR" ? ElevatorNeutralPosition : 0.0;
-        double fromNeutral = value - neutral;
-
-        // Scaled against the travel that side of neutral, or a 13 percent nose-down input
-        // would read as 100 percent while a nose-up one read as 87.
-        double span = fromNeutral >= 0 ? (1.0 - neutral) : (1.0 + neutral);
-        if (span <= 0) span = 1.0;
-
-        int pct = (int)Math.Round(Math.Abs(fromNeutral) / span * 100.0);
-        displayText = pct == 0
+        // So nothing is subtracted. The surface is reported as it reads, and the STICK is
+        // named beside it whenever the two disagree, which is the check a pilot actually
+        // wants: a jammed or disconnected control moves the stick and not the surface, and an
+        // off-centre axis moves BOTH together. Neither is hidden, and the readout no longer
+        // depends on a claim about the model that was never measured against this SimVar.
+        int pct = (int)Math.Round(Math.Abs(value) * 100.0);
+        string basic = pct == 0
             ? "centred"
-            : $"{pct} percent {(fromNeutral > 0 ? high : low)}"
+            : $"{pct} percent {(value > 0 ? high : low)}"
               + (pct >= 99 ? ", at the stop" : "");
+
+        displayText = varKey == "DA40_CTL_ELEVATOR"
+            ? basic + DescribeElevatorStickAgreement(value)
+            : basic;
         return true;
     }
 
     /// <summary>
-    /// Where this aeroplane's elevator sits with the stick centred, as a fraction of full
-    /// travel: 4 degrees of neutral offset over a 30-degree range.
+    /// How far the elevator SURFACE is from the elevator STICK, named only when it matters.
     ///
-    /// ⚠️ Both numbers are the MODEL's own, not a calibration of anybody's hardware -
-    /// ELEVATOR_MATH_NEUTRAL read live as 4 while ELEVATOR_OUT_ANG (the stick's own
-    /// contribution) read 0, with the elevator axis unbound in the simulator. A real DA40
-    /// rigs its elevator slightly trailing-edge-up at neutral; this is that, modelled.
+    /// Silent when they agree, because a surface following its stick is the normal case and
+    /// saying so on every scan is noise. When they disagree it is the single most useful
+    /// thing on the panel: the surface deflected with a centred stick is a rigging offset or
+    /// a jam, and both moving together off centre is the axis, not the aeroplane.
     /// </summary>
-    internal const double ElevatorNeutralPosition = 4.0 / 30.0;
+    /// <summary>
+    /// The stick's last reading, captured as the batch delivers it. The display path has no
+    /// SimConnectManager to ask, and this variable arrives on the same 1 Hz batch as the
+    /// surface it is compared against.
+    /// </summary>
+    private double? _lastYokeY;
+
+    /// <summary>Called from ProcessSimVarUpdate so the comparison always has a current stick.</summary>
+    private void NoteFlightControlValue(string varKey, double value)
+    {
+        if (varKey == "DA40_CTL_YOKE_Y") _lastYokeY = value;
+    }
+
+    private string DescribeElevatorStickAgreement(double surface)
+    {
+        if (_lastYokeY is null) return "";
+        double stick = _lastYokeY.Value;
+
+        // Below this the two are the same reading; the A380 measurement agreed to every
+        // digit, so anything above a rounding wobble is a real difference.
+        const double AgreeWithin = 0.02;
+        if (Math.Abs(surface - stick) <= AgreeWithin) return "";
+
+        int stickPct = (int)Math.Round(Math.Abs(stick) * 100.0);
+        return stickPct == 0
+            ? ", stick centred"
+            : $", stick {stickPct} percent {(stick > 0 ? "nose up" : "nose down")}";
+    }
 }
