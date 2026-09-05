@@ -133,6 +133,16 @@ public partial class CowsDA40Definition
     private string _radioOwnWriteKey = "";
 
     /// <summary>
+    /// The display window tuned a radio and has already spoken the result.
+    ///
+    /// Same grace as a typed set, reached from the one place that knows WHICH frequency a
+    /// knob turn moved - the window reads the change off the Coherent socket, which is the
+    /// only fast source, and the settle announcer would otherwise repeat it a second later
+    /// off the 1 Hz batch.
+    /// </summary>
+    internal void MarkRadioTunedByWindow(string varKey) => MarkRadioSetByUs(varKey);
+
+    /// <summary>
     /// A standby FREQUENCY the pilot typed, which the panel field already read back - never
     /// an autopilot selected value, which shares the "_SET" suffix and nothing else.
     /// </summary>

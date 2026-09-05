@@ -33,8 +33,12 @@ public partial class CowsDA40Definition
     /// The master is a switch and the buses are a consequence, so reading them in the same
     /// breath reads the state BEFORE the switch took effect - the announcement would report
     /// the buses the pilot just left rather than the ones they just made.
+    ///
+    /// ⚠️ It must also EXCEED ONE BATCH PERIOD (1 Hz) - at 900 ms it did not, so a bus still
+    /// rising when the timer expired was read mid-climb and the settled voltage never spoken.
+    /// Same rule as every other settle here; see RadioSettleMs for the full reasoning.
     /// </summary>
-    private const int PowerSettleMs = 900;
+    private const int PowerSettleMs = 1200;
 
     private System.Windows.Forms.Timer? _powerSettleTimer;
     private ScreenReaderAnnouncer? _powerAnnouncer;

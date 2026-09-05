@@ -517,6 +517,18 @@ public sealed class CowsDA40DisplayForm : Form
                 return true;
             }
 
+            // ⚠️ THE BARO KNOB SHARES THIS TABLE AND IS NOT A RADIO. Routing it through the
+            // radio read-back would poll six times for a change that can never appear in
+            // A.radios(), and say nothing. It has its own settle announcer on the variable,
+            // which is the right channel for it - this only needs the scrape so the window's
+            // own rows refresh.
+            if (knob.Event.StartsWith("BARO", StringComparison.Ordinal))
+            {
+                _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_PFD_{knob.Event})");
+                _ = _client.ScrapeNowAsync();
+                return true;
+            }
+
             _ = TurnRadioKnob(knob.Event);
             return true;
         }
@@ -615,44 +627,103 @@ public sealed class CowsDA40DisplayForm : Form
 
         _ = _client.ScrapeNowAsync();
 
-        // Speak only the radio that MOVED, and only its frequencies - the whole row carries
-        // TUNING and TRANSMIT, which do not change when a knob steps and are noise on every
-        // press. Nothing changed at all stays silent rather than repeating the old value,
-        // which is the specific lie this method exists to stop telling.
-        string moved = FirstChangedRadio(before, after);
-        if (moved.Length > 0) _announcer.AnnounceImmediate(moved);
+        // Speak only the FIELD that moved. Nothing changed at all stays silent rather than
+        // repeating the old value, which is the specific lie this method exists to stop.
+        var moved = FirstChangedRadioField(before, after);
+        if (!moved.Found) return;
+
+        // ⚠️ TELL THE SETTLE ANNOUNCER THIS WAS OURS, or the pilot hears it twice: the
+        // read-back here, and the same frequency again a second later when the 1 Hz batch
+        // delivers it. Measured from the cockpit as
+        //   "COM 1, active 127.850, standby 121.725"   (this window)
+        //   "COM 1 standby 121.725"                    (the settle, 1.2 s later)
+        // The settle exists for a change made ELSEWHERE; a knob turned in this window is not
+        // one, and this is the only place that knows which key moved.
+        if (moved.VarKey.Length > 0) _owner?.MarkRadioTunedByWindow(moved.VarKey);
+
+        _announcer.AnnounceImmediate(moved.Spoken);
     }
 
     /// <summary>
-    /// The one radio row that differs, stripped of the flags that do not answer "what is it
-    /// tuned to". Pure so the suite can pin it.
+    /// Which frequency moved, in the words a pilot tuning it wants, and the variable it
+    /// belongs to.
+    ///
+    /// ⚠️ ONLY THE FIELD THAT CHANGED. Reading the whole row back - "COM 1, active 127.850,
+    /// standby 121.735" - recites the frequency the pilot did NOT touch on every single step
+    /// of the knob, and the one they did is buried at the end of it. Tuning is a stream of
+    /// presses; the answer has to be short enough to survive being heard twenty times.
     /// </summary>
-    internal static string FirstChangedRadio(string before, string after)
+    internal readonly struct RadioFieldChange
     {
-        if (after.Length == 0 || after == before) return "";
+        public string Spoken { get; init; }
+        /// <summary>The MSFSBA key, so the settle announcer can be told this was ours.</summary>
+        public string VarKey { get; init; }
+        public bool Found => Spoken.Length > 0;
+    }
+
+    /// <summary>
+    /// The one FIELD that differs between two radio scrapes. Pure so the suite can pin it.
+    /// </summary>
+    internal static RadioFieldChange FirstChangedRadioField(string before, string after)
+    {
+        var none = new RadioFieldChange { Spoken = "", VarKey = "" };
+        if (after.Length == 0 || after == before) return none;
 
         var b = before.Split('|');
         var a = after.Split('|');
 
         for (int i = 0; i < a.Length; i++)
         {
-            string row = a[i].Trim();
-            if (i < b.Length && b[i].Trim() == row) continue;
-            if (row.Length == 0) continue;
+            string rowAfter = a[i].Trim();
+            string rowBefore = i < b.Length ? b[i].Trim() : "";
+            if (rowAfter.Length == 0 || rowAfter == rowBefore) continue;
 
-            // "COM 1, active 127.850, standby 121.715, TUNING, TRANSMIT" keeps the first
-            // three parts and drops the flags.
-            var parts = row.Split(',');
-            var keep = new System.Collections.Generic.List<string>();
-            foreach (var p in parts)
+            // "COM 1, active 127.850, standby 121.735, TUNING, TRANSMIT"
+            var fa = rowAfter.Split(',');
+            var fb = rowBefore.Split(',');
+            if (fa.Length == 0) continue;
+
+            string radio = fa[0].Trim();               // "COM 1"
+
+            for (int f = 1; f < fa.Length; f++)
             {
-                string t = p.Trim();
-                if (t == "TUNING" || t == "TRANSMIT") continue;
-                keep.Add(t);
+                string valAfter = fa[f].Trim();
+                string valBefore = f < fb.Length ? fb[f].Trim() : "";
+                if (valAfter == valBefore) continue;
+
+                // TUNING and TRANSMIT move when the knob PUSH shifts the cursor between
+                // radios, which is a real change and worth saying - but it is not a
+                // frequency, so it is named as itself rather than dressed as one.
+                if (valAfter == "TUNING" || valAfter == "TRANSMIT" ||
+                    valBefore == "TUNING" || valBefore == "TRANSMIT")
+                    continue;
+
+                return new RadioFieldChange
+                {
+                    Spoken = radio + " " + valAfter,   // "COM 1 standby 121.735"
+                    VarKey = RadioVarKey(radio, valAfter)
+                };
             }
-            return string.Join(", ", keep);
         }
-        return "";
+        return none;
+    }
+
+    /// <summary>
+    /// "COM 1" + "standby 121.735" -> DA40_RADIO_COM1_SET. Empty when it cannot be mapped,
+    /// which only costs the duplicate suppression and never the announcement.
+    /// </summary>
+    private static string RadioVarKey(string radio, string field)
+    {
+        string kind = radio.StartsWith("COM", StringComparison.Ordinal) ? "COM"
+                    : radio.StartsWith("NAV", StringComparison.Ordinal) ? "NAV" : "";
+        if (kind.Length == 0) return "";
+
+        string n = radio.EndsWith("2", StringComparison.Ordinal) ? "2" : "1";
+        string suffix = field.StartsWith("standby", StringComparison.Ordinal) ? "SET"
+                      : field.StartsWith("active", StringComparison.Ordinal) ? "ACTIVE" : "";
+        if (suffix.Length == 0) return "";
+
+        return $"DA40_RADIO_{kind}{n}_{suffix}";
     }
 
     private async Task PressBezel(string eventSuffix, string spoken)

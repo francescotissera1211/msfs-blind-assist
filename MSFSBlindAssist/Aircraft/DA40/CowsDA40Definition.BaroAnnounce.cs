@@ -39,7 +39,12 @@ public partial class CowsDA40Definition
     /// The number is the gap between STEPS, not a speech delay, so shortening it costs nothing
     /// on a sweep and buys back the whole delay on a single press.
     /// </summary>
-    private const int BaroSettleMs = 300;
+    // ⚠️ MUST EXCEED ONE BATCH PERIOD (1 Hz), AND AT 300 ms IT DID NOT. A subscale steps
+    // 0.01 inHg and a knob sweeps dozens of steps a second, but the values arrive once a
+    // second - so a 300 ms settle expired between every pair of deliveries and announced each
+    // intermediate setting the knob passed through instead of the one it stopped on. Exactly
+    // the fault the radios had; see RadioSettleMs for the full reasoning.
+    private const int BaroSettleMs = 1200;
 
     /// <summary>How long after MSFSBA's own write to stay quiet about a subscale.</summary>
     private const int OwnWriteGraceMs = 3000;
