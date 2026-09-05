@@ -1193,7 +1193,7 @@ public class CowsDA40PanelStructureTests
     private static readonly string[] NotBuiltYetOnXls =
     {
         "Engine Start", "Fuel System",
-        "Mixture and Propeller", "Priming",
+        "Mixture and Propeller",
     };
 
     private static bool IsKnownUnbuilt(DA40Variant variant, string panel)

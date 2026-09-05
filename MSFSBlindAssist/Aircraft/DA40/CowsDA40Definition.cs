@@ -233,6 +233,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
         if (!IsNG) controls[MagnetosPanel] = new List<string>(MagnetoControls);
         if (!IsNG) controls[PowerPanel] = new List<string>(XlsPowerControls);
+        if (!IsNG) controls[PrimingPanel] = new List<string>(PrimingControls);
 
         return controls;
     }
@@ -377,6 +378,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             }
 
             foreach (var kv in BuildXlsPowerVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+
+            foreach (var kv in BuildPrimingVariables())
             {
                 vars[kv.Key] = kv.Value;
             }
@@ -584,6 +590,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
         if (!IsNG) d[MagnetosPanel] = new List<string>(MagnetoDisplay);
         if (!IsNG) d[PowerPanel] = new List<string>(XlsPowerDisplay);
+        if (!IsNG) d[PrimingPanel] = new List<string>(PrimingDisplay);
 
         return d;
     }
@@ -675,6 +682,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetPrimingDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetEngineHealthDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
@@ -779,6 +787,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
         if (HandleMagnetoSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsPowerSet(varKey, value, simConnect, announcer)) return true;
+        if (HandlePrimingSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

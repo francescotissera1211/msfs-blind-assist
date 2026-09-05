@@ -171,7 +171,7 @@ public partial class CowsDA40Definition
     /// to "will this speak", and the tests that ask it must get that one.
     /// </summary>
     public static IReadOnlyCollection<string> SilentCachedReadoutKeys =>
-        SilentCachedReadouts.Concat(HotkeyCachedReadouts).ToList();
+        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).ToList();
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
@@ -234,7 +234,10 @@ public partial class CowsDA40Definition
     /// </summary>
     private static bool IsSilentCachedReadout(string varName)
         => SilentCachedReadouts.Contains(varName)
-           || HotkeyCachedReadouts.Contains(varName);
+           || HotkeyCachedReadouts.Contains(varName)
+           // The XLS priming inputs: polled so the state can be classified from them,
+           // never spoken as numbers - the state is spoken instead, on its crossing.
+           || PrimingCapturedKeys.Contains(varName);
 
     /// <summary>
     /// Returning true means "handled" - the generic announcer never runs for that key.
@@ -250,6 +253,8 @@ public partial class CowsDA40Definition
         // The XLS mag check: the tachometer is silent by design and this must see it, so
         // the drop can be read from the RPM the key left BOTH at. Never announces itself.
         NoteMagnetoChange(varName, value, announcer);
+        // The XLS priming state: its inputs are silent numbers, so this must see them here.
+        NotePrimingChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;
 

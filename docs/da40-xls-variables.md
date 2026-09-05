@@ -177,6 +177,44 @@ COWS runs its own engine below the MSFS 400-rpm floor and injects selected value
 - A held write is not a working control (`STARTER_SWITCH` 4), and a refused single write is
   not a dead one (`INPUT_MIXTURE` refused only while the spread set was zero).
 
+## Priming — measured through a hot restart
+
+The Lycoming has no primer; the idle jet loads the induction with the pump on and the mixture
+forward, and the charge sits OUTSIDE the cylinders (`ENG_FUEL_OUTSIDE_CYL_GRAM:1-4`, grams,
+always live) until the crank draws it in. The model's own arithmetic, from `Logic.xml`:
+
+| | Formula | Measured (hot, EGNX) |
+|---|---|---|
+| Required per cylinder | `1.5 / ENG_ATOMISE_CYL:n / ENG_INT_MANI_EVAP:1` | 0.39 g (evap 3.89, atomise 1.0) |
+| Flooded per cylinder | `1.6 / ENG_INT_MANI_EVAP:1 / ENG_ATOMISE_CYL:n`, ANY cylinder over | 0.41 g — a six percent window |
+| Vendor gauge `ASSIST_PRIME_PERCENT` | `(lines + cylinders) / (required + 10.5) × 100`, cap 150 | 78.6 with the cylinders three times over |
+
+The vendor's `ASSIST_PRIME_*` family computes only with the MFD **Priming Assist** option on
+(`L:ASSIST_PRIME`, writable), the pump on and RPM under 500. ⚠️ **Its percentage counts the
+LINES against a fixed 10.5 g fill, so after a mixture-cut shutdown it read 78 % — "not yet
+primed" — while every cylinder held 1.2 g, three times the charge and flooded by the model's
+own test.** A pilot reading only the percentage primes more. Say cylinders and required, never
+the percentage.
+
+**Hot engine rate:** the jet loaded ~2.5 g per cylinder per second (0 → 6.3–7.8 g in four
+seconds; 0 → 4.2–5.8 g in two), so the primed-to-flooded crossing takes under a fifth of a
+second — faster than the 1 Hz batch. The AFM's warm-start "rich 1–3 s" floods this model.
+Nothing can be timed by ear; the state must be spoken on the crossing itself.
+
+**Flooded is recoverable, and the model agrees with AFM 4.5 (c):** pump off, mixture fully aft,
+throttle mid, crank — the charge burns down and the engine coughs, 4.8 g in one second, 32 g in
+4.7 (994 rpm), then dies unless the mixture comes forward. With the mixture forward while still
+cranking it fired to a steady 1010 rpm. `RESET_FLOOD` is the POH's shortcut and is on the panel;
+it was not exercised.
+
+**Vapour:** `ENG_FUEL_LINE_BOIL:1-4` (indexed — the bare name is a phantom) is a random per-tick
+boil once a line passes 100 on the model's scale (`ENG_FUEL_LINE_TEMP:n`, 157 on the hot
+engine); the systemic factor `FUEL_TEMP_BOIL` subtracts a whole unit for the electric pump, so
+the pump is the cure, as in the aeroplane. `START_HOT` has no writer in any XML — the MFD
+plugin's — and is not built on.
+
+**Three starter cycles cost the battery 239 → 125.**
+
 ## Still open
 
 - **Cruise** — the plan's third point; needs the aircraft flown.
