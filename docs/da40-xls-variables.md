@@ -1,177 +1,198 @@
 # DA40-XLS — the variable surface
 
-Companion to [da40.md](da40.md), which covers the NG. This is the **name** half of the XLS
-probe pass: what exists, how it groups, and which variables the six unbuilt panels will need.
-It is deliberately NOT a claim about values, units or ranges — see **What this does not tell
-you**.
+Companion to [da40.md](da40.md), which covers the NG. Two halves: the **names** (what exists
+and how it groups, from the package XML) and the **measurements** (units, encodings and
+behaviour, read live at EGNX through a cold start and a full run-up). Everything in the
+measured sections was read or written against the running aircraft; nothing is inferred
+from a name.
 
-## Method
-
-Names come from the package's own model XML, which is the complete and authoritative list —
-not from a live enumeration, which cannot see them (next section).
+## Method — names
 
 ```bash
 PKG="$LOCALAPPDATA/Packages/Microsoft.FlightSimulator_8wekyb3d8bbwe/LocalCache/Packages/Community/cows-da40/SimObjects/Airplanes"
-ex(){ grep -rhoE 'L:[A-Za-z0-9_]+(:[A-Za-z0-9]+)?' "$1" --include=*.xml | sed 's/^L://' | sort -u; }
+ex(){ grep -rhoE 'L:[A-Za-z0-9_/]+(:[A-Za-z0-9]+)?' "$1" --include=*.xml | sed 's/^L://' | sort -u; }
 ex "$PKG/COWS_DA40XLS" > xls.txt; ex "$PKG/COWS_DA40NG" > ng.txt
 sed -E 's/:[A-Za-z0-9]+$//' xls.txt | sort -u > xlsb.txt
 sed -E 's/:[A-Za-z0-9]+$//' ng.txt  | sort -u > ngb.txt
-comm -23 xlsb.txt ngb.txt          # the 379 XLS-only base names
+comm -23 xlsb.txt ngb.txt          # the 380 XLS-only base names
 ```
 
-⚠️ **Do not narrow that pattern to require a leading `(`.** An earlier pass matched only
-`(L:NAME)` and silently lost 19 variables the XML references another way — including
-`ASSIST_PRIME_PERCENT`, `DISP_MAP`, and the four `DISP_LEAN_*` lean-assist readouts that panel
-7 is entirely about. A dropped name looks exactly like a variable that does not exist.
+⚠️ **The character class must include `/`.** Sixteen real names carry a unit suffix after a
+slash — `TB_FF_JET_PRESS_KG/HR`, `TB_FF_JET_PRESS_KG/HR_T`, `ENG_FUEL_SYSTEM_FLOW_TO_SERVO_G/S`,
+`TB_MASS_FLOW_KG/HR` … — and a pattern that stops at the slash produces truncated names that
+do not exist. Reading one returns 0 with no error, which is indistinguishable from a real
+variable reading zero: an earlier pass "measured" `TB_FF_JET_THROTTLE_KG` at 0 while the real
+`TB_FF_JET_THROTTLE_KG/HR` was 18.8. ⚠️ Nor may the pattern require a leading `(` — that
+loses another 19 (`ASSIST_PRIME_PERCENT`, `DISP_MAP`, all four `DISP_LEAN_*`).
 
 | | Full names | Base names (`:n` collapsed) |
 |---|---|---|
-| XLS total | 1398 | 998 |
+| XLS total | 1414 | 999 |
 | NG total | 1075 | 980 |
 | Shared | 662 | 619 |
-| **XLS-only** | **736** | **379** |
+| **XLS-only** | **736** | **380** |
 | NG-only | 413 | 361 |
 
-Quote the 379; the 736 counts `DAMAGE_MAG_FOUL:1L` and `:1R` as two variables. It agrees with
-the 374 in the working plan to within counting method.
-
-⚠️ **These count the PACKAGE, not MSFSBA's profile.** [da40.md](da40.md)'s "86 are NG-only"
-counts `CowsDA40Definition`'s own variable definitions — a different measurement of a different
-thing. Do not reconcile the two.
+Quote the 380. It counts the PACKAGE, not MSFSBA's profile — [da40.md](da40.md)'s "86 are
+NG-only" counts `CowsDA40Definition`'s own definitions and is a different measurement.
 
 ## ⚠️ The live enumerator cannot list these
 
-`msfs_list_lvars` (MobiFlight `MF.LVars.List`) **caps at 1000 names, alphabetically, and still
-reports the list as complete.** With other add-ons loaded that cap is spent long before the
-XLS's engine model: a measured run returned A32NX, A380X, AS3000, AS3X, Aera, ASVigilus, B789,
-DHC2 and FA18 variables and ran out at `FAILURES_DISP_EGT`. Everything after that — `FUEL_*`,
-`MIXTURE_*`, `OC_*`, `PROP_*`, `STARTER_*`, `TB_*`, the whole induction and oil-cooler model —
-is invisible, and `filter_prefix` does not help: it filters the already-truncated response
-client-side, so `filter_prefix=STARTER` returns zero while `L:STARTER_SWITCH` exists and reads
-fine.
-
-**Enumerate from the package XML; read values with `msfs_get_lvar` or the calculator path,**
-which work for any name whether or not it was listed. Never conclude a variable is absent from
-a listing that came back truncated.
-
-## What this does not tell you
-
-**No value here was measured.** The flight model was not running during this pass
-(`sim_running: false`, with `GENERAL ENG STARTER ACTIVE`, `RECIP ENG STARTER TORQUE`,
-`ELECTRICAL BATTERY LOAD`, `GENERAL ENG RPM` and `ENG COMBUSTION` all at exactly 0 — the
-ready-to-fly/menu-screen signature documented in [da40.md](da40.md)). Units, ranges, encodings
-and polarity are all open, and the NG's answers do not transfer: `FILTER_RESRTICTION` and
-`HEALTH_BLOCK/800` are both cases where a plausible reading of a name was not a reading of the
-variable.
+`msfs_list_lvars` (MobiFlight `MF.LVars.List`) caps at 1000 names, alphabetically, and still
+reports the list complete. With other add-ons registered it ran out at `FAILURES_DISP_EGT`,
+so `FUEL_*`, `MIXTURE_*`, `OC_*`, `PROP_*`, `STARTER_*`, `TB_*` — the whole engine — were
+invisible, and `filter_prefix` filters the already-truncated reply (`filter_prefix=STARTER`
+returned zero while `L:STARTER_SWITCH` read fine). Enumerate from the XML; read by name.
 
 ## The five XLS interaction components
 
-Everything clickable the NG does not also have, from `<Component ID=…>` in `COWS_DA40_IN.xml`
-and `COWS_DA40_Inputs.xml`:
-
 `ENGINE_Lever_Mixture_1`  `ENGINE_Lever_Propeller_1`  `ENGINE_pedestal`  `FUEL_SELECTOR`  `STARTER`
 
-## The controls behind the six unbuilt panels
+## The controls — measured
 
-| Panel | Reads / writes | Notes |
+| Control | Variable | Encoding / behaviour (measured) |
 |---|---|---|
-| Magnetos | `STARTER_SWITCH` (5-state), `A:RECIP ENG LEFT/RIGHT MAGNETO:1`, `ENG_MAG_PWR:L`/`:R`, `FAILURES_MAG_L/R`, `FAILURES_MAG_GND_L/R` | the key and the starter are ONE control — below |
-| Power and Levers | `THROTTLE_LEVER`, `INPUT_PROPELLER`, `INPUT_MIXTURE`; mirrors `STATE_THROTTLE_SPREAD`, `STATE_PROP_LVR`, `STATE_MIXT_LVR` | manifold pressure is `TB_*` — below |
-| Fuel System | `FUEL_SELECTOR`, `STATE_FUEL_SELECTOR`, `ENG_FUEL_LINE_PRIMED:1..4` + `:S`, `ENG_FUEL_SYSTEM_PRIMED`, `ENG_FUEL_LINE_FLOW_CHECK`, `FUEL_TEMP_BOIL*` | vapour lock is a whole family, not one flag |
-| Mixture and Propeller | `MIXTURE_VALVE`, `MIXTURE_SET_BEST`, `MIXTURE_SET_AVG`, `EGT_MIXTURE`, `CYL_SPREAD_EGT`, `DISP_LEAN_PEAK:1..4`, `DISP_LEAN_DELTA`, `DISP_LEAN_DELTA_BIGGEST`, `DISP_LEAN_HOTEST`, `DISP_LEAN_HIGHLIGHT`, `OP_PROP_TARGET_RPM`, `OP_PROP_BETA` | the panel the XLS exists for |
-| Priming | `ASSIST_PRIME_CYL_GRAM` vs `ASSIST_PRIME_CYL_REQ`, `ASSIST_PRIME_SYS_GRAM`, `ASSIST_PRIME_PERCENT`, `ASSIST_PRIME_ACTIVE` | grams against a requirement — say both, never a bare percent |
-| Engine Start | `STARTER_SWITCH`, `STARTER_SPAD:1`, `STARTER_HOLD`, `STARTER_AMPS`, `STARTER_POWER:1`, `START_HOT`, `START_MIXTURE`, `RESET_FLOOD` | `START_HOT` is the hot start the AFM gives its own procedure |
+| **Magneto key** | `STARTER_SWITCH` | **0 OFF · 1 RIGHT · 2 LEFT · 3 BOTH · 4 START.** 1 and 2 proven by the firing map (`ENG_MAG_CYL:1R`=1/`:1L`=0 at 1, the reverse at 2). Writable, holds 0–3. **4 is momentary**: springs back to 3 within a second (`MOMENTARY_SWITCH`, `STATE_MAX_TIMER 1`). ⚠️ **Writing 4 does NOT crank** — six sustained writes produced nothing; the template's `CODE_POS_4` runs on a cockpit CLICK, never on an L:var write. |
+| **Starter** | `STARTER_SPAD:1` | 1 engages, 0 releases; **holds, and cranks.** The vendor names both this and `STARTER_SWITCH` as bindings; this is the one that works from outside. The NG's read-only-mirror finding for `STARTER_SWITCH` does not apply here — but it doesn't matter, because SPAD is the input on both. |
+| Throttle | `THROTTLE_LEVER` (read) · `K:THROTTLE1_SET` (write) | `THROTTLE_LEVER` is a **read-only mirror** = stock `GENERAL ENG THROTTLE LEVER POSITION` ÷ 100, no `STATE_` prefix to warn you; a write snaps back. Drive the stock event (0–16383) and read the stock position back. ⚠️ **Not linear and COWS trims it**: commanded 12 % read back 9.2 %; measured 9 % → 860 rpm, 30 % → 1450, 34 % → 1510, 38 % → 2190. Measure, never compute. |
+| Mixture | `INPUT_MIXTURE` | 0–100, **writable, holds**. 100 = full rich = air/fuel 10:1 (`EGT_MIXTURE` 10.35). Stock mixture lever is COWS-owned (Logic 643 rewrites it) — never write it. |
+| Propeller | `INPUT_PROPELLER` | 0–100, **writable, holds**. Maps linearly onto governor target `OP_PROP_TARGET_RPM` from `PROP_SPREAD_LO` (this engine 1469.86) at 0 to `PROP_SPREAD_HI` (2676.38) at 100. `STATE_PROP_LVR` mirrors it. |
+| Fuel selector | `FUEL_SELECTOR` | **0 LEFT · 1 RIGHT · 2 OFF** (`ANIMTIP` and Logic 1924–1950; maps to stock selector 2/3/1). `STATE_FUEL_SELECTOR` mirrors. |
+| Electric pump | `K:ELECT_FUEL_PUMP1_SET` | stock event; COWS reads stock `GENERAL ENG FUEL PUMP SWITCH:1`; read `GENERAL ENG FUEL PUMP ON` for running. |
+| Battery master | `K:MASTER_BATTERY_SET` | stock; COWS bus follows (`ELEC_BUS_MAIN_VOLT`). |
+| Resets | `RESET_DAMAGE` `RESET_BATT` `RESET_FLOOD` `RESET_PLUGS` `RESET_FAILURES` `RESET_ALL` | Momentary; a write of 1 is consumed (reads back 0) and acts. Consumed in `COWS_DA40_Failures.xml` and the MFD plugin, not `Logic.xml`. |
 
-### ⚠️ The magneto key and the starter are the same control
+## ⚠️ The state trap that makes the aircraft unstartable, silently
 
-`<Component ID="STARTER">` is an `ASOBO_GT_Switch_5States` whose `SWITCH_POSITION_VAR` is
-**`L:STARTER_SWITCH`** — one 5-position key, OFF / R / L / BOTH / START, carrying
-`<MOMENTARY_SWITCH/>` with `STATE_MAX_TIMER 1` so the START detent springs back. Position 4
-alone fires `1 (>K:SET_STARTER1_HELD)`; positions 0-3 send `0`. So the plan's task 2 and task 5
-share one combo, and cranking is a detent rather than the NG's separate start button.
+**Symptom:** master on, pump running, selector on a full tank, mixture rich, throttle at the
+priming mark — and `TB_FUEL_FLOW_GPH` stays 0, `ASSIST_PRIME_CYL_GRAM` stays 0, the starter
+turns nothing over, **and nothing in the cockpit says why**: no CAS message, no failure flag,
+fuel pressure simply reads 0. A blind pilot has no channel for this at all.
 
-⚠️ **The NG's starter findings must not be assumed here.** On the NG, [da40.md](da40.md)
-records `L:STARTER_SWITCH` as a READ-ONLY MIRROR and `K:SET_STARTER1_HELD` as INERT, with
-`L:STARTER_SPAD:1` the real input. On the XLS the template makes `STARTER_SWITCH` the switch's
-own position variable and the model uses `SET_STARTER1_HELD` directly. That is a reading of the
-XML, **not a measurement** — write it and read it back live before anything depends on it.
-`STARTER_SPAD:1` exists on the XLS too, so if the 5-state write is refused, that is the first
-fallback to try.
+**Cause:** the per-engine "performance variation" set (POH p.5) is all zero — `FUEL_SPREAD_PRESSURE`,
+`SPREAD_INJ_TRIM`, `SPREAD_OP`, `SPREAD_OC`, `SPREAD_ROUGH`, `MAG_SPREAD_TIMING`,
+`CYL_SPREAD_EGT:1-4`, and the saved `STATE_*` copies behind them — while the two latches that
+gate their generation (`CYL_SPREAD_SET`, `SPREAD_SET`) read 1, "already done". Fuel pressure
+is a product (Logic 336: `servo grams × 2.2 × FUEL_SPREAD_PRESSURE × boil factor`) and the idle
+jet is multiplied by `min(ENG_FUEL_PRESS / 0.8, 1)` (Logic 382), so a zero spread is zero
+fuel, structurally, forever. `FUEL_QUANT_PROBE:n` is multiplied by `CYL_SPREAD_EGT:n`, so
+`FUEL_FEED_QUANTITY` reads 0 with 20 gal in the tank. The instrument spreads use a
+self-healing "regenerate if zero" gate and were fine (`STATE_SPREAD_AIR` 1.004); the engine
+spreads use a latch and are not. The `STATE_*` are persisted (`systems.cfg` `LocalVar.10-29`);
+the latches are not — a load-order race against a zeroed save is the likely origin.
 
-### Manifold pressure exists, under `TB_*`
+**Fix — the POH's own:** Engine page menu → **Reset: Damage** (`RESET_DAMAGE` = 1). Measured:
+`FUEL_SPREAD_PRESSURE` 0 → 1.51446 (the generator's 1.45–1.55 range), every other spread
+regenerated, `ENG_FUEL_PRESS` 0 → 1.67, `FUEL_FEED_QUANTITY` 0 → 19.9, and the engine
+primed at 7.2 gph and started on the next attempt. ⚠️ A grep for writers of the LIVE name
+finds nothing under the reset and suggests the POH is wrong; the reset writes the `STATE_*`
+names (Logic 5565 and siblings). Judge it by effect.
 
-The number every Lycoming procedure is written in lives in the throttle-body family:
-`TB_TARGET_MAP`, `TB_SET_MAP`, `TB_CALC_MAP`, with `FILTER_TARGET_MAP` ahead of them, `DISP_MAP`
-and `DISP_MAP_PROBE` for what the G1000 draws, and `FAILURES_DISP_MAP` for a failed gauge. Per
-[da40.md](da40.md)'s rule, take the value from the model variable, never from a `DISP_*`, which
-is what the display draws rather than what the sensor measured.
+**What MSFSBA should do:** `FUEL_SPREAD_PRESSURE == 0` with the aircraft loaded is a
+detectable, nameable condition. Say it — *"engine variations not generated; Reset: Damage on
+the Engine page menu"* — and offer the reset. The Engine page menu is already driveable from
+the display window (Ctrl+E on the Engine page).
 
-### Two reset buttons the plan does not mention
+## The cold start, as variables — POH p.6, verified
 
-`RESET_FLOOD` and `RESET_PLUGS` sit beside the NG's `RESET_DAMAGE`. A flooded engine and fouled
-plugs are the two classic hot- and rough-start failures on an injected Lycoming, and both are
-recoverable in the aeroplane — so both belong on Engine Start as actions, with the condition
-that produced them announced first.
+1. `K:MASTER_BATTERY_SET` 1 → bus 28 V. `K:ELECT_FUEL_PUMP1_SET` 1 → `GENERAL ENG FUEL PUMP ON` 1, stock fuel pressure ~6.9 psi, `ENG_FUEL_SYSTEM_FLOW_G/S` ~15.
+2. Throttle to the priming mark (Diamond: half open; `K:THROTTLE1_SET` 8192 → 50 %), `INPUT_MIXTURE` 100. **`TB_FUEL_FLOW_GPH` rises to ~7.2** (POH: confirm > 4.5). The jet is `(THROTTLE_LEVER × 30 + 3.8, min 20) kg/h × INPUT_MIXTURE / 100`, gated by pressure ≥ 0.8. About five seconds; the priming-assist gauge (`ASSIST_PRIME_CYL_GRAM` vs `_REQ`) only counts when the Priming Assist option is on.
+3. `INPUT_MIXTURE` 0 (idle cut-off), throttle back to ¼ inch (`THROTTLE1_SET` ~2000), `STARTER_SPAD:1` 1.
+4. **The crank signature:** `ENG_COMP_RPM` ~190 and `ENG_COMP_STARTER` ~73 while turning; stock `GENERAL ENG RPM` **does** show 160–190 during the crank; `ELEC_BATT_AMPS` **−77**. Fires at ~5 s: stock RPM 572 → 775 → 1080, `ENG COMBUSTION` 1.
+5. `INPUT_MIXTURE` 100, `STARTER_SPAD:1` 0, throttle to ~1000 rpm. Alternator: `ELEC_ALT_VOLT_OUT` 27.9, `ELEC_BATT_AMPS` swings to +7.
+6. After start: pump OFF (Diamond checklist); ON again when cleared for line-up.
 
-### Also worth knowing
+If it will not start: `RESET_FLOOD` (POH p.3) removes the fuel and cools the lines;
+`K:ENGINE_AUTO_START` runs COWS's own script, which handles a flooded start.
 
-- **XLS-specific breakers.** `CB_ACN`, `CB_ALT`, `CB_ALT_OVER`, `CB_APT`, `CB_BATT_OVER`,
-  `CB_FAN`, `CB_FUP`, `CB_MAIN` (+ their `STATE_CB_*` mirrors) are not among the NG's 34, so the
-  breaker panel is not variant-agnostic after all and its list needs rebuilding per variant.
-- **`FAILURES_MAG_GND_L`/`_R`** is a grounded P-lead — the failure a live mag check exists to
-  find, and the reason the run-up drop must be readable as a number (`ENG_MAG_PWR:L`/`:R`).
-- **The vendor misspells "restriction" consistently.** The NG's `FILTER_RESRTICTION` has an XLS
-  sibling in `TB_RSRTIC` / `TB_RSRTIC_100000`. Grep for `RSRTIC` as well as `RESTRIC`.
-- **`BRO_CMON_PLEASE_STOP` and `SUPER_SECRET_ENGINE_DEBUG`** are developer variables, not
-  controls. Kept in the appendix because a dump that quietly drops what it cannot explain is not
-  a dump.
+## The run-up, as variables — Diamond checklist, verified
 
-## Measured live — cold and dark at EGNX
+Throttle **2000 rpm** (measured at 2184–2192, ±1 steady; at 1450 it jitters ±30, the
+combustion model's per-cycle roughness — average before speaking it).
 
-Aircraft loaded, on ground, battery master OFF, bus 0 V, 40 USG, ambient 18.99 °C /
-29.890 inHg. Everything below was read or written against that state.
+- **Prop cycle:** `INPUT_PROPELLER` 0 → target snaps to `PROP_SPREAD_LO`, RPM **2184 → 1513**;
+  back to 100 → **2192**. `OP_PROP_BETA` 31° (= stock `PROP BETA:1`). `OP_PROP_OIL_PRIME`
+  read 5.1 before and after a full cycle — it is not a per-cycle counter; the second and third
+  cycles register on nothing readable.
+- **Magnetos (AFM: max drop 175, max differential 50):** BOTH 2192 → R **2114 (−78)** → L
+  **2076 (−116)** → BOTH 2188. Differential 38. ⚠️ **Which mags are live is `ENG_MAG_CYL:nL` /
+  `:nR`** (1/0 per cylinder per mag). `ENG_MAG_PWR:L/:R` is NOT switch state — it read 0.85 with
+  the left mag OFF, and 1.0/1.0 at 2000+ rpm against 0.75/0.86 at idle: it is magneto output
+  versus RPM. Stock `RECIP ENG LEFT/RIGHT MAGNETO` sat at 1/1 through every position — dead.
+- **Breakers, voltage:** `CB_ALT` `CB_STR` `CB_FUP` `CB_MAIN` 0 (in); bus 28.32 V, +3 A.
+- Throttle idle; pump off.
 
-⚠️ `msfs_get_connection_status` reported `sim_running: false` throughout, across a
-disconnect/reconnect, while the aircraft read and wrote perfectly. **Do not read that flag as
-"the flight model is stopped."** [da40.md](da40.md)'s zeros-signature for the ready-to-fly
-screen requires the starter to be COMMANDED — on an unpowered aeroplane `GENERAL ENG STARTER
-ACTIVE`, `RECIP ENG STARTER TORQUE`, `ELECTRICAL BATTERY LOAD`, `GENERAL ENG RPM` and
-`ENG COMBUSTION` all read 0 legitimately, and reading that as a stopped sim is a false
-negative. Command the starter first, or use a different test.
+## Units — settled by measurement
 
-### Settled
+| Variable | Unit | Evidence |
+|---|---|---|
+| `TB_CALC_MAP`, `TB_TARGET_MAP` | **bar**, absolute | 1.01223 at ambient 29.890 inHg (×29.53 = 29.891); 0.5246 at idle = 15.49 |
+| `DISP_MAP` | inHg | = `TB_CALC_MAP` × 29.53 to 0.01 (22.47 vs 0.7607 bar) — what the G1000 draws |
+| `CHT_C:n` / `CHT_F:n` | °C / °F | 183.5 °C ↔ `DISP_CHT:n` 359 °F (integer) |
+| `DISP_EGT:n` | °F, integer | 1110 idle, 1331 run-up |
+| `DISP_CHT_HOT`, `DISP_CHT_HOT_CYL` | °F / cylinder index | |
+| `DISP_OP_PROBE` | psi | = stock oil pressure 73.7 / 75.1 |
+| `DISP_FF_PROBE` = `TB_FUEL_FLOW_GPH` | US gal/h | 10.56 = 10.558 |
+| `EGT_MIXTURE` | air/fuel ratio | 10.35 at full rich; POH: rich is 10:1, best power 12.5:1, stoich 14.7:1 |
+| `OP_PROP_TARGET_RPM`, `PROP_SPREAD_LO/HI` | rpm | governor target; 1469.86 / 2676.38 this engine |
+| `OP_PROP_BETA` | degrees | = stock `PROP BETA:1` |
+| `ENG_COMP_RPM` | rpm | the crank tach — 192 while the stock RPM was also ~190; the two disagree by ~10 % once running (793 vs 1081), stock is the flying tach |
+| `DISP_PROP_RPM_PROBE` / `DISP_PROP_RPM` | rpm / rpm to 10 | = stock 920.5 / 920. ⚠️ `PROP_RPM_SENS:1` — the NG's tach per [da40.md](da40.md) — **does not exist on the XLS** (NG-only); reading it returns a phantom 0. `RPM_SENS_RPM` (728 at 928) is a sensor model, not RPM |
+| `ELEC_BATT_CAPACITY` | Ah-like | nominal **240**, cap 250, restore floor 15; parked self-discharge 7/h of real clock; **3 % after ~50 min of master+pump with the engine dead** |
+| `ELEC_BATT_AMPS` | A, − discharge / + charge | −76.9 cranking, +7.4 just after start, +3 at run-up |
+| `ELEC_BUS_MAIN_VOLT`, `ELEC_ALT_VOLT_OUT` | V | 28.3 charging; 21.2 on a draining battery |
+| `OC_TEMPERATURE`, `BC_TEMPERATURE`, `FUEL_TEMP` | °C | all = ambient 18.98782 cold; 83.5 / 22 warm |
+| `ENG_FUEL_PRESS` | **unknown** | 0 → 1.67–1.77 running; the jet gates at 0.8 |
+| `TB_FF_JET_THROTTLE_KG/HR` | kg/h | `THROTTLE_LEVER` × 30 + 3.8, min 20 |
 
-| Finding | Evidence |
-|---|---|
-| **`TB_CALC_MAP` is manifold pressure in BAR** | 1.01223 against ambient 29.890 inHg; ×29.53 = 29.891 inHg. Engine-off MAP correctly equals ambient. `TB_TARGET_MAP` tracks it at 1.01221. |
-| **Stock `RECIP ENG MANIFOLD PRESSURE` is DEAD here** | reads **0.599 inHg** while the real MAP is ambient 29.89. COWS does not drive it. Never read it for this aircraft — it is off by a factor of 50. |
-| **`STARTER_SWITCH` is WRITABLE on the XLS** | 0 → 3 → 0, both directions stick through the calculator path. The NG's read-only-mirror finding does NOT apply to this variant. |
-| **`THROTTLE_LEVER` is a READ-ONLY MIRROR** | equals stock `GENERAL ENG THROTTLE LEVER POSITION` ÷ 100 (0.26074 vs 26.074 %). A write of 0.5 snapped straight back and stock never moved. ⚠️ It carries no `STATE_` prefix to warn you. |
-| **The three levers use three different scales** | throttle 0..1 fraction; `INPUT_MIXTURE` 0..100 matching stock; `INPUT_PROPELLER` reads **100 while stock propeller lever reads 0 %**. Never assume one convention across the pedestal. |
-| Fuel selector agrees with its mirror | `FUEL_SELECTOR` = `STATE_FUEL_SELECTOR` = 1. |
-| Fuel system state | `ENG_FUEL_SYSTEM_PRIMED` = 1, `ASSIST_PRIME_CYL_REQ` = 0 (nothing owed). |
+## Stock simvars that are DEAD or DIVERGENT on the XLS
 
-### Open — NOT concluded
+COWS runs its own engine below the MSFS 400-rpm floor and injects selected values back
+(POH p.5). Everything else is either never written or is a different number.
 
-- **Does the magneto key drive anything?** `STARTER_SWITCH` accepts writes, but stock
-  `RECIP ENG LEFT/RIGHT MAGNETO` sat at 1/1 through 0 → 3 → 0 and never moved, while the COWS
-  side (`ENG_MAG_PWR:L`/`:R`, `ENG_MAG_CYL:1B`) is all 0 because the engine is not turning. The
-  playbook's rule applies: a held write is not a working control. **Needs the engine running** —
-  select L and R and watch the drop.
-- **The mixture lever refuses every write tried.** `50 (>L:INPUT_MIXTURE)` snapped back to 100,
-  and the stock `8192 (>K:MIXTURE_SET)` did not move it either. `AUTOMIXTURE`,
-  `AUTOMIXTURE_FORCE` and `FSC_CONTROL` are all 0, so nothing is forcing it. Per the
-  playbook this is **not** a verdict of "broken": the untried routes are the repeating ~40 ms
-  write [da40.md](da40.md) documents for controls the airframe re-zeroes each frame, and the
-  `ENGINE_pedestal` component's own interaction.
-- **`INPUT_PROPELLER` vs stock disagree** (100 vs 0 %) and the direction is unknown.
-- Every EGT / CHT / lean-assist / red-box / detonation / spread family is unmeasured — they are
-  all engine-running quantities.
+| Stock simvar | State | Measured |
+|---|---|---|
+| `RECIP ENG MANIFOLD PRESSURE:1` | divergent | 0.599 inHg stopped (real 29.89); 13.5 running (real 15.5) — the injected engine-output value, not the gauge |
+| `RECIP ENG LEFT/RIGHT MAGNETO:1` | **dead** | 1/1 at every key position |
+| `GENERAL ENG STARTER ACTIVE:1` | **dead** | 0 through a real 77 A crank |
+| `ELECTRICAL BATTERY LOAD:1` | **dead** | 0 during 77 A |
+| `ELECTRICAL BATTERY VOLTAGE:1` | **dead** | 28 with the COWS battery at 3 % |
+| `GENERAL ENG EXHAUST GAS TEMPERATURE:1` | **dead** | −273.15 °C |
+| `RECIP ENG CYLINDER HEAD TEMPERATURE:1` | divergent | 99.6 °C vs `CHT_C:1` 85.4 |
+| `GENERAL ENG GENERATOR SWITCH:1` | dead | 0 while `GENERATOR ACTIVE` 1 |
+| `GENERAL ENG PROPELLER LEVER POSITION:1` | divergent | 0 % with the lever at 100, 54 % with it at 0 — an intermediate |
+| `GENERAL ENG RPM:1` | **live once running**; 0 stopped but shows the crank | use `ENG_COMP_RPM` below 400 |
+| `ENG COMBUSTION`, `GENERAL ENG OIL PRESSURE`, `PROP BETA`, `GENERAL ENG FUEL PUMP ON`, `ELECTRICAL MASTER BATTERY`, `GENERAL ENG THROTTLE LEVER POSITION` | live | |
 
-## Appendix — the 379 XLS-only variables, by family
+## Corrections — recorded so they are not re-derived
 
-Base names, index suffixes such as `:1` / `:1L` collapsed. Generated from the package XML
-by the command in **Method**; `4` is an extraction artefact of that regex, not a variable.
+- **`sim_running: false` does not mean the flight model is stopped.** It read false across
+  three reconnects while the thermal model tracked ambient to five decimals, writes stuck, the
+  key sprang back on its own timer, and the engine started. [da40.md](da40.md)'s zeros signature
+  requires the starter COMMANDED — and is unusable on the XLS anyway, because `STARTER ACTIVE`
+  and `BATTERY LOAD` are dead. Do not use it here.
+- The POH's "Reset: Damage regenerates the variations" is **correct**; a claim here that the
+  code could not do so was wrong (it greps the live name, the reset writes the saved one).
+- A variable "reading 0" may be a truncated name that does not exist — see Method.
+- A held write is not a working control (`STARTER_SWITCH` 4), and a refused single write is
+  not a dead one (`INPUT_MIXTURE` refused only while the spread set was zero).
+
+## Still open
+
+- **Cruise** — the plan's third point; needs the aircraft flown.
+- `ENG_FUEL_PRESS` unit; `RPM_SENS_*` and `OP_PROP_OIL_PRIME` meaning.
+- Lean assist (`DISP_LEAN_*`) — the G1000 Engine page **Assist** softkey was off; red box and
+  detonation onset need a leaning episode.
+- The throttle map, if a panel needs to command an RPM rather than a position.
+- ⚠️ **`msfs_get_lvar` returns 0 for a name that is not registered at all** — `ELEC_MASTER` is
+  not in the XLS package, and the 0 it "read" with the master on meant nothing. Same trap as a
+  truncated name. Check the extract before believing any zero; the master's own variable is
+  stock `ELECTRICAL MASTER BATTERY`.
+
+## Appendix — the 380 XLS-only variables, by family
+
+Base names, index suffixes such as `:1` / `:1L` collapsed; a name may contain `/` (`TB_FF_JET_PRESS_KG/HR`).
+Generated from the package XML by the command in **Method**; `4` is an extraction artefact of that regex, not a variable.
 
 ### Assistance layer (7)
 
@@ -195,7 +216,7 @@ by the command in **Method**; `4` is an extraction artefact of that regex, not a
 
 ### Fuel line, temperature + vapour lock (34)
 
-`ENG_FUEL_FIREWALL_TEMP_C ENG_FUEL_FIREWALL_TEMP_COOLING ENG_FUEL_FIREWALL_TEMP_HEATING ENG_FUEL_FLOW_KG ENG_FUEL_LINE_BOIL ENG_FUEL_LINE_FLOW ENG_FUEL_LINE_FLOW_CHECK ENG_FUEL_LINE_FLOW_FAC ENG_FUEL_LINE_GRAM ENG_FUEL_LINE_IN_G ENG_FUEL_LINE_OUT_G ENG_FUEL_LINE_PRIMED ENG_FUEL_LINE_TEMP ENG_FUEL_LINE_TEMP_COOLING_AIR ENG_FUEL_LINE_TEMP_COOLING_FUEL ENG_FUEL_LINE_TEMP_HEATING ENG_FUEL_OUTSIDE_CYL_GRAM ENG_FUEL_PRESS ENG_FUEL_SYSTEM_FLOW_ENG_G ENG_FUEL_SYSTEM_FLOW_EXCES ENG_FUEL_SYSTEM_FLOW_EXCES_PRESSURE ENG_FUEL_SYSTEM_FLOW_G ENG_FUEL_SYSTEM_FLOW_TO_SERVO_G ENG_FUEL_SYSTEM_GRAM ENG_FUEL_SYSTEM_PRIMED ENG_FUEL_SYSTEM_SERVO_GRAM FUEL_QUANT_SLOSH FUEL_TEMP FUEL_TEMP_BOIL FUEL_TEMP_BOIL_FAC FUEL_TEMP_BOIL_FAC_FF FUEL_TEMP_BOIL_PRESS FUEL_TEMP_PUMP_PRESS_DROP STATE_FUEL_SYSTEM`
+`ENG_FUEL_FIREWALL_TEMP_C ENG_FUEL_FIREWALL_TEMP_COOLING ENG_FUEL_FIREWALL_TEMP_HEATING ENG_FUEL_FLOW_KG/HR ENG_FUEL_LINE_BOIL ENG_FUEL_LINE_FLOW ENG_FUEL_LINE_FLOW_CHECK ENG_FUEL_LINE_FLOW_FAC ENG_FUEL_LINE_GRAM ENG_FUEL_LINE_IN_G/S ENG_FUEL_LINE_OUT_G/S ENG_FUEL_LINE_PRIMED ENG_FUEL_LINE_TEMP ENG_FUEL_LINE_TEMP_COOLING_AIR ENG_FUEL_LINE_TEMP_COOLING_FUEL ENG_FUEL_LINE_TEMP_HEATING ENG_FUEL_OUTSIDE_CYL_GRAM ENG_FUEL_PRESS ENG_FUEL_SYSTEM_FLOW_ENG_G/S ENG_FUEL_SYSTEM_FLOW_EXCES ENG_FUEL_SYSTEM_FLOW_EXCES_PRESSURE ENG_FUEL_SYSTEM_FLOW_G/S ENG_FUEL_SYSTEM_FLOW_TO_SERVO_G/S ENG_FUEL_SYSTEM_GRAM ENG_FUEL_SYSTEM_PRIMED ENG_FUEL_SYSTEM_SERVO_GRAM FUEL_QUANT_SLOSH FUEL_TEMP FUEL_TEMP_BOIL FUEL_TEMP_BOIL_FAC FUEL_TEMP_BOIL_FAC_FF FUEL_TEMP_BOIL_PRESS FUEL_TEMP_PUMP_PRESS_DROP STATE_FUEL_SYSTEM`
 
 ### Fuel selector + fuel spread (3)
 
@@ -209,9 +230,9 @@ by the command in **Method**; `4` is an extraction artefact of that regex, not a
 
 `BC_COOLING BC_COOLING_AIR BC_COOLING_OIL BC_HEATING BC_HEATING_CHT BC_HEATING_FRIC BC_TEMPERATURE BC_TEMP_DIFF BC_TEMP_DIFF_OIL BC_TEMP_INC CHT_AIRFLOW CHT_AIRFLOW_ANG CHT_AIRFLOW_ANG_FAC CHT_AIRFLOW_IND CHT_AIRFLOW_INDUCED CHT_AIRFLOW_TOTAL CHT_AIRFLOW_WIND CHT_AIRF_AX_KNOTS CHT_AIRF_AX_KNOTS_DIFF CHT_AIRF_BETA CHT_AIRF_RAD_KNOTS CHT_C CHT_COOLING CHT_COOLING_OIL CHT_EFF_F CHT_EFF_R CHT_EGT_DELTA_K CHT_F CHT_HEATING_KW CHT_HEAT_EXHT_AIR_KW CHT_HEAT_EXHT_FUEL_KW CHT_HEAT_EXHT_KW CHT_HEAT_FRICTION_KW CHT_HEAT_FUEL_FLOW_KW CHT_HEAT_OUTPUT_KW CHT_PROBE CHT_TEMP_DIFF CHT_TEMP_INC FAILURES_CHT_BAFFLE FAILURES_CHT_OIL`
 
-### Induction + manifold pressure (TB_*) (43)
+### Induction + manifold pressure (TB_*) (44)
 
-`DENSITY_CORRECTION ENG_INT_MANI ENG_INT_MANI_COOLING ENG_INT_MANI_EVAP ENG_INT_MANI_HEATING FILTER_TARGET_MAP INT_AIR_DENSITY INT_AIR_DENSITY_TEMP_FAC TB_CALC_MAP TB_FF_FUEL_FLOW_KG TB_FF_JET_PRESS_G TB_FF_JET_PRESS_KG TB_FF_JET_THROTTLE_KG TB_FF_JET_VENTURI_KG TB_FF_MIXTURE TB_FF_MIXTURE_RATIO TB_FF_SERVO TB_FF_VENTURI_P_LOSS_FAC TB_FF_VENTURI_P_LOSS_PASC TB_FF_VENTURI_SPEED_M TB_FUEL_FLOW_G TB_FUEL_FLOW_GPH TB_INT_AIR_DENSITY_TEMP_FAC TB_INT_PRSS TB_INT_TEMP_C TB_INT_TEMP_F TB_INT_TEMP_K TB_MASS_FLOW_KG TB_POS TB_PRSS_RED TB_PUMP_LOSS_PWR TB_RSRTIC TB_RSRTIC_100000 TB_SET_FIX TB_SET_MAP TB_TARGET_MAP TB_VOL_EFF TB_VOL_EFF_FAC TB_VOL_EFF_HI TB_VOL_EFF_LO TB_VOL_EFF_RPM_HI TB_VOL_EFF_RPM_LO TB_VOL_FLOW_M`
+`DENSITY_CORRECTION ENG_INT_MANI ENG_INT_MANI_COOLING ENG_INT_MANI_EVAP ENG_INT_MANI_HEATING FILTER_TARGET_MAP INT_AIR_DENSITY INT_AIR_DENSITY_TEMP_FAC TB_CALC_MAP TB_FF_FUEL_FLOW_KG/HR TB_FF_JET_PRESS_G/S TB_FF_JET_PRESS_KG/HR TB_FF_JET_PRESS_KG/HR_T TB_FF_JET_THROTTLE_KG/HR TB_FF_JET_VENTURI_KG/HR TB_FF_MIXTURE TB_FF_MIXTURE_RATIO TB_FF_SERVO TB_FF_VENTURI_P_LOSS_FAC TB_FF_VENTURI_P_LOSS_PASC TB_FF_VENTURI_SPEED_M/S TB_FUEL_FLOW_G/S TB_FUEL_FLOW_GPH TB_INT_AIR_DENSITY_TEMP_FAC TB_INT_PRSS TB_INT_TEMP_C TB_INT_TEMP_F TB_INT_TEMP_K TB_MASS_FLOW_KG/HR TB_POS TB_PRSS_RED TB_PUMP_LOSS_PWR TB_RSRTIC TB_RSRTIC_100000 TB_SET_FIX TB_SET_MAP TB_TARGET_MAP TB_VOL_EFF TB_VOL_EFF_FAC TB_VOL_EFF_HI TB_VOL_EFF_LO TB_VOL_EFF_RPM_HI TB_VOL_EFF_RPM_LO TB_VOL_FLOW_M/HR`
 
 ### Levers + prop governor (30)
 
