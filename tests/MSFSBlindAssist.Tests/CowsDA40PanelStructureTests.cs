@@ -275,6 +275,28 @@ public class CowsDA40PanelStructureTests
     }
 
     // ==============================================================================
+    // Engine Start panel (XLS) - the start scan: readiness first, then what a pilot watches
+    // while the starter turns. The ignition key is NOT here: on the XLS it is also the L/R/BOTH
+    // selector for the run-up, and one control on two panels is the heading-bug mistake.
+    [Fact]
+    public void XlsEngineStartIsTheStartScan_AndTheKeyStaysOnMagnetos()
+    {
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        var controls = def.GetPanelControls()["Engine Start"];
+        var display = def.GetPanelDisplayVariables()["Engine Start"];
+
+        Assert.Equal(new[] { "DA40_XLS_AUTO_START" }, controls);
+        Assert.Equal("DA40_XLS_START_READY", display[0]);
+        foreach (var key in new[] { "DA40_XLS_AUTO_STEP", "DA40_XLS_COMBUSTION", "DA40_XLS_CRANK_RPM",
+                     "DA40_MAG_STARTER", "DA40_XLS_RPM", "DA40_XLS_OIL_PRESSURE",
+                     "DA40_XLS_FUEL_PRESSURE", "DA40_PRIME_CYL_1" })
+        {
+            Assert.Contains(key, display);
+        }
+        Assert.DoesNotContain("DA40_MAG_KEY", display);
+        Assert.DoesNotContain("DA40_MAG_KEY", controls);
+    }
+
     // Engine Start panel (NG)
     // ==============================================================================
 
@@ -1195,7 +1217,6 @@ public class CowsDA40PanelStructureTests
     // built from the run-up on the live aircraft (docs/da40-xls-variables.md).
     private static readonly string[] NotBuiltYetOnXls =
     {
-        "Engine Start",
         "Mixture and Propeller",
     };
 

@@ -276,8 +276,11 @@ public partial class CowsDA40Definition
                 return true;
 
             case "DA40_XLS_FUEL_PRESSURE":
-                // Band from the raw bar, figure in the gauge's psi - the CHT rule.
-                displayText = DA40InstrumentBands.Annotate(varKey, value, $"{value * BarToPsi:F0} psi");
+                // Unpowered, the model's fuel logic does not tick and this holds a frozen
+                // number (measured 19.75 after a reload - 286 psi if rendered). Say why.
+                displayText = DA40StartReadiness.FrozenReason(_startMasterOn)
+                    // Band from the raw bar, figure in the gauge's psi - the CHT rule.
+                    ?? DA40InstrumentBands.Annotate(varKey, value, $"{value * BarToPsi:F0} psi");
                 return true;
 
             case "DA40_XLS_FUEL_VAPOUR":

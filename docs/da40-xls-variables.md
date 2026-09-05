@@ -228,10 +228,22 @@ plugin's — and is not built on.
 | Vapour lock is `FUEL_TEMP_BOIL_FAC` multiplying the pressure; the electric pump subtracts a unit from `FUEL_TEMP_BOIL` | Logic 2043–2046 |
 | The stock fuel pressure simvar is the pump side only (6.9 psi with the engine stopped) | — |
 
+## Engine Start — measured
+
+| Fact | Evidence |
+|---|---|
+| **`K:ENGINE_AUTO_START` is COWS's own script**: the Inputs binding writes `1 (>L:INPUT_START, percent)`, and the Logic's Autostart block runs while `INPUT_START` is 1, walking `AUTOSTART_STEP` 0 → 11 in tenths | `COWS_DA40_Inputs.xml` 78; Logic 4439–4610 |
+| The steps: 0 master on (waits for `AS1000_PFD_STATE` 2, zeroes mixture and throttle) · 1 strobes · 2 the **lower** tank (`probe1 ≥ probe2` → RIGHT) · 3 throttle +10 %/tick to 30 % · 4 pump on · 5 mixture +30/tick until any cylinder ≥ required (the Priming formula) · 6 mixture −30/tick to 0 · 7 throttle to 0.10 + alt/10000 × 0.05, timer reset · 8 **crank** (`AUTOSTART_START:1` 1, `AUTOSTART_STARTER_TIMER` +0.1/tick), out at `ENG_COMP_RPM` > 300, **gives up at 7** (step and `INPUT_START` zeroed in the same tick) · 9 mixture +10/tick to 100 − alt/10000 × 50 · 10 pump off · 11 alternator on, `INPUT_START` 0 | Logic, same block |
+| Flooded (any cylinder ≥ 1.6/evap/atomise) skips 3 → 7; already turning (`ENG_COMP_RPM` > 400) skips 0 → 9 | Logic 4441–4447, 4561–4569 |
+| `AUTOSTART_STEP` is residue between runs (read 1 on the ground, idle); `INPUT_START` is the running flag. `K:ENGINE_AUTO_SHUTDOWN` writes it −1 | read 2026-09-05 |
+| ⚠️ **UNPOWERED, THE FUEL LOGIC DOES NOT TICK.** Master off after a reload: `ENG_FUEL_SYSTEM_SERVO_GRAM` 21.56 against a cap that computes to 0.5 + 0.0129, `ENG_FUEL_PRESS` 19.75, `DISP_FP_PROBE` 23.7 (the display probe frozen too). Master on: both 0 within a tick. So a start-readiness judgement checks the master BEFORE anything fuel-derived, and the Fuel panel's pressure row says "master off" rather than rendering the frozen number as 286 psi | measured 2026-09-05 |
+| The `ENG_FUEL_PRESS` unit question is closed by the model's own hand: the G1000 template writes `DISP_FP_PROBE += (ENG_FUEL_PRESS × 14.5 − DISP_FP_PROBE) / 8` | Logic 2086 |
+| `GENERAL ENG COMBUSTION:1` is live on the XLS (0 stopped, 1 running) | read across a start |
+
 ## Still open
 
 - **Cruise** — the plan's third point; needs the aircraft flown.
-- `ENG_FUEL_PRESS` unit; `RPM_SENS_*` and `OP_PROP_OIL_PRIME` meaning.
+- `RPM_SENS_*` and `OP_PROP_OIL_PRIME` meaning.
 - Lean assist (`DISP_LEAN_*`) — the G1000 Engine page **Assist** softkey was off; red box and
   detonation onset need a leaning episode.
 - The throttle map, if a panel needs to command an RPM rather than a position.

@@ -171,7 +171,7 @@ public partial class CowsDA40Definition
     /// to "will this speak", and the tests that ask it must get that one.
     /// </summary>
     public static IReadOnlyCollection<string> SilentCachedReadoutKeys =>
-        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).ToList();
+        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).Concat(XlsStartCapturedKeys).ToList();
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
@@ -237,7 +237,10 @@ public partial class CowsDA40Definition
            || HotkeyCachedReadouts.Contains(varName)
            // The XLS priming inputs: polled so the state can be classified from them,
            // never spoken as numbers - the state is spoken instead, on its crossing.
-           || PrimingCapturedKeys.Contains(varName);
+           || PrimingCapturedKeys.Contains(varName)
+           // The XLS start inputs: the readiness row is derived from them and the
+           // script's narration is spoken from its counter - the numbers stay silent.
+           || XlsStartCapturedKeys.Contains(varName);
 
     /// <summary>
     /// Returning true means "handled" - the generic announcer never runs for that key.
@@ -255,6 +258,9 @@ public partial class CowsDA40Definition
         NoteMagnetoChange(varName, value, announcer);
         // The XLS priming state: its inputs are silent numbers, so this must see them here.
         NotePrimingChange(varName, value, announcer);
+        // The XLS start readiness and auto-start narration: reads the master, selector,
+        // combustion and the captured fuel inputs as they pass; speaks on its own terms.
+        NoteXlsStartChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;
 

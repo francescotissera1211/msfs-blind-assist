@@ -88,6 +88,7 @@ public partial class CowsDA40Definition
         StopBaroAnnounce();
         StopMagnetoAnnounce();
         ResetPrimingState();
+        ResetXlsStartState();
         StopRadioAnnounce();
         StopPowerAnnounce();
         StopLampWatch();
