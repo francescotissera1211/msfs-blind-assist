@@ -96,6 +96,14 @@ public partial class CowsDA40Definition
     /// </summary>
     private void MarkRadioSetByUs() => _radioOwnWriteAt = DateTime.UtcNow;
 
+    /// <summary>
+    /// A standby FREQUENCY the pilot typed, which the panel field already read back - never
+    /// an autopilot selected value, which shares the "_SET" suffix and nothing else.
+    /// </summary>
+    internal static bool IsRadioStandbyKey(string key)
+        => key.StartsWith("DA40_RADIO_", StringComparison.Ordinal)
+           && key.EndsWith("_SET", StringComparison.Ordinal);
+
     private bool NoteRadioChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
         if (!RadioLabels.ContainsKey(varKey)) return false;
@@ -146,8 +154,19 @@ public partial class CowsDA40Definition
         // read it back.
         if (ours)
         {
+            // ⚠️ RADIO STANDBYS ONLY. This tested key.EndsWith("_SET"), which is true of the
+            // standby frequencies AND of all five autopilot selected values -
+            // DA40_AP_ALT_SET, _VS_SET, _IAS_SET, _HDG_SET, _CRS_SET. So typing a COM
+            // standby, or pressing swap, set the "ours" grace and then swallowed any
+            // autopilot preselect that moved inside the next 2.5 seconds - a heading bug
+            // turned on real hardware, or an altitude the G1000 changed, gone silently for a
+            // reason that had nothing to do with either.
+            //
+            // The suppression is justified ONLY for a value MSFSBA itself echoed back as it
+            // was typed; an autopilot preselect that happens to change in the same window is
+            // somebody else's news and must still be spoken.
             foreach (var key in RadioLabels.Keys)
-                if (key.EndsWith("_SET", StringComparison.Ordinal)) pending.Remove(key);
+                if (IsRadioStandbyKey(key)) pending.Remove(key);
             if (pending.Count == 0) return;
         }
 
