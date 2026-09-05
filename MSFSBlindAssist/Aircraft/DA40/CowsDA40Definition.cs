@@ -231,6 +231,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         }
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
+        if (!IsNG) controls[MagnetosPanel] = new List<string>(MagnetoControls);
 
         return controls;
     }
@@ -360,6 +361,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             }
 
             foreach (var kv in BuildEcuVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+        }
+
+        // The XLS's Lycoming: built one panel at a time against the live aircraft, and only
+        // as far as each has been measured (docs/da40-xls-variables.md).
+        if (!IsNG)
+        {
+            foreach (var kv in BuildMagnetoVariables())
             {
                 vars[kv.Key] = kv.Value;
             }
@@ -557,6 +568,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
+        if (!IsNG) d[MagnetosPanel] = new List<string>(MagnetoDisplay);
 
         return d;
     }
@@ -749,6 +761,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleMagnetoSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

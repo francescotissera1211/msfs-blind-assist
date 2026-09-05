@@ -217,7 +217,11 @@ public partial class CowsDA40Definition
 
         // The G1000's VNAV output, polled for the Shift+D readout and never spoken on its own.
         "DA40_VNAV_TOD_DIST",
-        "DA40_VNAV_PATH_AVAIL"
+        "DA40_VNAV_PATH_AVAIL",
+
+        // The XLS tachometer. Cached so the mag-drop call-out can read the RPM the key left
+        // BOTH at; never spoken on its own, it moves several times a second.
+        "DA40_MAG_RPM"
     };
 
     /// <summary>
@@ -241,6 +245,9 @@ public partial class CowsDA40Definition
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);
         NoteBusVoltage(varName, value);
+        // The XLS mag check: the tachometer is silent by design and this must see it, so
+        // the drop can be read from the RPM the key left BOTH at. Never announces itself.
+        NoteMagnetoChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;
 

@@ -1188,10 +1188,13 @@ public class CowsDA40PanelStructureTests
     /// be reused as-is. The XLS comes after the NG is finished, by plan, and until then
     /// this list is what stops those empty panels being mistaken for broken ones.
     /// </summary>
+    // Magnetos came off this list first: it is the ignition key and the starter in one,
+    // built from the run-up on the live aircraft (docs/da40-xls-variables.md).
     private static readonly string[] NotBuiltYetOnXls =
     {
         "Engine Start", "Power and Levers", "Fuel System",
-        "Mixture and Propeller", "Magnetos", "Priming",     };
+        "Mixture and Propeller", "Priming",
+    };
 
     private static bool IsKnownUnbuilt(DA40Variant variant, string panel)
         => NotBuiltYet.Contains(panel)

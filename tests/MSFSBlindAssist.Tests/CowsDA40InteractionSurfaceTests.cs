@@ -46,7 +46,9 @@ public class CowsDA40InteractionSurfaceTests
         ["ECU_TEST1"] = "ECU: test, and the 10-second reset-and-charge hold",
         ["ECU_VOTER1"] = "ECU: voter switch",
         ["MASTER_COVER1"] = "Engine Start: engine master guard",
-        ["STARTER"] = "Engine Start: start key",
+        // One component ID, two aeroplanes. On the NG it is the start key; on the XLS the
+        // same component is the five-position ignition key whose START detent cranks.
+        ["STARTER"] = "Engine Start: start key (NG). Magnetos: ignition key and starter (XLS)",
         ["FUEL"] = "Fuel System: fuel pumps",
         ["FUEL_SELECTOR"] = "Fuel System: fuel valve",
         ["FUEL_WIRE"] = "Fuel System: break the safety wire",
