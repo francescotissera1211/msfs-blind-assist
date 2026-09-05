@@ -517,8 +517,7 @@ public sealed class CowsDA40DisplayForm : Form
                 return true;
             }
 
-            _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_PFD_{knob.Event})");
-            _ = _client.ScrapeNowAsync();
+            _ = TurnRadioKnob(knob.Event);
             return true;
         }
 
@@ -570,6 +569,90 @@ public sealed class CowsDA40DisplayForm : Form
             Utils.Logging.Log.Debug("DA40", $"Close view: {ex.Message}");
             _announcer.AnnounceImmediate("Could not close the window.");
         }
+    }
+
+    /// <summary>
+    /// Turn a radio knob and read the frequency it landed on.
+    ///
+    /// ⚠️ THE DISPLAY NEEDS A FRAME, AND THIS PATH NEVER WAITED FOR ONE. It fired the event
+    /// and scraped in the same breath, so the read came from BEFORE the keystroke: the row
+    /// looked unchanged, nothing was announced, and the pilot's NEXT press read back the
+    /// PREVIOUS one's frequency. Reported as "it was at 710, I pressed twice, I got 715" -
+    /// 715 was the first press, and the radio was already on 725 by the time it was spoken.
+    ///
+    /// PressBezel has carried the identical fix, and its own comment names this symptom
+    /// ("turning a knob kept repeating where it was because the answer came from before the
+    /// keystroke"); the radio knobs simply never got it. A read showing nothing NEW is
+    /// retried rather than believed.
+    ///
+    /// ⚠️ It reads over the COHERENT SOCKET, not the 1 Hz batch, which is what makes a prompt
+    /// answer possible at all - the settle announcer is for changes made ELSEWHERE and must
+    /// stay long enough to outlast a batch period. A knob the pilot just turned is a
+    /// deliberate action with an expected answer, and waiting a second and a half for it is
+    /// what made the tuning feel unreliable.
+    /// </summary>
+    private async Task TurnRadioKnob(string knobEvent)
+    {
+        const string Expr = "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
+
+        string before;
+        try { before = await _client.InvokeAsync(Expr); } catch { before = ""; }
+        if (_disposed) return;
+
+        _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_PFD_{knobEvent})");
+
+        // Bounded retry. A frame is normally enough; a few give the slow case room without
+        // ever leaving the key feeling unanswered.
+        string after = before;
+        for (int i = 0; i < 6 && !_disposed; i++)
+        {
+            await Task.Delay(90);
+            if (_disposed) return;
+            try { after = await _client.InvokeAsync(Expr); } catch { break; }
+            if (after.Length > 0 && after != before) break;
+        }
+        if (_disposed) return;
+
+        _ = _client.ScrapeNowAsync();
+
+        // Speak only the radio that MOVED, and only its frequencies - the whole row carries
+        // TUNING and TRANSMIT, which do not change when a knob steps and are noise on every
+        // press. Nothing changed at all stays silent rather than repeating the old value,
+        // which is the specific lie this method exists to stop telling.
+        string moved = FirstChangedRadio(before, after);
+        if (moved.Length > 0) _announcer.AnnounceImmediate(moved);
+    }
+
+    /// <summary>
+    /// The one radio row that differs, stripped of the flags that do not answer "what is it
+    /// tuned to". Pure so the suite can pin it.
+    /// </summary>
+    internal static string FirstChangedRadio(string before, string after)
+    {
+        if (after.Length == 0 || after == before) return "";
+
+        var b = before.Split('|');
+        var a = after.Split('|');
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            string row = a[i].Trim();
+            if (i < b.Length && b[i].Trim() == row) continue;
+            if (row.Length == 0) continue;
+
+            // "COM 1, active 127.850, standby 121.715, TUNING, TRANSMIT" keeps the first
+            // three parts and drops the flags.
+            var parts = row.Split(',');
+            var keep = new System.Collections.Generic.List<string>();
+            foreach (var p in parts)
+            {
+                string t = p.Trim();
+                if (t == "TUNING" || t == "TRANSMIT") continue;
+                keep.Add(t);
+            }
+            return string.Join(", ", keep);
+        }
+        return "";
     }
 
     private async Task PressBezel(string eventSuffix, string spoken)
