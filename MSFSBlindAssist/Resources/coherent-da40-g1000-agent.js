@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 10;
+    A.VERSION = 14;
 
     function visible(el) {
         if (!el) return false;
@@ -1171,6 +1171,58 @@
             if (out.length) return out;
         }
 
+        // THE NAVIGRAPH FLIGHT PLAN CATALOG. Its plan list is a plain stack of divs under
+        // an overflow-hidden scroller - 99 numbered slots, most of them "_ _ _ _/_ _ _ _" -
+        // with two status overlays ("Loading flights...", "Importing...") mounted beside
+        // them and shown only while true. Read generically, all 99 welded into one row
+        // with both overlays' text in it whether shown or not. One row per plan, the empty
+        // tail collapsed, and an overlay only when it is actually up.
+        var stack = box.querySelector("[class*='overflow-hidden']");
+        if (stack) {
+            var overlays = [];
+            var listEl = null;
+            for (var sc = 0; sc < stack.children.length; sc++) {
+                var kid = stack.children[sc];
+                if (!visible(kid)) continue;
+                if (/absolute/.test(String(kid.className))) { var ot = text(kid); if (ot) overlays.push(ot); }
+                else if (!listEl && kid.children.length >= 5) listEl = kid;
+            }
+            for (var o = 0; o < overlays.length; o++) out.push(overlays[o]);
+            if (listEl) {
+                var firstEmpty = -1, filled = 0;
+                for (var li = 0; li < listEl.children.length; li++) {
+                    var item = listEl.children[li];
+                    if (!visible(item)) continue;
+                    var it = text(item);
+                    if (!it) continue;
+                    // "1EGNX/EGHI" - the slot number and the plan run together in the DOM.
+                    it = it.replace(/^(\d+)(?=\S)/, "$1 ");
+                    if (/_ _/.test(it)) { if (firstEmpty < 0) firstEmpty = li + 1; continue; }
+                    filled++;
+                    var line = it;
+                    if (classList(item).indexOf("highlight-select") >= 0 ||
+                        item.querySelector(".highlight-select")) line += ", selected";
+                    out.push(line);
+                }
+                if (firstEmpty > 0) out.push(firstEmpty + " to " + listEl.children.length + " empty");
+            }
+            if (out.length) return out;
+        }
+
+        // A box of label / value pairs in plain flex rows ("Departure EGNX"), which the
+        // one-level walk welds into "Departure EGNX Destination EGHI Total Distance ...".
+        var pairs = box.querySelectorAll("div.flex");
+        var pairLines = [];
+        for (var pr = 0; pr < pairs.length; pr++) {
+            var spans = pairs[pr].children;
+            if (spans.length !== 2 || !visible(pairs[pr])) continue;
+            if (spans[0].tagName !== "SPAN" || spans[1].tagName !== "SPAN") continue;
+            var pl = text(spans[0]), pv = text(spans[1]);
+            if (!pl && !pv) continue;
+            pairLines.push(pl + ": " + (pv || "blank"));
+        }
+        if (pairLines.length >= 2) return pairLines;
+
         var rows = box.querySelectorAll(".mfd-system-setup-row, .mfd-setup-row, " +
                                         ".popout-menu-item, .mfd-status-row");
         for (var i = 0; i < rows.length; i++) {
@@ -1874,6 +1926,19 @@
         // the frame it is asked to and waiting a second for it is an eternity.
         var key = "";
         try { key = A.M.viewKey(); } catch (e) { key = ""; }
+
+        // A CHANGE OF VIEW SAYS WHERE IT LANDED. Accepting the Catalog's "Activate SimBrief
+        // flight plan?" jumps to the flight plan page, and the readback was "SILVA" - the
+        // leg the new page happened to focus - with nothing to say the page had changed.
+        // The first readback after the view changes leads with the page title (a dialog
+        // already leads with its own question). Only the first: a title on every field of
+        // a page is the "Cursor on" fourteen times over again.
+        if (A._saidView !== undefined && key !== A._saidView && key !== "MessageDialog") {
+            var title = "";
+            try { title = A.pageTitle(); } catch (e) { title = ""; }
+            if (title && summary.indexOf(title) < 0) summary = title + (summary ? ", " + summary : "");
+        }
+        A._saidView = key;
 
         // WHICH field the cursor is on, as a number. Without it the window cannot tell a
         // knob turn that moved from one that could not - the knob does NOT wrap at the end
@@ -2908,6 +2973,13 @@
     A.M.say = function () {
         var key = A.M.viewKey();
 
+        // A message dialog answers with its QUESTION before anything the list or the
+        // fields would say - it is the reason the pilot is looking at the screen.
+        if (key === "MessageDialog") {
+            var asked = A.dialogSay();
+            if (asked) return asked;
+        }
+
         var L = A.M.list();
         if (L) {
             var lead = key === "PageSelect" ? "Page" :
@@ -3022,6 +3094,9 @@
         // but that view registers no controls at all, so the readback said nothing and the
         // button read as dead. Reported as "either it's not clickable, or it's clickable
         // and it's not being clicked"; it was neither.
+        // A MESSAGE DIALOG IS ITS QUESTION. "Activate SimBrief flight plan?" read back as
+        // "NAV, OK" - a group label borrowed from the wrong ancestor and the focused
+        // button - so a pilot who pressed Activate heard nothing that said what OK would do.
         if (!f2) return A.M.dialogText();
 
         // A CHECKLIST POPUP HAS TO SAY WHICH LIST IT IS. Both popups are plain lists of
@@ -3249,6 +3324,7 @@
         rows.push("Page: " + (A.pageTitle() || "not shown"));
 
         A.pushUnits(rows);
+        A.pushDialog(rows);
         A.pushFields(rows);
 
         var bar = A.navDataBar();
@@ -3373,6 +3449,7 @@
         // The PFD's popouts - the transponder, the timer, the nearest-airport window - are
         // built from the same controls as the MFD's setup pages, so the same reader serves
         // them and a pilot can scan a popout instead of turning through it.
+        A.pushDialog(rows);
         A.pushFields(rows);
 
         A.pushPanes(rows);
@@ -3390,6 +3467,36 @@
     ///
     /// The values come from the instrument's own controls, so they are what the aeroplane
     /// has, not what a stylesheet happens to render.
+    /// The open message dialog - the G1000's yes/no box (.popout-dialog.msgdialog): its
+    /// question, the focused button, and the other. Rendered as ONE row placed before the
+    /// fields, because CowsDA40DisplayForm speaks the FIRST ROW THAT CHANGED after a
+    /// softkey press: "Activate" opening this dialog used to change "Fields (99)" to
+    /// "Fields (2)" first, and that was what got spoken.
+    A.dialogSay = function () {
+        var box = firstVisible(".popout-dialog.msgdialog.open");
+        if (!box) return "";
+        var question = spacedText(box.querySelector(".msgdialog-content"));
+        var buttons = box.querySelectorAll(".action-button");
+        var focused = "", others = [];
+        for (var i = 0; i < buttons.length; i++) {
+            if (!visible(buttons[i])) continue;
+            var label = text(buttons[i]);
+            if (!label) continue;
+            if (classList(buttons[i]).indexOf("highlight-select") >= 0) focused = label;
+            else others.push(label);
+        }
+        var parts = [];
+        if (question) parts.push(question);
+        if (focused) parts.push(focused);
+        if (others.length) parts.push("or " + others.join(", "));
+        return parts.join(", ");
+    };
+
+    A.pushDialog = function (rows) {
+        var said = A.dialogSay();
+        if (said) rows.push("Dialog: " + said);
+    };
+
     A.pushFields = function (rows) {
         var fields = [];
         try { fields = A.M.fieldRows(); } catch (e) { fields = []; }
