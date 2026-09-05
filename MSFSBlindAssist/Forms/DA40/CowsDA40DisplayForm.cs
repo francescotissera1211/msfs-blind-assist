@@ -379,11 +379,25 @@ public sealed class CowsDA40DisplayForm : Form
         // panel's own buttons, which drive the stock events and are already proven.
         // ⚠️ ONLY THE PUSH. The four TURN events of each radio knob are NOT here - see
         // RadioKnobKeys below, and the measurement that put them there.
-        [Keys.Alt | Keys.Enter]                = ("COM_Push", "COM tuning box"),
-        [Keys.Control | Keys.Alt | Keys.Enter] = ("NAV_Push", "NAV tuning box"),
-
         [Keys.Control | Keys.PageUp]   = ("RANGE_INC", "range out"),
         [Keys.Control | Keys.PageDown] = ("RANGE_DEC", "range in")
+    };
+
+    /// <summary>
+    /// THE TWO KNOB PUSHES, which move the TUNING box between radio 1 and radio 2.
+    ///
+    /// ⚠️ They keep the SOCKET transport (the exception to the exception - a push reaches
+    /// the instrument through its own onInteractionEvent, while the four TURNS of the same
+    /// knob reach the radio only over SimConnect) but they are NOT in BezelKeys any more,
+    /// because what a bezel key answers with is the PAGE TITLE and that is the wrong answer
+    /// here. A push does not change the page; it changes which radio the next turn will
+    /// retune, and announcing the PFD summary for it left a pilot who had just pushed with
+    /// no way to tell whether they were about to move COM 1 or COM 2.
+    /// </summary>
+    private static readonly Dictionary<Keys, (string Event, string Spoken)> RadioPushKeys = new()
+    {
+        [Keys.Alt | Keys.Enter]                = ("COM_Push", "COM tuning box"),
+        [Keys.Control | Keys.Alt | Keys.Enter] = ("NAV_Push", "NAV tuning box")
     };
 
     /// <summary>
@@ -533,6 +547,24 @@ public sealed class CowsDA40DisplayForm : Form
             return true;
         }
 
+        // ⚠️ THE KNOB PUSH ANSWERS WITH THE RADIO IT LANDED ON, not the page summary.
+        // It is a bezel key by transport (it reaches the instrument only through the
+        // socket) but the page title is the wrong answer to it - a push moves the TUNING
+        // box between radio 1 and 2, and what the pilot needs back is which radio the knob
+        // is now on and what its standby is, because that is what the next turn will move.
+        // Routed here rather than through PressBezel, which announced the whole PFD summary
+        // and left "which COM am I about to tune" unanswerable (live report).
+        if (RadioPushKeys.TryGetValue(keyData, out var push))
+        {
+            if (_side != "PFD")
+            {
+                _announcer.AnnounceImmediate("The radios are tuned on the PFD, not the MFD.");
+                return true;
+            }
+            _ = PushRadioTuningBox(push.Event, push.Spoken);
+            return true;
+        }
+
         if (BezelKeys.TryGetValue(keyData, out var bezel))
         {
             // Not a bezel button at all — it closes whatever view is sitting OVER the page.
@@ -669,6 +701,112 @@ public sealed class CowsDA40DisplayForm : Form
         _announcer.AnnounceImmediate(moved.Spoken);
         }
         finally { try { _knobGate.Release(); } catch { } }
+    }
+
+    /// <summary>
+    /// Push the knob, then say which radio it landed on and what that radio's standby is.
+    ///
+    /// ⚠️ THE ONE THING A PUSH HAS TO ANSWER. The knob acts on exactly one radio per side,
+    /// so pushing it is how a pilot chooses between COM 1 and COM 2 - and until this existed
+    /// the key said nothing a pilot could use (the PFD page summary, which does not change
+    /// when the box moves), so "which COM am I about to tune" had no answer at all and the
+    /// next turn retuned whichever radio happened to hold the box. Reported from the cockpit
+    /// as Alt+Enter saying nothing.
+    ///
+    /// It shares <see cref="_knobGate"/> with the TURNS deliberately: a push and a turn are
+    /// the same knob, both read the same rows back, and letting them overlap is what made
+    /// one change announce three times.
+    /// </summary>
+    private async Task PushRadioTuningBox(string eventSuffix, string spoken)
+    {
+        const string Expr = "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
+
+        await _knobGate.WaitAsync();
+        try
+        {
+            string before;
+            try { before = await _client.InvokeAsync(Expr); } catch { before = ""; }
+            if (_disposed) return;
+
+            var (_, _, _, _, accepted) = await FireAndRead($"AS1000_{_side}_{eventSuffix}");
+            if (_disposed || !accepted) return;
+
+            // Same bounded retry the turns use, and for the same reason: read in the same
+            // breath as the keystroke and the answer comes from before it.
+            string after = before;
+            for (int i = 0; i < 6 && !_disposed; i++)
+            {
+                await Task.Delay(90);
+                if (_disposed) return;
+                try { after = await _client.InvokeAsync(Expr); } catch { break; }
+                if (after.Length > 0 && after != before) break;
+            }
+            if (_disposed) return;
+
+            _ = _client.ScrapeNowAsync();
+
+            // Falling back to the key's own name keeps a push that moved nothing from
+            // sounding like a dead key - which is the whole failure this replaces.
+            string moved = TuningCursorMove(before, after);
+            _announcer.AnnounceImmediate(moved.Length > 0 ? moved : spoken);
+        }
+        finally { try { _knobGate.Release(); } catch { } }
+    }
+
+    /// <summary>
+    /// The radio that GAINED the tuning box, and its standby. Pure so the suite can pin it.
+    ///
+    /// ⚠️ It reports the row that gained the marker, never the one that lost it - a push
+    /// changes two rows and only one of them is where the knob now is.
+    ///
+    /// ⚠️ AND IT NAMES A FAILED RADIO. This does not breach the ruling that a failed radio
+    /// is scanned for rather than announced: that ruling is about UNPROMPTED speech, and
+    /// this is the answer to a key the pilot just pressed, in the moment they have chosen
+    /// that radio - which a sighted pilot gets from the red X the instant the box lands on
+    /// it. Staying silent here is what cost a session: two pushes parked the box on a failed
+    /// COM 2, the knob then moved nothing, and the radios were reported broken.
+    /// </summary>
+    internal static string TuningCursorMove(string before, string after)
+    {
+        if (after.Length == 0) return "";
+
+        var a = after.Split('|');
+        var b = before.Split('|');
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            string rowAfter = a[i].Trim();
+            string rowBefore = i < b.Length ? b[i].Trim() : "";
+            if (rowAfter.Length == 0) continue;
+            if (!HasField(rowAfter, "TUNING") || HasField(rowBefore, "TUNING")) continue;
+
+            var fa = rowAfter.Split(',');
+            string radio = fa[0].Trim();                       // "COM 2"
+            if (radio.Length == 0) continue;
+
+            string standby = "";
+            bool failed = false;
+            for (int f = 1; f < fa.Length; f++)
+            {
+                string val = fa[f].Trim();
+                if (val.StartsWith("standby", StringComparison.Ordinal)) standby = val;
+                else if (val == "FAILED") failed = true;
+            }
+
+            string said = standby.Length > 0 ? $"{radio} tuning, {standby}" : $"{radio} tuning";
+            return failed ? said + ", failed" : said;
+        }
+
+        return "";
+    }
+
+    /// <summary>Whether a scraped row carries <paramref name="field"/> as a whole field.</summary>
+    private static bool HasField(string row, string field)
+    {
+        if (row.Length == 0) return false;
+        foreach (string part in row.Split(','))
+            if (part.Trim() == field) return true;
+        return false;
     }
 
     /// <summary>
