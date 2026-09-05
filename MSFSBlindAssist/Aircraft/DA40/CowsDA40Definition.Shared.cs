@@ -177,6 +177,13 @@ public partial class CowsDA40Definition
         "DA40_CTL_AILERON",
         "DA40_CTL_RUDDER",
 
+        // The three bus voltages the master's read-back speaks. Cached so that announcement
+        // can read them; never spoken on their own, because a voltage moves continuously in
+        // flight and would talk over everything.
+        "DA40_ELEC_BUS_MAIN_VOLT",
+        "DA40_ELEC_BUS_ESS_VOLT",
+        "DA40_ELEC_BUS_BATT_VOLT",
+
         // The elevator STICK. Never a row and never spoken on its own - it exists so the
         // surface can be checked against it, which is the only way to tell a jam from an
         // axis sitting off centre. See DescribeElevatorStickAgreement.
@@ -228,8 +235,13 @@ public partial class CowsDA40Definition
         // Captured BEFORE the silence gate: the stick is silent by design, and a gate that
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);
+        NoteBusVoltage(varName, value);
 
         if (IsSilentCachedReadout(varName)) return true;
+
+        // ⚠️ Returns false by design - the switch keeps its own immediate announcement and
+        // this only ARMS the bus read-back that follows it. See NotePowerSwitchChange.
+        NotePowerSwitchChange(varName, value, announcer);
 
         // A door is OPEN or CLOSED, never "65.4" - the percentage sweeps as the canopy
         // swings and used to announce every step of it.

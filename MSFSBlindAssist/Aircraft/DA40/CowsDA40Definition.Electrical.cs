@@ -112,12 +112,16 @@ public partial class CowsDA40Definition
         // pilot infers from which instruments are alive. Raw values, per bus — never a
         // single "electrical OK".
 
-        AddReadout(v, "DA40_ELEC_BUS_MAIN_VOLT", "ELEC_BUS_MAIN_VOLT", "Main Bus Volts", "volts", "F1");
+        // ⚠️ THESE THREE ARE CACHED, the rest stay OnRequest. Batch membership needs
+        // Continuous AND IsAnnounced, and they are silenced in ProcessSimVarUpdate - the
+        // master's read-back is the one thing that speaks them, and a voltage that announced
+        // on every change would talk continuously in flight.
+        AddCachedReadout(v, "DA40_ELEC_BUS_MAIN_VOLT", "ELEC_BUS_MAIN_VOLT", "Main Bus Volts", "volts", "F1");
         AddReadout(v, "DA40_ELEC_BUS_MAIN_AMPS", "ELEC_BUS_MAIN_AMPS", "Main Bus Amps", "amperes", "F1");
-        AddReadout(v, "DA40_ELEC_BUS_ESS_VOLT", "ELEC_BUS_ESS_VOLT", "Essential Bus Volts", "volts", "F1");
+        AddCachedReadout(v, "DA40_ELEC_BUS_ESS_VOLT", "ELEC_BUS_ESS_VOLT", "Essential Bus Volts", "volts", "F1");
         AddReadout(v, "DA40_ELEC_BUS_ESS_AMPS", "ELEC_BUS_ESS_AMPS", "Essential Bus Amps", "amperes", "F1");
         AddReadout(v, "DA40_ELEC_BUS_EMER_VOLT", "ELEC_BUS_EMER_VOLT", "Emergency Bus Volts", "volts", "F1");
-        AddReadout(v, "DA40_ELEC_BUS_BATT_VOLT", "ELEC_BUS_BATT_VOLT", "Battery Bus Volts", "volts", "F1");
+        AddCachedReadout(v, "DA40_ELEC_BUS_BATT_VOLT", "ELEC_BUS_BATT_VOLT", "Battery Bus Volts", "volts", "F1");
         // Stays live with the master off — it is the permanently hot bus.
         AddReadout(v, "DA40_ELEC_BUS_HOT_VOLT", "ELEC_BUS_HOT_VOLT", "Hot Battery Bus Volts", "volts", "F1");
         AddReadout(v, "DA40_ELEC_BUS_ECU1_VOLT", "ELEC_BUS_ECU1_VOLT", "ECU Bus Volts", "volts", "F1");
@@ -144,6 +148,19 @@ public partial class CowsDA40Definition
         AddReadout(v, "DA40_ELEC_DISP_AMPS", "DISP_AMPS", "Indicated Amps", "amperes", "F1");
 
         return v;
+    }
+
+    /// <summary>
+    /// The same readout, but reaching the shared batch CACHE so something other than a panel
+    /// can read it. Continuous AND IsAnnounced is what batch membership requires; the silence
+    /// comes from SilentCachedReadouts, never from IsAnnounced = false.
+    /// </summary>
+    private static void AddCachedReadout(Dictionary<string, SimVarDefinition> v, string key,
+        string lvar, string display, string units, string format)
+    {
+        AddReadout(v, key, lvar, display, units, format);
+        v[key].UpdateFrequency = UpdateFrequency.Continuous;
+        v[key].IsAnnounced = true;
     }
 
     /// <summary>Read-only numeric L:var readout for a status display.</summary>
