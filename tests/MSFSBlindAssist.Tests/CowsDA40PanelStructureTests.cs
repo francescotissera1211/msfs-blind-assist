@@ -12,6 +12,17 @@ namespace MSFSBlindAssist.Tests;
 /// with no error anywhere. That trap cost the HS787 seven empty Flight Data panels
 /// (docs/hs787.md), and it is silent — only a test catches it.
 /// </summary>
+/// ⚠️ CORRECTION: "CACHED" IS NOT THE SAME AS "BATCH-COVERED", AND THIS FILE USED TO CONFLATE
+/// THEM. The predicate below was Continuous AND IsAnnounced AND NOT ExcludeFromBatch, which is
+/// the test for riding the shared 1 Hz BATCH. The CACHE is wider: SetupDataDefinitions gives an
+/// ExcludeFromBatch var its OWN periodic subscription, and its deliveries land in
+/// ProcessIndividualVariableResponse, which writes lastVariableValues exactly as the batch path
+/// does. So a per-var subscription caches too - verified in that method, not inferred.
+///
+/// It matters because the fast radio and altimeter subscales are ExcludeFromBatch ON PURPOSE:
+/// that is what earns them a SIM_FRAME subscription instead of a 1 Hz sample. Under the old
+/// predicate every one of them read as "not cached" and this test failed on a change that was
+/// correct.
 public class CowsDA40PanelStructureTests
 {
     private static CowsDA40Definition Ng() => new(DA40Variant.NG);
@@ -1525,8 +1536,9 @@ public class CowsDA40PanelStructureTests
     public void EveryVariableReadFromTheCacheIsBatchEligible(DA40Variant variant)
     {
         // CONTINUOUS ALONE IS NOT ENOUGH. Batch membership - the thing that actually gets
-        // a variable polled and cached - is Continuous AND IsAnnounced AND not
-        // ExcludeFromBatch (SimConnectManager.Setup.cs). A Continuous variable with
+        // a variable polled and cached - is Continuous AND IsAnnounced. ⚠️ It is NOT "and not
+        // ExcludeFromBatch": that flag chooses the shared 1 Hz batch or a per-var
+        // subscription, and BOTH end in lastVariableValues. A Continuous variable with
         // IsAnnounced false falls to the individual-data-def branch, which is only read on
         // request, so it never reaches the cache: that is why B, F and W answered "not
         // available yet" even after being pointed at the right keys.
@@ -1543,7 +1555,13 @@ public class CowsDA40PanelStructureTests
             var v = vars[key];
             Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous, v.UpdateFrequency);
             Assert.True(v.IsAnnounced, $"{key} is Continuous but not IsAnnounced, so it is never batched or cached");
-            Assert.False(v.ExcludeFromBatch, $"{key} is excluded from the batch, so it is never cached");
+            // ⚠️ ExcludeFromBatch is NOT checked, and asserting it here was wrong. It decides
+            // WHICH subscription carries the variable, not whether it is cached: an excluded
+            // var gets its OWN periodic subscription and its deliveries land in
+            // ProcessIndividualVariableResponse, which writes lastVariableValues exactly as
+            // the batch path does. The fast radio and altimeter subscales are excluded ON
+            // PURPOSE - that is what earns them SIM_FRAME instead of a 1 Hz sample - and this
+            // line failed them for being faster.
         }
     }
 

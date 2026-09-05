@@ -29,6 +29,13 @@ namespace MSFSBlindAssist.Tests;
 /// announcements back. The cure for the lag is a faster SAMPLE, which is a data-definition
 /// budget question and not a tuning one.
 ///
+/// ⚠️ THE RULE IS "OUTLAST THE SAMPLE", NOT "EXCEED ONE SECOND". A value moved onto a per-var
+/// SIM_FRAME subscription (ExcludeFromBatch + HighFrequency, as the radio frequencies and both
+/// altimeter subscales now are) arrives within a FRAME, so its settle should be SHORT - holding
+/// it at 1200 ms would keep the very lag that made tuning feel a beat behind. Such a constant
+/// carries a FAST-SAMPLED marker beside it, so the exemption is taken deliberately and sits
+/// next to the reasoning rather than in this test.
+///
 /// ⚠️ HOLD durations are a different thing entirely and are deliberately not covered: a
 /// momentary control needs a REPEATING write for a fixed duration (ECU test 26 s, fuel wire
 /// 1.5 s, gyro cage 700 ms), which has nothing to do with when a value is read back.
@@ -61,13 +68,27 @@ public class CowsDA40SettleExceedsBatchTests
         int found = 0;
 
         foreach (string file in Directory.EnumerateFiles(folder, "*.cs"))
-            foreach (Match m in rx.Matches(File.ReadAllText(file)))
+        {
+            string src = File.ReadAllText(file);
+            foreach (Match m in rx.Matches(src))
             {
                 found++;
                 int ms = int.Parse(m.Groups[2].Value);
-                if (ms <= BatchPeriodMs)
-                    offenders.Add($"{Path.GetFileName(file)}: {m.Groups[1].Value} = {ms}");
+                if (ms > BatchPeriodMs) continue;
+
+                // ⚠️ THE RULE IS "OUTLAST THE SAMPLE", NOT "EXCEED ONE SECOND". A variable
+                // moved onto a per-var SIM_FRAME subscription (ExcludeFromBatch +
+                // HighFrequency) is delivered within a frame, so its settle SHOULD be short -
+                // forcing 1200 ms on it would reintroduce exactly the lag that made tuning
+                // feel a beat behind. The opt-out is a marker in the 40 lines above the
+                // constant, so it can only be taken deliberately and next to the reasoning.
+                int at = m.Index;
+                int from = Math.Max(0, at - 2200);
+                if (src.Substring(from, at - from).Contains("FAST-SAMPLED")) continue;
+
+                offenders.Add($"{Path.GetFileName(file)}: {m.Groups[1].Value} = {ms}");
             }
+        }
 
         Assert.True(found > 0, "No settle constants found - has the naming convention changed?");
         Assert.True(offenders.Count == 0,

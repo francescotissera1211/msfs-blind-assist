@@ -106,6 +106,15 @@ public partial class CowsDA40Definition
             // the swap announcement had nothing to read - "COM 2 does not remember".
             // The generic announcer is kept out by NoteRadioChange, not by this flag.
             IsAnnounced = true,
+            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH. A frequency the pilot is TURNING arrives
+            // once a second on the batch, which is slower than they can turn it - so the
+            // settle had to be longer than a batch period just to tell "still moving" from
+            // "stopped", and every read-back was a beat behind. ExcludeFromBatch +
+            // HighFrequency gives a per-var SIM_FRAME subscription with the CHANGED flag,
+            // exactly as G_FORCE uses for the touchdown spike the batch missed: a static
+            // radio costs nothing, and a moving one is current within a frame.
+            ExcludeFromBatch = true,
+            HighFrequency = true,
             Format = "F3",
             HelpText = help
         };
@@ -139,6 +148,15 @@ public partial class CowsDA40Definition
             // nothing at all. Continuous and announced; the settle timer speaks it.
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
+            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH. A frequency the pilot is TURNING arrives
+            // once a second on the batch, which is slower than they can turn it - so the
+            // settle had to be longer than a batch period just to tell "still moving" from
+            // "stopped", and every read-back was a beat behind. ExcludeFromBatch +
+            // HighFrequency gives a per-var SIM_FRAME subscription with the CHANGED flag,
+            // exactly as G_FORCE uses for the touchdown spike the batch missed: a static
+            // radio costs nothing, and a moving one is current within a frame.
+            ExcludeFromBatch = true,
+            HighFrequency = true,
             RenderAsReadOnlyStatus = true,
             Format = "F3"
         };

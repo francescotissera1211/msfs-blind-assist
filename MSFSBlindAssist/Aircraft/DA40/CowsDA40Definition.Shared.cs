@@ -41,7 +41,12 @@ public partial class CowsDA40Definition
             Type = SimVarType.SimVar,
             Units = "inHg",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true
+            IsAnnounced = true,
+            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH - a subscale the pilot is TURNING moves
+            // faster than the batch samples it. Same reasoning as the radio frequencies and
+            // as G_FORCE's touchdown spike; CHANGED means a still altimeter costs nothing.
+            ExcludeFromBatch = true,
+            HighFrequency = true
             // NOT excluded from the Monitor Manager any more: it announces now (debounced,
             // once the knob settles), so its Ctrl+M row mutes something real. The rule is
             // that a checkbox which silences nothing should not exist - the converse is

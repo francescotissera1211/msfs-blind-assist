@@ -75,6 +75,13 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
+            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH - a subscale the pilot is TURNING moves faster
+            // than the batch samples it, which is what forced the settle to outlast a batch
+            // period and left every read-back a beat behind. Same reasoning as the radio
+            // frequencies and as G_FORCE's touchdown spike; CHANGED means a still altimeter
+            // costs nothing.
+            ExcludeFromBatch = true,
+            HighFrequency = true,
             // A TEXT FIELD, not a slider. MainForm's TrackBar is hardcoded 0-100 and maps
             // the value as a PERCENTAGE of the slider range — right for a lighting knob,
             // but it reported this subscale as "0 to 100" instead of 28 to 31.5. The key

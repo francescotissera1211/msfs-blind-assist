@@ -25,6 +25,17 @@ namespace MSFSBlindAssist.Tests;
 /// second one untouched. This one SCANS the hotkey source for every cache read, so a key
 /// added tomorrow is covered without anybody remembering to add it here.
 /// </summary>
+/// ⚠️ CORRECTION: "CACHED" IS NOT THE SAME AS "BATCH-COVERED", AND THIS FILE USED TO CONFLATE
+/// THEM. The predicate below was Continuous AND IsAnnounced AND NOT ExcludeFromBatch, which is
+/// the test for riding the shared 1 Hz BATCH. The CACHE is wider: SetupDataDefinitions gives an
+/// ExcludeFromBatch var its OWN periodic subscription, and its deliveries land in
+/// ProcessIndividualVariableResponse, which writes lastVariableValues exactly as the batch path
+/// does. So a per-var subscription caches too - verified in that method, not inferred.
+///
+/// It matters because the fast radio and altimeter subscales are ExcludeFromBatch ON PURPOSE:
+/// that is what earns them a SIM_FRAME subscription instead of a 1 Hz sample. Under the old
+/// predicate every one of them read as "not cached" and this test failed on a change that was
+/// correct.
 public class CowsDA40HotkeyCacheTests
 {
     private static string HotkeySource()
@@ -75,7 +86,7 @@ public class CowsDA40HotkeyCacheTests
             // power lever and the XLS's magnetos are each absent from the other.
             if (!vars.TryGetValue(key, out var v)) continue;
 
-            if (v.UpdateFrequency != UpdateFrequency.Continuous || !v.IsAnnounced || v.ExcludeFromBatch)
+            if (v.UpdateFrequency != UpdateFrequency.Continuous || !v.IsAnnounced)
             {
                 broken.Add($"{key} ({v.UpdateFrequency}, announced={v.IsAnnounced}, " +
                            $"excluded={v.ExcludeFromBatch})");
@@ -103,7 +114,7 @@ public class CowsDA40HotkeyCacheTests
 
         foreach (var (key, v) in vars)
         {
-            if (v.UpdateFrequency != UpdateFrequency.Continuous || !v.IsAnnounced || v.ExcludeFromBatch)
+            if (v.UpdateFrequency != UpdateFrequency.Continuous || !v.IsAnnounced)
             {
                 continue;
             }

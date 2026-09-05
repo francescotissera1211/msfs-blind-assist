@@ -45,23 +45,19 @@ public partial class CowsDA40Definition
     /// <summary>
     /// How still the tuning must be before the frequency is spoken.
     ///
-    /// ⚠️ THIS MUST EXCEED ONE BATCH PERIOD, AND AT 300 ms IT DID NOT. The continuous batch
-    /// samples at 1 Hz, so a knob swept for several seconds delivers a NEW value every second
-    /// and a 300 ms settle expired between every pair of them - announcing each intermediate
-    /// frequency the knob passed through instead of the one it stopped on. That is the
-    /// "it announces 700, 800" report: those were real readings, a second apart, mid-sweep.
+    /// ⚠️ A SETTLE MUST OUTLAST THE SAMPLE PERIOD OF WHAT FEEDS IT, and for a long time that
+    /// meant 1200 ms - the frequencies rode the 1 Hz continuous batch, so a shorter settle
+    /// expired BETWEEN deliveries and announced every intermediate frequency the knob passed
+    /// through. The cost was that every read-back was a beat behind, which is the other half
+    /// of what made tuning feel unreliable.
     ///
-    /// Just over the period is the whole trick: while the knob is moving each delivery
-    /// restarts the timer, so nothing speaks; when it stops, no further delivery arrives and
-    /// the timer runs out on the resting value.
-    ///
-    /// ⚠️ IT COSTS LAG AND THERE IS NO WAY ROUND THAT AT 1 Hz. Worst case is one batch period
-    /// to notice the last change plus this settle - a little over two seconds. Shortening it
-    /// does not buy speed, it buys the intermediate announcements back; the only real cure is
-    /// a faster sample than the batch offers, which is a data-definition budget question and
-    /// not a tuning one.
+    /// FAST-SAMPLED: the frequencies now run on a per-var SIM_FRAME subscription
+    /// (ExcludeFromBatch + HighFrequency on each of the eight), so a moving value arrives
+    /// within a frame rather than within a second and 250 ms is comfortably longer than the
+    /// gap between two deliveries. That is what buys BOTH properties at once: no intermediate
+    /// announcements, and an answer that lands about as fast as the pilot let go of the knob.
     /// </summary>
-    private const int RadioSettleMs = 1200;
+    private const int RadioSettleMs = 250;
 
     /// <summary>How long after MSFSBA's own set or swap to stay quiet.</summary>
     private const int RadioOwnWriteGraceMs = 2500;
