@@ -232,6 +232,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) controls[EngineStartPanel] = new List<string>(EngineStartControls);
         if (IsNG) controls[EcuPanel] = new List<string>(EcuControls);
         if (!IsNG) controls[MagnetosPanel] = new List<string>(MagnetoControls);
+        if (!IsNG) controls[PowerPanel] = new List<string>(XlsPowerControls);
 
         return controls;
     }
@@ -374,6 +375,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             {
                 vars[kv.Key] = kv.Value;
             }
+
+            foreach (var kv in BuildXlsPowerVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
         }
 
         PromoteHotkeyReadouts(vars);
@@ -427,6 +433,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "DA40_POWER_FUEL_FLOW",
         "DA40_ELEC_BUS_MAIN_VOLT",
         "DA40_ELEC_DISP_AMPS",
+
+        // The XLS's answers to the same keys. Only the ones a variant defines are promoted,
+        // so listing both sets here is what lets one hotkey serve two engines.
+        "DA40_XLS_RPM",
+        "DA40_XLS_MAP",
+        "DA40_XLS_FUEL_FLOW",
+        "DA40_XLS_OIL_PRESSURE",
+        "DA40_XLS_OIL_TEMP",
 
         // Alt+I, the standby instruments.
         "DA40_STBY_COMPASS",
@@ -569,6 +583,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (IsNG) d[EngineStartPanel] = new List<string>(EngineStartDisplay);
         if (IsNG) d[EcuPanel] = new List<string>(EcuDisplay);
         if (!IsNG) d[MagnetosPanel] = new List<string>(MagnetoDisplay);
+        if (!IsNG) d[PowerPanel] = new List<string>(XlsPowerDisplay);
 
         return d;
     }
@@ -659,6 +674,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// </summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
+        if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetEngineHealthDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetEcuDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFuelDisplayOverride(varKey, value, out displayText)) return true;
@@ -762,6 +778,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
         if (HandleMagnetoSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleXlsPowerSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

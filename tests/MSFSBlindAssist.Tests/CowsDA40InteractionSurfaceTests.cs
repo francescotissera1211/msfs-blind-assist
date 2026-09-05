@@ -42,7 +42,7 @@ public class CowsDA40InteractionSurfaceTests
     private static readonly Dictionary<string, string> Surface = new(StringComparer.Ordinal)
     {
         // ---------------- engine, fuel and the FADEC ----------------
-        ["ENGINE_pedestal"] = "Power and Levers: power lever, engine master",
+        ["ENGINE_pedestal"] = "Power and Levers: power lever, engine master (NG); throttle (XLS)",
         ["ECU_TEST1"] = "ECU: test, and the 10-second reset-and-charge hold",
         ["ECU_VOTER1"] = "ECU: voter switch",
         ["MASTER_COVER1"] = "Engine Start: engine master guard",
@@ -122,11 +122,8 @@ public class CowsDA40InteractionSurfaceTests
         ["DA40_Breakers"] = "Circuit Breakers: all 34",
 
         // ---------------- XLS only, and deliberately not built yet ----------------
-        ["ENGINE_Lever_Propeller_1"] =
-            "- XLS propeller lever. On NotBuiltYetOnXls: the XLS comes after the NG is " +
-            "finished, by plan, and its Lycoming shares no code with the Austro.",
-        ["ENGINE_Lever_Mixture_1"] =
-            "- XLS mixture lever. On NotBuiltYetOnXls, same reason.",
+        ["ENGINE_Lever_Propeller_1"] = "Power and Levers: propeller lever (XLS)",
+        ["ENGINE_Lever_Mixture_1"] = "Power and Levers: mixture (XLS)",
         ["ALT_Master"] =
             "- XLS alternator master. On NotBuiltYetOnXls, same reason.",
         ["Bat_Master"] =

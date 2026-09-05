@@ -372,6 +372,7 @@ public partial class CowsDA40Definition
             {
                 var bits = new List<string>();
                 Add(bits, simConnect, "DA40_POWER_RPM", "");
+                Add(bits, simConnect, "DA40_XLS_RPM", "");
 
                 // ⚠️ THE LEVER BELONGS WITH THE RPM ON THIS AEROPLANE, because it is the ONLY
                 // engine control there is. A FADEC diesel has no mixture, no propeller lever
@@ -395,6 +396,14 @@ public partial class CowsDA40Definition
                         bits.Add($"governor targeting {target.Value:0} RPM");
                     }
                 }
+                else
+                {
+                    // The XLS has a blue pitch lever, and its position IS the RPM request:
+                    // the governor target runs linearly from the lever's coarse stop to its
+                    // fine stop. The lever is the half of the answer the tachometer omits.
+                    double? prop = ReadNow(simConnect, "DA40_XLS_PROP_SET");
+                    if (prop is not null) bits.Add($"prop lever {prop.Value:0} percent");
+                }
 
                 announcer.AnnounceImmediate(bits.Count == 0
                     ? "RPM not available yet"
@@ -413,9 +422,19 @@ public partial class CowsDA40Definition
             {
                 var bits = new List<string>();
                 Add(bits, simConnect, "DA40_POWER_LOAD", "Load");
+                // On the XLS, power is manifold pressure and RPM - the two numbers every
+                // Lycoming cruise table is written in - and the fuel flow beside them.
+                Add(bits, simConnect, "DA40_XLS_MAP", "Manifold pressure");
+                Add(bits, simConnect, "DA40_XLS_RPM", "");
                 Add(bits, simConnect, "DA40_POWER_FUEL_FLOW", "fuel flow");
+                Add(bits, simConnect, "DA40_XLS_FUEL_FLOW", "fuel flow");
 
                 if (IsNG) Add(bits, simConnect, "DA40_POWER_LEVER_SET", "power lever");
+                else
+                {
+                    Add(bits, simConnect, "DA40_XLS_THROTTLE_SET", "throttle");
+                    Add(bits, simConnect, "DA40_XLS_MIXTURE_SET", "mixture");
+                }
 
                 announcer.AnnounceImmediate(bits.Count == 0
                     ? "Engine power not available yet"
@@ -434,8 +453,11 @@ public partial class CowsDA40Definition
             {
                 var bits = new List<string>();
                 Add(bits, simConnect, "DA40_START_OIL_TEMP", "Oil");
+                Add(bits, simConnect, "DA40_XLS_OIL_TEMP", "Oil");
                 Add(bits, simConnect, "DA40_START_COOLANT_TEMP", "coolant");
                 Add(bits, simConnect, "DA40_START_GEARBOX_TEMP", "gearbox");
+                // The XLS's cylinder head and exhaust temperatures belong to the Mixture and
+                // Propeller panel and join this key when that panel is built.
 
                 announcer.AnnounceImmediate(bits.Count == 0
                     ? "Engine temperatures not available yet"
@@ -459,12 +481,17 @@ public partial class CowsDA40Definition
                 var bits = new List<string>();
 
                 Add(bits, simConnect, "DA40_POWER_LOAD", "Load");
+                Add(bits, simConnect, "DA40_XLS_MAP", "Manifold pressure");
                 Add(bits, simConnect, "DA40_POWER_RPM", "");
+                Add(bits, simConnect, "DA40_XLS_RPM", "");
                 Add(bits, simConnect, "DA40_START_OIL_PRESSURE", "Oil pressure");
+                Add(bits, simConnect, "DA40_XLS_OIL_PRESSURE", "Oil pressure");
                 Add(bits, simConnect, "DA40_START_OIL_TEMP", "Oil");
+                Add(bits, simConnect, "DA40_XLS_OIL_TEMP", "Oil");
                 Add(bits, simConnect, "DA40_START_COOLANT_TEMP", "Coolant");
                 Add(bits, simConnect, "DA40_START_GEARBOX_TEMP", "Gearbox");
                 Add(bits, simConnect, "DA40_POWER_FUEL_FLOW", "Fuel flow");
+                Add(bits, simConnect, "DA40_XLS_FUEL_FLOW", "Fuel flow");
                 Add(bits, simConnect, "DA40_ELEC_BUS_MAIN_VOLT", "Bus");
                 Add(bits, simConnect, "DA40_ELEC_DISP_AMPS", "Amps");
 

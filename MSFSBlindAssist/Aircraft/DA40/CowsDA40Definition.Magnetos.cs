@@ -129,22 +129,10 @@ public partial class CowsDA40Definition
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Firing" }
         };
 
-        // The tachometer. CONTINUOUS and announced only to reach the batch cache - the drop
-        // announcer needs the RPM at the moment the key leaves BOTH, and a callback cannot
-        // request anything. Silenced in SilentCachedReadouts; it is a number that moves
-        // several times a second. ⚠️ No other batched key may carry this SimVar name.
-        v["DA40_MAG_RPM"] = new SimVarDefinition
-        {
-            Name = "GENERAL ENG RPM:1",
-            DisplayName = "RPM",
-            Type = SimVarType.SimVar,
-            Units = "rpm",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            RenderAsReadOnlyStatus = true,
-            ExcludeFromMonitorManager = true,
-            Format = "F0"
-        };
+        // The tachometer, DA40_XLS_RPM, is owned by the Power and Levers panel and shared
+        // here: the drop announcer needs the RPM at the moment the key leaves BOTH, and a
+        // callback cannot request anything, so it must be the one batched key on that
+        // SimVar - a second batched key on the same name corrupts the whole batch.
 
         return v;
     }
@@ -160,7 +148,7 @@ public partial class CowsDA40Definition
         "DA40_MAG_STARTER",
         "DA40_MAG_LEFT_LIVE",
         "DA40_MAG_RIGHT_LIVE",
-        "DA40_MAG_RPM"
+        "DA40_XLS_RPM"
     };
 
     /// <summary>
@@ -226,7 +214,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private bool NoteMagnetoChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
-        if (varKey == "DA40_MAG_RPM")
+        if (varKey == "DA40_XLS_RPM")
         {
             _magRpmNow = value;
             return false;

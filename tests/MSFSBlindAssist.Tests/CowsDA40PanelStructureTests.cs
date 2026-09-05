@@ -1192,7 +1192,7 @@ public class CowsDA40PanelStructureTests
     // built from the run-up on the live aircraft (docs/da40-xls-variables.md).
     private static readonly string[] NotBuiltYetOnXls =
     {
-        "Engine Start", "Power and Levers", "Fuel System",
+        "Engine Start", "Fuel System",
         "Mixture and Propeller", "Priming",
     };
 

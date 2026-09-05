@@ -219,9 +219,11 @@ public partial class CowsDA40Definition
         "DA40_VNAV_TOD_DIST",
         "DA40_VNAV_PATH_AVAIL",
 
-        // The XLS tachometer. Cached so the mag-drop call-out can read the RPM the key left
-        // BOTH at; never spoken on its own, it moves several times a second.
-        "DA40_MAG_RPM"
+        // The XLS's three levers. Cached so the readout hotkeys can say where they are;
+        // never spoken on their own - under hardware each would talk several times a second.
+        "DA40_XLS_THROTTLE_SET",
+        "DA40_XLS_PROP_SET",
+        "DA40_XLS_MIXTURE_SET"
     };
 
     /// <summary>
