@@ -128,7 +128,10 @@ public static class DA40InstrumentBands
         // red above. No lower red - a cold engine simply reads below green.
         ["DA40_XLS_OIL_TEMP"]         = new BandRange(null, 65, 110, 118),
         // Fuel flow, US gal/h: green 1-20, caution above 20. Measured 10.6 at 2200 rpm.
-        ["DA40_XLS_FUEL_FLOW"]        = new BandRange(null, 1, 20, null)
+        ["DA40_XLS_FUEL_FLOW"]        = new BandRange(null, 1, 20, null),
+        // Fuel pressure, in the model's BAR (the gauge draws psi at 14.5 per bar): red below
+        // 14 psi, green 14-35, red above 35. No yellow. Measured 1.616 bar = 23.4 psi.
+        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(0.965, 0.965, 2.413, 2.413)
     };
 
     /// <summary>The arcs for a variable, or null when that gauge has no published arcs.</summary>

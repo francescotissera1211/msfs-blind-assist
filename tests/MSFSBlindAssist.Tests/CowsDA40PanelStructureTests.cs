@@ -587,6 +587,9 @@ public class CowsDA40PanelStructureTests
         // well would say the same number twice.
         "DA40_FUEL_MAIN_LOAD",
         "DA40_FUEL_AUX_LOAD",
+        // The XLS tank loads: the same typed-gallons transaction, left and right.
+        "DA40_XLS_FUEL_LEFT_LOAD",
+        "DA40_XLS_FUEL_RIGHT_LOAD",
         // Swept by hardware - a throttle quadrant, a trim wheel.
         "DA40_POWER_LEVER_SET",
         "DA40_TRIM_SET",
@@ -1192,7 +1195,7 @@ public class CowsDA40PanelStructureTests
     // built from the run-up on the live aircraft (docs/da40-xls-variables.md).
     private static readonly string[] NotBuiltYetOnXls =
     {
-        "Engine Start", "Fuel System",
+        "Engine Start",
         "Mixture and Propeller",
     };
 

@@ -90,6 +90,13 @@ public class DA40InstrumentBandsTests
     public void XlsFuelFlowArcs(double value, GaugeBand expected)
         => Assert.Equal(expected, Band("DA40_XLS_FUEL_FLOW", value));
 
+    [Theory]
+    [InlineData(0.5, GaugeBand.LowerRed)]      // 7 psi - below the 14 psi minimum
+    [InlineData(1.616, GaugeBand.Normal)]      // measured: 23.4 psi
+    [InlineData(2.6, GaugeBand.UpperRed)]      // 38 psi - above the 35 psi maximum
+    public void XlsFuelPressureArcsAreInBar(double bar, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_FUEL_PRESSURE", bar));
+
     [Fact]
     public void LoadHasNoUpperRed_BecauseTheAfmDefinesNone()
     {

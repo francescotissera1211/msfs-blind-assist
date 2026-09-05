@@ -344,7 +344,8 @@ public partial class CowsDA40Definition
     /// than quietly doing it anyway.
     /// </summary>
     private bool Refuel(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
-        double? mainGal, double? auxGal)
+        double? mainGal, double? auxGal,
+        double capacityGal = FuelTankCapacityGal, bool? engineRunning = null)
     {
         // ⚠️ SIM_ON_GROUND, NOT DA40_ECU_PRE_ON_GROUND. Both carry the same SimVar, but the
         // ECU one is OnRequest - never polled, so the cache has nothing and the ?? default
@@ -352,7 +353,11 @@ public partial class CowsDA40Definition
         // and only ONE of the two may be (the batch sorts by SimVar name), so this is the
         // one to read.
         bool onGround = (simConnect.GetCachedVariableValue("SIM_ON_GROUND") ?? 1) > 0.5;
-        bool running = (simConnect.GetCachedVariableValue("DA40_START_COMBUSTION") ?? 0) > 0.5;
+        // ⚠️ The NG's combustion key does not exist on the XLS, and "?? 0" on an absent key
+        // reads as "not running" - so the XLS passes its own answer in rather than letting
+        // a running engine be refuelled through a key it never registers.
+        bool running = engineRunning
+            ?? (simConnect.GetCachedVariableValue("DA40_START_COMBUSTION") ?? 0) > 0.5;
 
         if (!onGround || running)
         {
@@ -366,14 +371,14 @@ public partial class CowsDA40Definition
 
         if (mainGal is not null)
         {
-            double gal = Math.Clamp(mainGal.Value, 0, FuelTankCapacityGal);
+            double gal = Math.Clamp(mainGal.Value, 0, capacityGal);
             simConnect.SetSimVar("FUEL TANK LEFT MAIN QUANTITY", gal, "gallons");
             said.Add((IsNG ? "Main " : "Left ") + Quantity(gal));
         }
 
         if (auxGal is not null)
         {
-            double gal = Math.Clamp(auxGal.Value, 0, FuelTankCapacityGal);
+            double gal = Math.Clamp(auxGal.Value, 0, capacityGal);
             simConnect.SetSimVar("FUEL TANK RIGHT MAIN QUANTITY", gal, "gallons");
             said.Add((IsNG ? "Auxiliary " : "Right ") + Quantity(gal));
         }

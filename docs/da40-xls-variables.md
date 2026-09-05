@@ -215,6 +215,19 @@ plugin's — and is not built on.
 
 **Three starter cycles cost the battery 239 → 125.**
 
+## Fuel — measured
+
+| Fact | Evidence |
+|---|---|
+| `FUEL_SELECTOR` 0 LEFT · 1 RIGHT · 2 OFF; a write drives the stock selector through the Logic (0 → tank 2, 1 → 3, 2 → 1) | ANIMTIPs; Logic 1924–1950; read 0 ↔ stock 2 after a reload |
+| **`ENG_FUEL_PRESS` is BAR; `DISP_FP_PROBE` is the gauge in psi** | 1.616 against 23.43 = 14.5 psi/bar; AFM green 14–35 psi, no yellow |
+| Tanks 2 × 20.6 gal, 0.5 unusable each; the sim's tank is 25 gal (the long-range size) | AFM 2.14.2; `FUEL TANK LEFT MAIN CAPACITY` 25 |
+| The gauge (`FUEL_QUANT_PROBE:n`) is the true quantity plus a slosh term, **clamped to 15.25 between 15.25 and 18.5 gal** — the AFM's "max indicated 15 US gal per tank" | Logic 1979–1986; read 19.5 / 19.7 against 19.9 / 20.0 actual, above the band |
+| Max tank difference 10 gal (NG: 9) | AFM 2.14.2 |
+| `FUEL_FEED_QUANTITY` is the selected tank's probe, 0 when OFF, and was 0 while the spread set was zero | 19.50 = probe 1 with LEFT selected |
+| Vapour lock is `FUEL_TEMP_BOIL_FAC` multiplying the pressure; the electric pump subtracts a unit from `FUEL_TEMP_BOIL` | Logic 2043–2046 |
+| The stock fuel pressure simvar is the pump side only (6.9 psi with the engine stopped) | — |
+
 ## Still open
 
 - **Cruise** — the plan's third point; needs the aircraft flown.

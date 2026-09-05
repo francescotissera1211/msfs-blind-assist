@@ -49,8 +49,8 @@ public class CowsDA40InteractionSurfaceTests
         // One component ID, two aeroplanes. On the NG it is the start key; on the XLS the
         // same component is the five-position ignition key whose START detent cranks.
         ["STARTER"] = "Engine Start: start key (NG). Magnetos: ignition key and starter (XLS)",
-        ["FUEL"] = "Fuel System: fuel pumps",
-        ["FUEL_SELECTOR"] = "Fuel System: fuel valve",
+        ["FUEL"] = "Fuel System: fuel pumps (NG); electric fuel pump (XLS)",
+        ["FUEL_SELECTOR"] = "Fuel System: fuel valve (NG); left/right/off tank selector (XLS)",
         ["FUEL_WIRE"] = "Fuel System: break the safety wire",
         ["ALTAIR"] = "Ice and Pitot: alternate air",
 
