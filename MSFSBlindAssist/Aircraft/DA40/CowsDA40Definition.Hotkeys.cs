@@ -456,8 +456,10 @@ public partial class CowsDA40Definition
                 Add(bits, simConnect, "DA40_XLS_OIL_TEMP", "Oil");
                 Add(bits, simConnect, "DA40_START_COOLANT_TEMP", "coolant");
                 Add(bits, simConnect, "DA40_START_GEARBOX_TEMP", "gearbox");
-                // The XLS's cylinder head and exhaust temperatures belong to the Mixture and
-                // Propeller panel and join this key when that panel is built.
+                // The XLS's air-cooled Lycoming: the hottest cylinder head and exhaust,
+                // the two temperatures leaning is judged by.
+                Add(bits, simConnect, "DA40_XLS_CHT_HOT", "hottest cylinder head");
+                Add(bits, simConnect, "DA40_XLS_EGT_HOT", "hottest exhaust");
 
                 announcer.AnnounceImmediate(bits.Count == 0
                     ? "Engine temperatures not available yet"

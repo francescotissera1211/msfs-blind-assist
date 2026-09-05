@@ -240,12 +240,35 @@ plugin's — and is not built on.
 | The `ENG_FUEL_PRESS` unit question is closed by the model's own hand: the G1000 template writes `DISP_FP_PROBE += (ENG_FUEL_PRESS × 14.5 − DISP_FP_PROBE) / 8` | Logic 2086 |
 | `GENERAL ENG COMBUSTION:1` is live on the XLS (0 stopped, 1 running) | read across a start |
 
+## Mixture and Propeller — measured through a lean at run-up power and a static full-throttle run
+
+| Fact | Evidence |
+|---|---|
+| **The bars are drawn from `DISP_EGT:1-4` and `DISP_CHT:1-4`, in FAHRENHEIT** (the plugin titles them "EGT °F" / "CHT °F"); the bare `DISP_EGT` / `DISP_CHT` / `DISP_LEAN_PEAK` / `DISP_LEAN_DELTA` are phantoms. `DISP_EGT:n` = `EGT_PROBE:n` + a spread offset, rounded; `DISP_CHT:n` likewise from `CHT_PROBE:n`. `DISP_LEAN_HOTEST` / `DISP_CHT_HOT` + `DISP_CHT_HOT_CYL` are the maxima | Logic 2111–2146; read 1297/1310/1310/1287 F at 2211 rpm full rich |
+| The CHT arcs: green 150–475 F, caution 475–500, red above; EGT has no arc, the COWS POH recommends not exceeding 1350 F | `Da40MfdPlugin.js` 'CHT °F' bars; POH p.7 |
+| **Lean assist** = `DISP_LEAN_ASSIST` (the Assist softkey; the plugin writes it), and while it is 1 the Logic tracks per cylinder `DISP_LEAN_PEAK:n` = highest `DISP_EGT:n` seen and `DISP_LEAN_DELTA:n` = peak − now. `DISP_LEAN_HIGHLIGHT` and `DISP_LEAN_DELTA_BIGGEST` never moved (0 / 0.997) | Logic 2154–2172; the sweep below |
+| **The lean sweep at 2211 rpm**: mixture 100 → AFR 10.7, EGT 1297–1310; 85 → 10.9, 1307–1322; 70 → 12.1, 1347–1361; 55 → 14.5, 1464–1482 (CHT hot 438); 48 → 15.8, peaks held at 1475–1484 while cylinders 1 and 3 fell to 1129 / 980 and rpm 2185 → 1905 (rough). Peak EGT sits at ~14.5–15.5 to 1; past it the drop is hundreds of degrees, not tens | read 2026-09-05 |
+| `K:MIXTURE_SET_BEST` toggles `L:MIXTURE_SET_BEST`; while set, the Logic walks `INPUT_MIXTURE` until the four cylinders' air/fuel sum to 49–50 (12.5 to 1 each), or to 72 % flat with `AUTOMIXTURE` on. Written as the L:var, like the auto-start | Inputs.xml 168–234 |
+| **The red box is per cylinder and INDEXED**: while `CHT_HEAT_OUTPUT_KW:n` ≥ 42 AND `TB_FF_MIXTURE:n` (air/fuel) is in 12.9–15.5: FAC = (kW − 42)/8, rich edge 14.7 − 1.8 FAC, lean edge 14.7 + 0.8 FAC, `DAMAGE_REDBOX_ITS:n` = depth past the nearer edge, `DAMAGE_CYL:n` += 0.05 × depth per tick. ⚠️ `ITS:n` HOLDS ITS LAST VALUE outside the box (19.7 with the engine stopped) — judge the box from its inputs. Run-up power gives 30.8 kW (box closed); static full throttle 47.8 kW (box 13.4–15.3), and full rich at 10.6 sits outside it | Logic 4988ff ("Whos there?"); measured |
+| **Plug fouling is per PLUG**: `DAMAGE_MAG_FOUL:nR` / `:nL` (eight), += `DAMAGE_MAG_FOUL_RATE:n`/60 per tick, capped 0–100, where rate = 4 × (14.7 − AFR) − a power term − a CHT term, × rpm/1000 — rich, cold, low power fouls; power cleans. It costs spark: `ENG_MAG_FOUL_PWR:nX` = √(foul/100) × 0.8. ⚠️ A saved state can exceed the cap: plug 1R read **137** on this aircraft, which is why cylinder 1 dropped out first in the lean sweep | Logic 4930–4936, 665, 5139 |
+| Shock cooling: `CHT_TEMP_INC:n` < −0.15 damages the cylinder ((inc + 0.15) × −0.2 per tick); `DAMAGE_CYL:n` > 99 = `KAPUTT_CYL:n`; `HEALTH_CYL:n` = 1 − damage/2000 − block/2000 | Logic 4966–4975, 5128–5158 |
+| ⚠️ **DETONATION IS NOT MODELLED IN THIS BUILD.** The block that computes `DETONATION_TEMP_C:n` and `DETONATION:n` (Logic 1857–1897) sits inside a comment opened as `(*--Detonation--` and closed forty lines later; nothing consumes `DETONATION:n`; the 4 it read live is residue. No row, no call-out | Logic 1857, 1897 |
+| ⚠️ **With the Engine Damage option OFF (`DAMAGE_ENABLED` 0, this aircraft) none of the damage accumulators run** — red box, fouling, shock cooling, cylinder damage all freeze. The panel derives the red box from its inputs regardless and says the option is off | measured |
+| **Propeller cycle**: `INPUT_PROPELLER` 100 → 0 took 2212 → 1560 rpm in two seconds and back on restore; governor target `OP_PROP_TARGET_RPM` read 2687 at 100 (and a transient 2.5 mid-move — read it settled). `OP_PROP_OIL_PRIME` is the hub oil charge: fills toward 5.1 at rpm/2700 per tick while rpm > target with oil pressure and a working prop pump, drains by 0.1 otherwise; under 5 the governor is in beta-forced mode and the prop responds slowly — the reason for the run-up item | Logic 1340–1400 |
+| **`K:ENGINE_AUTO_START` is unreliable from outside; `1 (>L:INPUT_START, percent)` is what its binding writes and it walked the script every time** (0 → step 4 within a second). The K route started the engine once, then left `INPUT_START` decayed to 0.001 with the step at 0. At completion the counter read **0**, not 11 — judge the outcome on combustion. `ENGINE_AUTO_SHUTDOWN` writes −1: mixture to cut-off, pump off, and once rpm is under 1 % throttle closed, key OFF, flag cleared | Inputs.xml 27–50, 79–82; measured |
+| ⚠️ **The XLS's G1000 is the NXi (WT 1.4.1), and its database-acknowledge screen takes ENT only as the SimConnect H-event.** After a reload the MFD sat on "Press ENT or rightmost softkey to continue" (`.startup-confirm-screen`, display flex, z 9999) and the whole MFD read as "starting up" on every page; `A.press("ENT")` over the socket left it, `1 (>H:AS1000_MFD_ENT_Push)` cleared it (parent gains `hidden`). The display window routes Ctrl+Enter over SimConnect while that screen shows | measured |
+| The XLS plugin registers `Da40EnginePage` / `Da40ChecklistPage` / `Da40ChecklistSelectionPopup` / `Da40ChecklistCategorySelectionPopup` — the NG's are `Da40Ng…`. Its EIS strip nests MAN IN and RPM as `.eis-dial-gauge`, its Engine page is `.da40-engine-page` with double dials (Oil °F/PSI, Fuel GPH/PSI) and digit-less bar charts | live DOM dumps |
+| **Mag check at 2212 rpm**: right alone 2098 (−114), left alone 2133 (−79), differential 35 — inside the AFM's 175 / 50 | read |
+
 ## Still open
 
 - **Cruise** — the plan's third point; needs the aircraft flown.
 - `RPM_SENS_*` and `OP_PROP_OIL_PRIME` meaning.
-- Lean assist (`DISP_LEAN_*`) — the G1000 Engine page **Assist** softkey was off; red box and
-  detonation onset need a leaning episode.
+- The POH's cruise power tables (p.8–9: MAP and fuel flow for 45–75 % by altitude and rpm) are
+  not transcribed yet — a blind pilot cannot read them, and a readout keyed on pressure altitude and
+  rpm would replace the page. Scanned PDF: transcribe from the image and have a human check it.
+- Lean assist in the cruise — the mechanics are measured on the ground (above); confirm the
+  peaks and the first-to-peak call-out at cruise power.
 - The throttle map, if a panel needs to command an RPM rather than a position.
 - ⚠️ **`msfs_get_lvar` returns 0 for a name that is not registered at all** — `ELEC_MASTER` is
   not in the XLS package, and the 0 it "read" with the master on meant nothing. Same trap as a

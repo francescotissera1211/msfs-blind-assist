@@ -131,7 +131,24 @@ public static class DA40InstrumentBands
         ["DA40_XLS_FUEL_FLOW"]        = new BandRange(null, 1, 20, null),
         // Fuel pressure, in the model's BAR (the gauge draws psi at 14.5 per bar): red below
         // 14 psi, green 14-35, red above 35. No yellow. Measured 1.616 bar = 23.4 psi.
-        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(0.965, 0.965, 2.413, 2.413)
+        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(0.965, 0.965, 2.413, 2.413),
+
+        // The XLS cylinder heads, in the gauge's own Fahrenheit: the MFD plugin draws
+        // green 150-475, caution 475-500, red above (Da40MfdPlugin 'CHT °F' bars). No
+        // lower arc - a cold head is a cold head.
+        ["DA40_XLS_CHT_HOT"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_1"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_2"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_3"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_4"] = new BandRange(null, null, 475, 500),
+
+        // Exhaust has no AFM limit; the COWS POH recommends not exceeding 1350 F, so that
+        // is a caution and nothing is red.
+        ["DA40_XLS_EGT_HOT"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_1"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_2"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_3"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_4"] = new BandRange(null, null, 1350, null)
     };
 
     /// <summary>The arcs for a variable, or null when that gauge has no published arcs.</summary>

@@ -36,12 +36,16 @@ public static class DA40AutoStart
         };
     }
 
-    /// <summary>Spoken once when the script stops running.</summary>
-    public static string Outcome(double highestStepWhileActive, double stepAtStop)
+    /// <summary>
+    /// Spoken once when the script stops running. Judged on the ENGINE first: measured, a
+    /// start that worked left the counter at 0, not 11, so the counter alone cannot say
+    /// "complete" - only whether a failure was the seven-second crank timeout.
+    /// </summary>
+    public static string Outcome(double highestStepWhileActive, double stepAtStop, bool engineRunning)
     {
-        if (stepAtStop >= FinalStep) return "Auto-start complete";
+        if (engineRunning) return "Auto-start complete, engine running";
         if ((int)Math.Floor(highestStepWhileActive) == CrankStep && stepAtStop < 1)
             return $"Auto-start gave up, no fire in {CrankTimeoutSeconds:F0} seconds of cranking";
-        return "Auto-start stopped";
+        return "Auto-start stopped, engine not running";
     }
 }

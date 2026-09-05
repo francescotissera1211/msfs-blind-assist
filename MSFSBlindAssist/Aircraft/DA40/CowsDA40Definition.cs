@@ -236,6 +236,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) controls[PrimingPanel] = new List<string>(PrimingControls);
         if (!IsNG) controls[FuelPanel] = new List<string>(XlsFuelControls);
         if (!IsNG) controls[EngineStartPanel] = new List<string>(XlsStartControls);
+        if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
+        if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
 
         return controls;
     }
@@ -395,6 +397,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             }
 
             foreach (var kv in BuildXlsStartVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+
+            foreach (var kv in BuildXlsMixtureVariables())
+            {
+                vars[kv.Key] = kv.Value;
+            }
+
+            foreach (var kv in BuildXlsMixtureVariables())
             {
                 vars[kv.Key] = kv.Value;
             }
@@ -605,6 +617,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) d[PrimingPanel] = new List<string>(PrimingDisplay);
         if (!IsNG) d[FuelPanel] = new List<string>(XlsFuelDisplay);
         if (!IsNG) d[EngineStartPanel] = new List<string>(XlsStartDisplay);
+        if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
+        if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
 
         return d;
     }
@@ -696,6 +710,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         if (TryGetXlsStartDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetPrimingDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsFuelDisplayOverride(varKey, value, out displayText)) return true;
@@ -806,6 +822,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandlePrimingSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsFuelSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsStartSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleXlsMixtureSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleXlsMixtureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
 

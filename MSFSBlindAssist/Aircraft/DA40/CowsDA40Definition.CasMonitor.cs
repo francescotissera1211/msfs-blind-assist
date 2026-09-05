@@ -89,6 +89,8 @@ public partial class CowsDA40Definition
         StopMagnetoAnnounce();
         ResetPrimingState();
         ResetXlsStartState();
+        ResetXlsMixtureState();
+        ResetXlsMixtureState();
         StopRadioAnnounce();
         StopPowerAnnounce();
         StopLampWatch();

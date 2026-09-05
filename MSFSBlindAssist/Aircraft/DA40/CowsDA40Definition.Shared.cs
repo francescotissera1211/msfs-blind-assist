@@ -171,7 +171,7 @@ public partial class CowsDA40Definition
     /// to "will this speak", and the tests that ask it must get that one.
     /// </summary>
     public static IReadOnlyCollection<string> SilentCachedReadoutKeys =>
-        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).Concat(XlsStartCapturedKeys).ToList();
+        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).Concat(XlsStartCapturedKeys).Concat(XlsMixtureCapturedKeys).ToList();
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
@@ -240,7 +240,10 @@ public partial class CowsDA40Definition
            || PrimingCapturedKeys.Contains(varName)
            // The XLS start inputs: the readiness row is derived from them and the
            // script's narration is spoken from its counter - the numbers stay silent.
-           || XlsStartCapturedKeys.Contains(varName);
+           || XlsStartCapturedKeys.Contains(varName)
+           // The XLS mixture inputs: eight temperatures, the assist pair, and the states'
+           // inputs - spoken as states on their crossings, never as numbers.
+           || XlsMixtureCapturedKeys.Contains(varName);
 
     /// <summary>
     /// Returning true means "handled" - the generic announcer never runs for that key.
@@ -261,6 +264,12 @@ public partial class CowsDA40Definition
         // The XLS start readiness and auto-start narration: reads the master, selector,
         // combustion and the captured fuel inputs as they pass; speaks on its own terms.
         NoteXlsStartChange(varName, value, announcer);
+        // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
+        // and cylinder damage, each spoken on its crossing from the captured inputs.
+        NoteXlsMixtureChange(varName, value, announcer);
+        // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
+        // and cylinder damage, each spoken on its crossing from the captured inputs.
+        NoteXlsMixtureChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;
 

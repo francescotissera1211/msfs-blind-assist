@@ -54,6 +54,22 @@ public partial class CowsDA40Definition
             HelpText = "COWS's own sequence, master to alternator; clears a flood itself, gives up after seven seconds of cranking."
         };
 
+        // The counterpart the aircraft binds beside it (ENGINE_AUTO_SHUTDOWN): mixture to
+        // cut-off and pump off at once, then throttle closed, key OFF and the flag cleared
+        // once the engine has stopped - the shutdown a blind pilot otherwise does across
+        // three panels.
+        v["DA40_XLS_AUTO_SHUTDOWN"] = new SimVarDefinition
+        {
+            Name = "DA40_XLS_AUTO_SHUTDOWN",
+            DisplayName = "Auto-shutdown",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            HelpText = "Mixture to cut-off and pump off; once stopped, throttle closed and the key to OFF."
+        };
+
         // ---------- Readiness ----------
 
         // The row hangs on the variation the trap zeroes, so the row itself is the mute for
@@ -138,7 +154,8 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> XlsStartControls = new()
     {
-        "DA40_XLS_AUTO_START"
+        "DA40_XLS_AUTO_START",
+        "DA40_XLS_AUTO_SHUTDOWN"
     };
 
     // Readiness first - it is the answer - then the script if it is running, then what a
@@ -171,12 +188,21 @@ public partial class CowsDA40Definition
     private bool HandleXlsStartSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        if (varKey == "DA40_XLS_AUTO_SHUTDOWN")
+        {
+            // The binding's own write (Inputs.xml 82); the Inputs code does the rest and
+            // clears the flag itself. "Engine: Stopped" is the announced result.
+            simConnect.ExecuteCalculatorCodeUnique("-1 (>L:INPUT_START, percent)");
+            return true;
+        }
         if (varKey != "DA40_XLS_AUTO_START") return false;
 
-        // The aircraft's own Ctrl+E. A bare K-event is byte-identical every press, so unique.
-        // Nothing spoken here: the button speaks itself, and the script narrates from its
-        // first step within the second.
-        simConnect.ExecuteCalculatorCodeUnique("1 (>K:ENGINE_AUTO_START)");
+        // What the aircraft's own Ctrl+E binding writes (Inputs.xml 79). Measured: the
+        // K-event route started the engine once and then not again - INPUT_START decayed
+        // to noise with the counter at 0 - while this write walked the script every time.
+        // Byte-identical every press, so unique. Nothing spoken here: the button speaks
+        // itself, and the script narrates from its first step within the second.
+        simConnect.ExecuteCalculatorCodeUnique("1 (>L:INPUT_START, percent)");
         return true;
     }
 
@@ -255,7 +281,7 @@ public partial class CowsDA40Definition
                 else
                 {
                     if (!Muted("DA40_XLS_AUTO_STEP"))
-                        announcer.Announce(DA40AutoStart.Outcome(_autoHighestStep, _autoStep));
+                        announcer.Announce(DA40AutoStart.Outcome(_autoHighestStep, _autoStep, _startCombustion));
                     _autoSpokenStep = -1;
                 }
                 return false;

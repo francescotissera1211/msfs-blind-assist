@@ -97,6 +97,22 @@ public class DA40InstrumentBandsTests
     public void XlsFuelPressureArcsAreInBar(double bar, GaugeBand expected)
         => Assert.Equal(expected, Band("DA40_XLS_FUEL_PRESSURE", bar));
 
+    [Theory]
+    [InlineData(410, GaugeBand.Normal)]        // measured at run-up, hottest cylinder
+    [InlineData(480, GaugeBand.UpperCaution)]  // the plugin's 475-500 F caution band
+    [InlineData(505, GaugeBand.UpperRed)]      // above 500 F
+    public void XlsCylinderHeadArcsAreThePluginsFahrenheitBands(double f, GaugeBand expected)
+    {
+        Assert.Equal(expected, Band("DA40_XLS_CHT_HOT", f));
+        Assert.Equal(expected, Band("DA40_XLS_CHT_1", f));
+    }
+
+    [Theory]
+    [InlineData(1310, GaugeBand.Normal)]
+    [InlineData(1360, GaugeBand.UpperCaution)] // over the POH's recommended 1350 F maximum
+    public void XlsExhaustArcsCarryOnlyThePohsRecommendedMaximum(double f, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_EGT_HOT", f));
+
     [Fact]
     public void LoadHasNoUpperRed_BecauseTheAfmDefinesNone()
     {

@@ -275,6 +275,30 @@ public class CowsDA40PanelStructureTests
     }
 
     // ==============================================================================
+    // Mixture and Propeller (XLS) - the panel the XLS exists for: per-cylinder EGT and CHT,
+    // the lean assist, and the states the mixture can put the engine in.
+    [Fact]
+    public void XlsMixtureAndPropellerCarriesTheCylindersAndTheLeanAssist()
+    {
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        var controls = def.GetPanelControls()["Mixture and Propeller"];
+        var display = def.GetPanelDisplayVariables()["Mixture and Propeller"];
+
+        Assert.Contains("DA40_XLS_BEST_MIXTURE", controls);
+        Assert.Contains("DA40_XLS_PROP_CYCLE", controls);
+        // The levers themselves stay on Power and Levers - one control, one panel.
+        Assert.DoesNotContain("DA40_XLS_MIXTURE_SET", controls);
+        Assert.DoesNotContain("DA40_XLS_PROP_SET", controls);
+
+        Assert.Equal("DA40_XLS_LEAN_ASSIST", display[0]);
+        foreach (var key in new[] { "DA40_XLS_CHT_HOT", "DA40_XLS_EGT_HOT", "DA40_XLS_EGT_1", "DA40_XLS_CHT_1",
+                     "DA40_XLS_RED_BOX", "DA40_XLS_FOULING", "DA40_XLS_SHOCK_COOLING", "DA40_XLS_CYL_HEALTH",
+                     "DA40_XLS_PROP_PRIME", "DA40_XLS_AFR" })
+        {
+            Assert.Contains(key, display);
+        }
+    }
+
     // Engine Start panel (XLS) - the start scan: readiness first, then what a pilot watches
     // while the starter turns. The ignition key is NOT here: on the XLS it is also the L/R/BOTH
     // selector for the run-up, and one control on two panels is the heading-bug mistake.
@@ -285,7 +309,11 @@ public class CowsDA40PanelStructureTests
         var controls = def.GetPanelControls()["Engine Start"];
         var display = def.GetPanelDisplayVariables()["Engine Start"];
 
-        Assert.Equal(new[] { "DA40_XLS_AUTO_START" }, controls);
+        // Auto-start and its counterpart: the aircraft binds ENGINE_AUTO_SHUTDOWN too
+        // (mixture to cut-off, pump off, then throttle closed and the key to OFF once the
+        // engine has stopped) - a one-button shutdown a blind pilot otherwise does across
+        // three panels.
+        Assert.Equal(new[] { "DA40_XLS_AUTO_START", "DA40_XLS_AUTO_SHUTDOWN" }, controls);
         Assert.Equal("DA40_XLS_START_READY", display[0]);
         foreach (var key in new[] { "DA40_XLS_AUTO_STEP", "DA40_XLS_COMBUSTION", "DA40_XLS_CRANK_RPM",
                      "DA40_MAG_STARTER", "DA40_XLS_RPM", "DA40_XLS_OIL_PRESSURE",
@@ -1215,10 +1243,7 @@ public class CowsDA40PanelStructureTests
     /// </summary>
     // Magnetos came off this list first: it is the ignition key and the starter in one,
     // built from the run-up on the live aircraft (docs/da40-xls-variables.md).
-    private static readonly string[] NotBuiltYetOnXls =
-    {
-        "Mixture and Propeller",
-    };
+    private static readonly string[] NotBuiltYetOnXls = Array.Empty<string>();
 
     private static bool IsKnownUnbuilt(DA40Variant variant, string panel)
         => NotBuiltYet.Contains(panel)

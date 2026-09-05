@@ -35,18 +35,22 @@ public class DA40AutoStartTests
     public void CrankingCarriesTheTimerAgainstTheSevenSecondLimit()
         => Assert.Equal("Cranking, 3 of 7 seconds", DA40AutoStart.Describe(true, 8.3, 3.2));
 
-    [Fact]
-    public void FinishingAtTheAlternatorIsComplete()
-        => Assert.Equal("Auto-start complete", DA40AutoStart.Outcome(highestStepWhileActive: 11, stepAtStop: 11));
+    [Theory]
+    [InlineData(11.0, 11.0)]
+    [InlineData(8.4, 0.0)]   // measured: the counter read 0 at the end of a start that worked
+    public void AnEngineRunningAtTheStopIsComplete_WhateverTheCounterSays(double highest, double atStop)
+        => Assert.Equal("Auto-start complete, engine running",
+            DA40AutoStart.Outcome(highest, atStop, engineRunning: true));
 
     [Fact]
-    public void StoppingFromTheCrankIsTheTimeout()
+    public void StoppingFromTheCrankWithNoFireIsTheTimeout()
         // The script zeroes the step and INPUT_START in the same tick, so at the stop the
         // step already reads 0 - the highest step seen is what tells the timeout apart.
         => Assert.Equal("Auto-start gave up, no fire in 7 seconds of cranking",
-            DA40AutoStart.Outcome(highestStepWhileActive: 8.4, stepAtStop: 0));
+            DA40AutoStart.Outcome(highestStepWhileActive: 8.4, stepAtStop: 0, engineRunning: false));
 
     [Fact]
-    public void AnyOtherStopIsJustStopped()
-        => Assert.Equal("Auto-start stopped", DA40AutoStart.Outcome(highestStepWhileActive: 5, stepAtStop: 0));
+    public void AnyOtherStopWithoutAnEngineIsJustStopped()
+        => Assert.Equal("Auto-start stopped, engine not running",
+            DA40AutoStart.Outcome(highestStepWhileActive: 5, stepAtStop: 0, engineRunning: false));
 }
