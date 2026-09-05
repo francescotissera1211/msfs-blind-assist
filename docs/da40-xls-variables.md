@@ -126,6 +126,48 @@ that produced them announced first.
   controls. Kept in the appendix because a dump that quietly drops what it cannot explain is not
   a dump.
 
+## Measured live — cold and dark at EGNX
+
+Aircraft loaded, on ground, battery master OFF, bus 0 V, 40 USG, ambient 18.99 °C /
+29.890 inHg. Everything below was read or written against that state.
+
+⚠️ `msfs_get_connection_status` reported `sim_running: false` throughout, across a
+disconnect/reconnect, while the aircraft read and wrote perfectly. **Do not read that flag as
+"the flight model is stopped."** [da40.md](da40.md)'s zeros-signature for the ready-to-fly
+screen requires the starter to be COMMANDED — on an unpowered aeroplane `GENERAL ENG STARTER
+ACTIVE`, `RECIP ENG STARTER TORQUE`, `ELECTRICAL BATTERY LOAD`, `GENERAL ENG RPM` and
+`ENG COMBUSTION` all read 0 legitimately, and reading that as a stopped sim is a false
+negative. Command the starter first, or use a different test.
+
+### Settled
+
+| Finding | Evidence |
+|---|---|
+| **`TB_CALC_MAP` is manifold pressure in BAR** | 1.01223 against ambient 29.890 inHg; ×29.53 = 29.891 inHg. Engine-off MAP correctly equals ambient. `TB_TARGET_MAP` tracks it at 1.01221. |
+| **Stock `RECIP ENG MANIFOLD PRESSURE` is DEAD here** | reads **0.599 inHg** while the real MAP is ambient 29.89. COWS does not drive it. Never read it for this aircraft — it is off by a factor of 50. |
+| **`STARTER_SWITCH` is WRITABLE on the XLS** | 0 → 3 → 0, both directions stick through the calculator path. The NG's read-only-mirror finding does NOT apply to this variant. |
+| **`THROTTLE_LEVER` is a READ-ONLY MIRROR** | equals stock `GENERAL ENG THROTTLE LEVER POSITION` ÷ 100 (0.26074 vs 26.074 %). A write of 0.5 snapped straight back and stock never moved. ⚠️ It carries no `STATE_` prefix to warn you. |
+| **The three levers use three different scales** | throttle 0..1 fraction; `INPUT_MIXTURE` 0..100 matching stock; `INPUT_PROPELLER` reads **100 while stock propeller lever reads 0 %**. Never assume one convention across the pedestal. |
+| Fuel selector agrees with its mirror | `FUEL_SELECTOR` = `STATE_FUEL_SELECTOR` = 1. |
+| Fuel system state | `ENG_FUEL_SYSTEM_PRIMED` = 1, `ASSIST_PRIME_CYL_REQ` = 0 (nothing owed). |
+
+### Open — NOT concluded
+
+- **Does the magneto key drive anything?** `STARTER_SWITCH` accepts writes, but stock
+  `RECIP ENG LEFT/RIGHT MAGNETO` sat at 1/1 through 0 → 3 → 0 and never moved, while the COWS
+  side (`ENG_MAG_PWR:L`/`:R`, `ENG_MAG_CYL:1B`) is all 0 because the engine is not turning. The
+  playbook's rule applies: a held write is not a working control. **Needs the engine running** —
+  select L and R and watch the drop.
+- **The mixture lever refuses every write tried.** `50 (>L:INPUT_MIXTURE)` snapped back to 100,
+  and the stock `8192 (>K:MIXTURE_SET)` did not move it either. `AUTOMIXTURE`,
+  `AUTOMIXTURE_FORCE` and `FSC_CONTROL` are all 0, so nothing is forcing it. Per the
+  playbook this is **not** a verdict of "broken": the untried routes are the repeating ~40 ms
+  write [da40.md](da40.md) documents for controls the airframe re-zeroes each frame, and the
+  `ENGINE_pedestal` component's own interaction.
+- **`INPUT_PROPELLER` vs stock disagree** (100 vs 0 %) and the direction is unknown.
+- Every EGT / CHT / lean-assist / red-box / detonation / spread family is unmeasured — they are
+  all engine-running quantities.
+
 ## Appendix — the 379 XLS-only variables, by family
 
 Base names, index suffixes such as `:1` / `:1L` collapsed. Generated from the package XML
