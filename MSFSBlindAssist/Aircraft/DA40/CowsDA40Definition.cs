@@ -625,6 +625,20 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             return HandleDA40BaroSet(simConnect, announcer, parentForm);
         }
 
+        // ⚠️ THE GFC 700 HAD NO KEYBOARD AT ALL. Every other aircraft answers input mode's
+        // Ctrl+A/S/H/V/P and this one answered only Ctrl+B, so a pilot could read the
+        // autopilot and never set it without opening a panel. The actions are app-wide,
+        // which is exactly why the gap was invisible - see the Ctrl+W retraction.
+        if (hotkeyManager != null && parentForm != null)
+        {
+            if (action is Hotkeys.HotkeyAction.FCUSetAltitude or Hotkeys.HotkeyAction.FCUSetSpeed
+                       or Hotkeys.HotkeyAction.FCUSetHeading or Hotkeys.HotkeyAction.FCUSetVS)
+                return ShowApValueDialog(action, simConnect, announcer, parentForm, hotkeyManager);
+
+            if (action == Hotkeys.HotkeyAction.FCUSetAutopilot)
+                return ShowApButtonsDialog(simConnect, announcer, parentForm, hotkeyManager);
+        }
+
         return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
     }
 
@@ -745,7 +759,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     // GFC 700 autopilot control types
     //
     // Measured on the aircraft, not assumed: there is NO absolute altitude set.
-    //   AP_ALT_VAR_SET_ENGLISH  ignores its parameter and adds +1000 ft (700→1700, 1800→2800)
+    //   AP_ALT_VAR_SET_ENGLISH  ignores its parameter and STEPS the preselect. ⚠️ The step
+    //   is not fixed: measured +1000 ft once (700→1700, 1800→2800) and +100 ft on a later
+    //   pass from 0. Both readings agree on the part that matters - the value asked for is
+    //   discarded - and neither is worth trusting as a step size.
     //   AP_ALT_VAR_INC / _DEC   ±100 ft
     // so altitude is inherently increment/decrement. Heading and vertical speed follow
     // the same GFC 700 knob model. There is no autothrottle on either airframe

@@ -424,7 +424,19 @@ public partial class CowsDA40Definition
                 // the aeroplane's ceiling is the sane clamp: an entry slip of one digit
                 // would otherwise command a climb the aircraft cannot make.
                 int feet = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, 0, 18000);
-                simConnect.ExecuteCalculatorCodeUnique($"{feet} (>K:AP_ALT_VAR_SET_ENGLISH)");
+                // ⚠️ AP_ALT_VAR_SET_ENGLISH IS AN INCREMENT AND IGNORES ITS PARAMETER, so
+                // this control never once set the altitude a pilot typed. Measured on the
+                // live DA40 with the preselect at 0: "5000 (>K:AP_ALT_VAR_SET_ENGLISH)"
+                // left it at 100 - one step of the G1000's preselect knob, not five
+                // thousand feet. Writing the SimVar directly reads back exactly, verified
+                // the same way ("3000 (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)" -> 3000).
+                //
+                // ⚠️ ALTITUDE IS THE ONLY ONE LIKE THIS. AP_VS_VAR_SET_ENGLISH,
+                // AP_SPD_VAR_SET, HEADING_BUG_SET and VOR1_SET were all re-measured in the
+                // same pass and every one landed on the value asked for (700, 90, 123, 45),
+                // so do not "harmonise" them onto the A: form on the strength of this one.
+                simConnect.ExecuteCalculatorCodeUnique(
+                    $"{feet} (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)");
                 announcer.AnnounceImmediate($"Selected altitude {feet} feet");
                 return true;
             }
