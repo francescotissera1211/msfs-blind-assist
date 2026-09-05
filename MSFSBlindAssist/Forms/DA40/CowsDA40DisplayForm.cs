@@ -264,10 +264,23 @@ public sealed class CowsDA40DisplayForm : Form
         _ => false
     };
 
+    /// <summary>
+    /// ⚠️ THE STARTUP SCREEN TAKES ENT OVER SIMCONNECT ONLY. The database-acknowledge
+    /// screen ("Press ENT or rightmost softkey to continue") ignored the socket's ENT and
+    /// cleared on <c>1 (&gt;H:AS1000_MFD_ENT_Push)</c> - measured on the XLS after a reload,
+    /// where the MFD had sat on that screen reading as "starting up" on every page. The
+    /// same split the softkeys have; the agent's first row says which screen is up.
+    /// </summary>
+    public static bool EntGoesOverSimConnect(IReadOnlyList<string> rows)
+        => rows.Count > 0 && rows[0] == "Display starting up:";
+
+    private bool _startupShowing;
+
     private void OnRowsUpdated(List<string> rows)
     {
         if (_disposed || !IsHandleCreated) return;
         _gotRows = true;
+        _startupShowing = EntGoesOverSimConnect(rows);
 
         // ANNOUNCEMENTS FIRST, AND NEVER HELD. This window holds one of the two inspector
         // sockets, so the always-on CAS watcher cannot have it; feeding the watcher here is
@@ -539,6 +552,13 @@ public sealed class CowsDA40DisplayForm : Form
             // Routed through the same table so it inherits the read-quiet hold and the
             // read-back, and so there is one place to look for "what does this key do".
             if (bezel.Event == "__ESCAPE__") _ = CloseStuckView();
+            else if (bezel.Event == "ENT_Push" && _startupShowing)
+            {
+                // See EntGoesOverSimConnect: on the startup screen the socket's ENT is
+                // inert and the H-event is what the instrument answers to.
+                _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_{_side}_ENT_Push)");
+                _ = _client.ScrapeNowAsync();
+            }
             else _ = PressBezel(bezel.Event, bezel.Spoken);
             return true;
         }
