@@ -603,10 +603,27 @@ public sealed class CowsDA40DisplayForm : Form
     /// deliberate action with an expected answer, and waiting a second and a half for it is
     /// what made the tuning feel unreliable.
     /// </summary>
+    /// <summary>
+    /// ⚠️ ONE AT A TIME. This reads the frequencies, fires the key, then POLLS for the change -
+    /// so two presses close together used to run two of these CONCURRENTLY, each with its own
+    /// "before" snapshot, and both would see the same step and announce it. A pilot sweeping
+    /// the knob heard "118.590" three times in a row (live dump, alongside 118.575 and 118.555
+    /// each said three times).
+    ///
+    /// The gate SERIALISES rather than dropping: a press the pilot made must still reach the
+    /// radio, and it does - the event is fired by whichever call holds the gate, in order. Only
+    /// the READ-BACK is queued behind its predecessor, which is exactly the part that was
+    /// duplicating.
+    /// </summary>
+    private readonly SemaphoreSlim _knobGate = new(1, 1);
+
     private async Task TurnRadioKnob(string knobEvent)
     {
         const string Expr = "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
 
+        await _knobGate.WaitAsync();
+        try
+        {
         string before;
         try { before = await _client.InvokeAsync(Expr); } catch { before = ""; }
         if (_disposed) return;
@@ -650,6 +667,8 @@ public sealed class CowsDA40DisplayForm : Form
         if (moved.VarKey.Length > 0) _owner?.MarkRadioTunedByWindow(moved.VarKey);
 
         _announcer.AnnounceImmediate(moved.Spoken);
+        }
+        finally { try { _knobGate.Release(); } catch { } }
     }
 
     /// <summary>

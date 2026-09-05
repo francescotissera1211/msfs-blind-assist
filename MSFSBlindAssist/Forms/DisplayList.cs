@@ -37,6 +37,7 @@ namespace MSFSBlindAssist.Forms
                 lb.BeginUpdate();
                 try { for (int i = 0; i < n; i++) lb.Items.Add(lines[i]); }
                 finally { lb.EndUpdate(); }
+                SelectFirstIfNothingSelected(lb);
                 return;
             }
 
@@ -105,6 +106,36 @@ namespace MSFSBlindAssist.Forms
                     lb.SelectedIndex = newSel;
                 if (top >= 0 && top < lb.Items.Count) lb.TopIndex = top;
             }
+        }
+
+        /// <summary>
+        /// ⚠️ A LIST AT -1 ANNOUNCES ITSELF AS EMPTY EVERY TIME IT REDRAWS.
+        ///
+        /// The restore above never DROPS a selection it had, but it could never CREATE one:
+        /// `selText` is null when nothing was selected, and the `sel >= 0` fallback cannot run
+        /// for a -1. The first-populate path returned without selecting anything at all, so a
+        /// list started at -1 and stayed there - and every live redraw re-announced
+        /// "List, nothing selected, 0 of 2" at a pilot who had touched nothing (live dump,
+        /// five times in a row between two frequency read-backs).
+        ///
+        /// Same rule the Monitor Manager already carries: `Items.Clear()` drops SelectedIndex
+        /// to -1 and NOTHING restores it - not adding items, not the control receiving focus -
+        /// and at -1 a screen reader announces the list with no current item.
+        ///
+        /// Only ever fires when there is genuinely no selection, so a pilot's own position is
+        /// never moved.
+        ///
+        /// ⚠️ CALLED ON FIRST POPULATE ONLY, NOT ON EVERY UPDATE. The update path is pinned by
+        /// No_selection_before_the_update_means_no_selection_is_introduced, a deliberate
+        /// decision that a redraw must not CREATE a selection the pilot never made - and
+        /// introducing one there would move focus in a list somebody may have deliberately
+        /// tabbed away from. A list that has never been populated has no such position to
+        /// respect, and at -1 its first Enter or Space does nothing at all.
+        /// </summary>
+        private static void SelectFirstIfNothingSelected(ListBox lb)
+        {
+            if (lb.IsDisposed || lb.Items.Count == 0 || lb.SelectedIndex >= 0) return;
+            try { lb.SelectedIndex = 0; } catch { }
         }
     }
 }
