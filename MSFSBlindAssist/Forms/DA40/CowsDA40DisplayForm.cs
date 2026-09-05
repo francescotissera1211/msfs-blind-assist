@@ -630,6 +630,14 @@ public sealed class CowsDA40DisplayForm : Form
         // Speak only the FIELD that moved. Nothing changed at all stays silent rather than
         // repeating the old value, which is the specific lie this method exists to stop.
         var moved = FirstChangedRadioField(before, after);
+
+        // ⚠️ A KNOB PRESS THAT CHANGED NOTHING SAYS NOTHING, DELIBERATELY. It is tempting to
+        // explain the silence - and a first attempt did, announcing "Avionics master off" off
+        // a SimVar reading. That diagnosis was WRONG (COM AVAILABLE was 1 and the PFD was
+        // drawing CAS messages and softkeys the whole time, so the G1000 was plainly powered),
+        // and the pilot's ruling is that a state the DISPLAY can report should be scanned for,
+        // not announced at them. The real cause is on the row itself now: NAV 2 and COM 2 carry
+        // FAILED, so a scan says why the knob does nothing while a press stays quiet.
         if (!moved.Found) return;
 
         // ⚠️ TELL THE SETTLE ANNOUNCER THIS WAS OURS, or the pilot hears it twice: the

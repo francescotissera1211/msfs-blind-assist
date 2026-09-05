@@ -348,6 +348,19 @@
                     bits.push("TRANSMIT");
                 }
 
+                // ⚠️ A FAILED RADIO, WHICH IS WHY A KNOB CAN DO NOTHING AND LOOK BROKEN.
+                // Measured live on this airframe: NAV 2 and COM 2 carry "failed-instr" while
+                // NAV 1 and COM 1 do not, and the class does NOT follow the tuning cursor -
+                // pushing the cursor from COM 2 to COM 1 left the class on COM 2 and did not
+                // put it on COM 1. So it is a real state, not selection styling.
+                //
+                // It cost a pilot a session: two knob pushes parked the cursor on COM 2, the
+                // knob then moved nothing, and the radios were reported as broken. Nothing is
+                // ANNOUNCED for it - the pilot's ruling is that a state the display can report
+                // is scanned for, not spoken at them - but the row has to CARRY it or there is
+                // nothing to scan.
+                if (hasClassContaining(rows[i], "failed-instr")) bits.push("FAILED");
+
                 out.push(bits.join(", "));
             }
         }
