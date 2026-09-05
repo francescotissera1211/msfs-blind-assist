@@ -192,7 +192,15 @@ public partial class CowsDA40Definition
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "Electric trim circuit off, autopilot will not engage",
+                // ⚠️ IT SAYS WHAT HAPPENED, NOT WHAT IT MEANS FOR YOU. This read
+                // "Electric trim circuit off, autopilot will not engage" and the pilot's
+                // ruling on that is blunt: do not baby the pilot. That the GFC 700 needs
+                // trim authority is in the manual, and a pilot who has not read it is
+                // responsible for that - the app's job is to report the aeroplane, not to
+                // coach. The consequence also goes stale: it names ONE thing the circuit
+                // costs, while the same failure takes the stick trim switch with it, so the
+                // clause was both patronising and incomplete.
+                [0] = "Electric trim circuit off",
                 [1] = "Electric trim circuit powered"
             }
         };

@@ -368,8 +368,8 @@
         // all readable as SimVars, but the SELECTED ones are the targets, and on a display
         // that is where they live. Altitude is always on the screen; heading and course
         // sit in their own boxes; the selected vertical speed appears only in VS mode.
-        var radios = A.radios();
-        for (var r = 0; r < radios.length; r++) out.push(radios[r]);
+        // The radios moved to the main row list so BOTH displays get them - see the note
+        // there. Pushing them here as well would read every frequency twice on the PFD.
 
         var wind = A.wind();
         if (wind) out.push("Wind: " + wind);
@@ -769,7 +769,12 @@
     // which radio the tuning cursor is on, and which one is transmitting.
     A.navcom = function () {
         function oneSide(rootSel, kind) {
-            var root = document.querySelector(rootSel);
+            // ⚠️ firstVisible, NEVER document.querySelector - this instrument keeps hidden
+            // duplicates of its boxes mounted, which is what made the CAS block read off a
+            // dead copy and report "none" over three live messages. The MFD carries a
+            // NavComBox it never shows, so a bare querySelector reported a tuning state for
+            // radios that are not on that screen at all.
+            var root = firstVisible(rootSel);
             if (!root) return null;
             var containers = root.querySelectorAll(".navcom-frequencyelement-container");
             var selected = 0;
@@ -3103,12 +3108,24 @@
         var bar = A.navDataBar();
         if (bar.length) rows.push("Data bar: " + bar.join(", "));
 
+        // ⚠️ THE FREQUENCIES, WHICH IS THE WHOLE QUESTION. This used to emit A.navcom()'s
+        // summary - "NAV radios: tuning NAV 1, inactive" - which names which radio the knob
+        // is on and its armed state and NEVER ONCE SAYS WHAT IS TUNED. A pilot reading it
+        // learns that the knob is on NAV 1 and nothing about 110.30 or 109.50, on the one
+        // row that exists to answer exactly that.
+        //
+        // A.radios() has carried active, standby, TUNING and TRANSMIT all along and was
+        // reachable only from A.pfdWindows(), so the MFD never saw it. It also reads through
+        // firstVisible, so it emits nothing on a display with no radio box rather than
+        // reporting a hidden one.
+        var radioRows = A.radios();
+        for (var r = 0; r < radioRows.length; r++) rows.push("Radio: " + radioRows[r]);
+
+        // The armed state (standby / inactive / transmitting) is the one thing A.radios()
+        // does not carry, so it rides alongside rather than replacing anything.
         var nc = A.navcom();
         for (var r = 0; r < nc.length; r++) {
-            var bits = [];
-            if (nc[r].selected) bits.push("tuning " + nc[r].kind + " " + nc[r].selected);
-            if (nc[r].state) bits.push(nc[r].state);
-            if (bits.length) rows.push(nc[r].kind + " radios: " + bits.join(", "));
+            if (nc[r].state) rows.push(nc[r].kind + " armed state: " + nc[r].state);
         }
 
         var eis = A.eis();
