@@ -170,8 +170,18 @@ public partial class CowsDA40Definition
         "DA40_RADIO_NAV2_ACTIVE"
     };
 
-    /// <summary>124.80 MHz becomes 0x2480, which is 9344. The COM radios take this and
-    /// nothing else; see the class comment.</summary>
+    /// <summary>
+    /// 124.80 MHz becomes 0x2480, which is 9344.
+    ///
+    /// ⚠️ NO LONGER USED FOR TUNING, AND THE CLAIM IT CARRIED WAS WRONG. "The COM radios take
+    /// this and nothing else" was recorded as measured and is not: COM_STBY_RADIO_SET_HZ lands
+    /// exactly on an 8.33 channel (121705000 -> 121.705, 118185000 -> 118.185, both re-measured
+    /// live). BCD16 holds four digits, so it could not express .705 at all and silently rounded
+    /// every 8.33 channel to the nearest 25 kHz - the "COM tuning is unreliable" report.
+    ///
+    /// Kept because the encoding is still correct for what it is, and its test documents the
+    /// shape; nothing in the tuning path calls it any more.
+    /// </summary>
     public static int ComBcd16(double megahertz)
     {
         // Only the four digits after the leading "1" are encoded: 124.800 -> 2 4 8 0.
@@ -195,7 +205,11 @@ public partial class CowsDA40Definition
         // predicted from the standby any more - that prediction was wrong whenever the
         // cache was stale and stayed confident when the event had been dropped. The
         // radio's own change announces itself a moment later, and that number is real.
-        MarkRadioSetByUs();
+        // ⚠️ A SWAP SUPPRESSES NOTHING. It moves the ACTIVE frequency, and the whole point of
+        // this design is that the pilot hears what the radio actually did rather than what was
+        // predicted - so the read-back that follows a moment later is the news, not an echo.
+        // The empty key is deliberate: it marks the write as ours for nothing.
+        MarkRadioSetByUs("");
         announcer.AnnounceImmediate($"{radio} swapped");
     }
 
@@ -209,9 +223,22 @@ public partial class CowsDA40Definition
             {
                 int radio = varKey.Contains('2') ? 2 : 1;
                 double mhz = Math.Clamp(value, 118.0, 136.999);
-                string evt = radio == 1 ? "COM_STBY_RADIO_SET" : "COM2_STBY_RADIO_SET";
-                simConnect.ExecuteCalculatorCodeUnique($"{ComBcd16(mhz)} (>K:{evt})");
-                MarkRadioSetByUs();
+
+                // ⚠️ RAW HERTZ, NOT BCD16 - AND THE OLD NOTE SAYING OTHERWISE WAS WRONG.
+                // This wrote COM_STBY_RADIO_SET with a BCD16 word on the recorded belief that
+                // "COM ignores COM_STBY_RADIO_SET_HZ entirely, so COM is 25 kHz only and an
+                // 8.33 channel cannot be typed". Re-measured live on the DA40: the Hz event
+                // lands EXACTLY on an 8.33 channel both sides -
+                //   121705000 (>K:COM_STBY_RADIO_SET_HZ)  -> 121.705
+                //   118185000 (>K:COM2_STBY_RADIO_SET_HZ) -> 118.185
+                // BCD16 carries four digits, so it cannot express .705 or .185 at all and
+                // quietly rounded every 8.33 channel to the nearest 25 kHz - which is the
+                // "COM tuning is unreliable" report. NAV was already on the Hz form; the two
+                // now differ only in the event name.
+                string evt = radio == 1 ? "COM_STBY_RADIO_SET_HZ" : "COM2_STBY_RADIO_SET_HZ";
+                long hz = (long)Math.Round(mhz * 1_000_000.0);
+                simConnect.ExecuteCalculatorCodeUnique($"{hz} (>K:{evt})");
+                MarkRadioSetByUs(varKey);   // the case falls through COM1/COM2
                 announcer.AnnounceImmediate($"COM {radio} standby {mhz:0.000}");
                 return true;
             }
@@ -223,7 +250,7 @@ public partial class CowsDA40Definition
                 double mhz = Math.Clamp(value, 108.0, 117.95);
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
                 simConnect.ExecuteCalculatorCode($"{hz} (>K:NAV{radio}_STBY_SET_HZ)");
-                MarkRadioSetByUs();
+                MarkRadioSetByUs(varKey);   // the case falls through NAV1/NAV2
                 announcer.AnnounceImmediate($"NAV {radio} standby {mhz:0.00}");
                 return true;
             }

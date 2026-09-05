@@ -42,8 +42,26 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// </summary>
 public partial class CowsDA40Definition
 {
-    /// <summary>How still the tuning must be before the frequency is spoken.</summary>
-    private const int RadioSettleMs = 300;
+    /// <summary>
+    /// How still the tuning must be before the frequency is spoken.
+    ///
+    /// ⚠️ THIS MUST EXCEED ONE BATCH PERIOD, AND AT 300 ms IT DID NOT. The continuous batch
+    /// samples at 1 Hz, so a knob swept for several seconds delivers a NEW value every second
+    /// and a 300 ms settle expired between every pair of them - announcing each intermediate
+    /// frequency the knob passed through instead of the one it stopped on. That is the
+    /// "it announces 700, 800" report: those were real readings, a second apart, mid-sweep.
+    ///
+    /// Just over the period is the whole trick: while the knob is moving each delivery
+    /// restarts the timer, so nothing speaks; when it stops, no further delivery arrives and
+    /// the timer runs out on the resting value.
+    ///
+    /// ⚠️ IT COSTS LAG AND THERE IS NO WAY ROUND THAT AT 1 Hz. Worst case is one batch period
+    /// to notice the last change plus this settle - a little over two seconds. Shortening it
+    /// does not buy speed, it buys the intermediate announcements back; the only real cure is
+    /// a faster sample than the batch offers, which is a data-definition budget question and
+    /// not a tuning one.
+    /// </summary>
+    private const int RadioSettleMs = 1200;
 
     /// <summary>How long after MSFSBA's own set or swap to stay quiet.</summary>
     private const int RadioOwnWriteGraceMs = 2500;
@@ -94,12 +112,36 @@ public partial class CowsDA40Definition
     /// Called by every path inside MSFSBA that tunes or swaps, so the settle timer knows
     /// the change was ours. The panel field and the swap button both confirm themselves.
     /// </summary>
-    private void MarkRadioSetByUs() => _radioOwnWriteAt = DateTime.UtcNow;
+    /// <summary>
+    /// Remember WHICH key MSFSBA just wrote, so the settle skips that one and nothing else.
+    ///
+    /// ⚠️ THIS USED TO BE A CATEGORY, AND BOTH SHAPES OF THAT WERE WRONG. Suppressing every
+    /// key ending "_SET" swallowed autopilot preselects a radio write had nothing to do with;
+    /// narrowing it to radio standbys alone then UN-suppressed the autopilot's own echo, so
+    /// Ctrl+A announced "Selected altitude 5000 feet" from the setter and "Selected altitude
+    /// 5000" from the settle a moment later - the same value twice over one keypress.
+    ///
+    /// The key is the honest unit: a value MSFSBA wrote and already spoke is redundant, and
+    /// any OTHER value moving in the same window is somebody else's news.
+    /// </summary>
+    private void MarkRadioSetByUs(string varKey)
+    {
+        _radioOwnWriteAt = DateTime.UtcNow;
+        _radioOwnWriteKey = varKey;
+    }
+
+    private string _radioOwnWriteKey = "";
 
     /// <summary>
     /// A standby FREQUENCY the pilot typed, which the panel field already read back - never
     /// an autopilot selected value, which shares the "_SET" suffix and nothing else.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ RETAINED FOR ITS TEST, NOT USED BY THE SUPPRESSION ANY MORE. The grace is per-KEY
+    /// now (see MarkRadioSetByUs) because a category - either category - suppressed the wrong
+    /// things. This predicate still records which keys are radio standbys, and its test still
+    /// documents why "ends with _SET" was never the right question.
+    /// </remarks>
     internal static bool IsRadioStandbyKey(string key)
         => key.StartsWith("DA40_RADIO_", StringComparison.Ordinal)
            && key.EndsWith("_SET", StringComparison.Ordinal);
@@ -165,8 +207,7 @@ public partial class CowsDA40Definition
             // The suppression is justified ONLY for a value MSFSBA itself echoed back as it
             // was typed; an autopilot preselect that happens to change in the same window is
             // somebody else's news and must still be spoken.
-            foreach (var key in RadioLabels.Keys)
-                if (IsRadioStandbyKey(key)) pending.Remove(key);
+            if (_radioOwnWriteKey.Length > 0) pending.Remove(_radioOwnWriteKey);
             if (pending.Count == 0) return;
         }
 

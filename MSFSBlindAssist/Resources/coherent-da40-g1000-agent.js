@@ -3205,6 +3205,20 @@
         if (n.crossTrack) rows.push("Cross track: " + n.crossTrack);
         if (n.message) rows.push("GPS message: " + n.message);
 
+        // ⚠️ THE RADIOS BELONG HERE MOST OF ALL - THE BOXES ARE ON THIS BEZEL. Moving the
+        // frequencies onto the MFD row list and dropping A.pfdWindows()'s copy took them OFF
+        // the one display that physically has them, which is exactly backwards: the pilot got
+        // frequencies on the MFD, which has no radio box, and nothing on the PFD, where they
+        // tune. Both displays carry the row now - the MFD's elements read the same shared
+        // state and are correct, they are simply not where the knobs are.
+        var pfdRadios = A.radios();
+        for (var r = 0; r < pfdRadios.length; r++) rows.push("Radio: " + pfdRadios[r]);
+
+        var pfdNc = A.navcom();
+        for (var r = 0; r < pfdNc.length; r++) {
+            if (pfdNc[r].state) rows.push(pfdNc[r].kind + " armed state: " + pfdNc[r].state);
+        }
+
         var wins = A.pfdWindows();
         for (var w = 0; w < wins.length; w++) rows.push(wins[w]);
 

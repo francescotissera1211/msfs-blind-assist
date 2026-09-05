@@ -419,7 +419,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_ALT_SET":
             {
-                MarkRadioSetByUs();
+                MarkRadioSetByUs("DA40_AP_ALT_SET");
                 // The selected altitude is entered in FEET and the event takes feet, but
                 // the aeroplane's ceiling is the sane clamp: an entry slip of one digit
                 // would otherwise command a climb the aircraft cannot make.
@@ -443,7 +443,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_VS_SET":
             {
-                MarkRadioSetByUs();
+                MarkRadioSetByUs("DA40_AP_VS_SET");
                 int fpm = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, -2000, 2000);
                 simConnect.ExecuteCalculatorCodeUnique($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)");
                 announcer.AnnounceImmediate(fpm == 0
@@ -454,7 +454,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_IAS_SET":
             {
-                MarkRadioSetByUs();
+                MarkRadioSetByUs("DA40_AP_IAS_SET");
                 // Between the flap-limit end of the envelope and Vne. Flight level change
                 // pitches for this speed, so a value outside the envelope is a command to
                 // stall or to overspeed.
@@ -466,7 +466,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_HDG_SET":
             {
-                MarkRadioSetByUs();
+                MarkRadioSetByUs("DA40_AP_HDG_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:HEADING_BUG_SET)");
                 announcer.AnnounceImmediate($"Heading bug {deg:000}");
@@ -475,7 +475,7 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_CRS_SET":
             {
-                MarkRadioSetByUs();
+                MarkRadioSetByUs("DA40_AP_CRS_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:VOR1_SET)");
                 announcer.AnnounceImmediate($"Course {deg:000}");
