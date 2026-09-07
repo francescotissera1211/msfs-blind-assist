@@ -122,7 +122,7 @@ public class CowsDA40StandbyBaroKnobTests
         var rows = new CowsDA40Definition(variant).GetPanelControls()["Standby Instruments"];
         foreach (string k in new[]
         {
-            "DA40_G1000_BARO", "DA40_G1000_BARO_UP", "DA40_G1000_BARO_DN",
+            "DA40_G1000_BARO_SET", "DA40_G1000_BARO_UP", "DA40_G1000_BARO_DN",
             "DA40_STBY_ALTIMETER_SET", "DA40_STBY_ALTIMETER_UP", "DA40_STBY_ALTIMETER_DN"
         })
             Assert.Contains(k, rows);

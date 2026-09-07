@@ -504,8 +504,8 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_LIGHT_TAXI", controls);
         Assert.Contains("DA40_LIGHT_POSITION", controls);
         Assert.Contains("DA40_LIGHT_STROBE", controls);
-        Assert.Contains("DA40_LIGHT_INSTRUMENT", controls);
-        Assert.Contains("DA40_LIGHT_FLOOD", controls);
+        Assert.Contains("DA40_LIGHT_INSTRUMENT_SET", controls);
+        Assert.Contains("DA40_LIGHT_FLOOD_SET", controls);
     }
 
     [Fact]
@@ -531,7 +531,7 @@ public class CowsDA40PanelStructureTests
         // and the model drives them from LIGHT POTENTIOMETER:3 and :5 as percentages.
         var vars = Ng().GetVariables();
 
-        foreach (var key in new[] { "DA40_LIGHT_INSTRUMENT", "DA40_LIGHT_FLOOD" })
+        foreach (var key in new[] { "DA40_LIGHT_INSTRUMENT_SET", "DA40_LIGHT_FLOOD_SET" })
         {
             var v = vars[key];
             Assert.True(v.RenderAsSlider, $"{key} should be a brightness slider");
@@ -540,8 +540,8 @@ public class CowsDA40PanelStructureTests
             Assert.Empty(v.ValueDescriptions);
         }
 
-        Assert.Equal("LIGHT POTENTIOMETER:3", vars["DA40_LIGHT_INSTRUMENT"].Name);
-        Assert.Equal("LIGHT POTENTIOMETER:5", vars["DA40_LIGHT_FLOOD"].Name);
+        Assert.Equal("LIGHT POTENTIOMETER:3", vars["DA40_LIGHT_INSTRUMENT_SET"].Name);
+        Assert.Equal("LIGHT POTENTIOMETER:5", vars["DA40_LIGHT_FLOOD_SET"].Name);
     }
 
     [Fact]
@@ -635,11 +635,11 @@ public class CowsDA40PanelStructureTests
         // DA40_FUEL_AUX_ACTUAL, which ARE Continuous and announced - so a tank filling
         // from GSX, or draining through a leak, still speaks. Announcing the request as
         // well would say the same number twice.
-        "DA40_FUEL_MAIN_LOAD",
-        "DA40_FUEL_AUX_LOAD",
+        "DA40_FUEL_MAIN_LOAD_SET",
+        "DA40_FUEL_AUX_LOAD_SET",
         // The XLS tank loads: the same typed-gallons transaction, left and right.
-        "DA40_XLS_FUEL_LEFT_LOAD",
-        "DA40_XLS_FUEL_RIGHT_LOAD",
+        "DA40_XLS_FUEL_LEFT_LOAD_SET",
+        "DA40_XLS_FUEL_RIGHT_LOAD_SET",
         // Swept by hardware - a throttle quadrant, a trim wheel.
         "DA40_POWER_LEVER_SET",
         "DA40_TRIM_SET",
@@ -654,16 +654,23 @@ public class CowsDA40PanelStructureTests
         // announce every hundred feet, and the heading bug every degree.
         "DA40_AP_ALT_SET", "DA40_AP_VS_SET", "DA40_AP_IAS_SET",
         "DA40_AP_HDG_SET", "DA40_AP_CRS_SET",
+        // ⚠️ A WRITE-ONLY PROXY, not a silent switch. DA40_G1000_BARO_SET exists only to
+        // give MainForm a key containing "_SET" so the G1000 subscale gets a text box
+        // instead of a bare button; it binds no SimVar of its own. The announcing is done
+        // by DA40_G1000_BARO, the readout it is seeded from, which has the baro settle
+        // announcer on it - so an external change to the subscale IS spoken, just not by
+        // this key.
+        "DA40_G1000_BARO_SET",
         // Radio frequencies and courses: numbers, typed once.
         "DA40_RADIO_COM1_SET", "DA40_RADIO_COM2_SET",
         "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV2_SET",
         // Failure SEVERITIES. Nothing outside MSFSBA sets these, so there is no background
         // change to miss, and a percentage is a number to be read like any other.
-        "DA40_FAIL_COOLANT_LEAK",
+        "DA40_FAIL_COOLANT_LEAK_SET",
         "DA40_FAIL_CHT_BAFFLE",
-        "DA40_FAIL_TURBO",
+        "DA40_FAIL_TURBO_SET",
         "DA40_FAIL_VACC_LEAK",
-        "DA40_FAIL_BOOST_LEAK",
+        "DA40_FAIL_BOOST_LEAK_SET",
         "DA40_FAIL_FUEL_PUMP",
         "DA40_FAIL_FUEL_SPRING",
         "DA40_FAIL_FUEL_LEAK",
@@ -1548,7 +1555,7 @@ public class CowsDA40PanelStructureTests
         // Searching for the system found nothing; the Asobo templates are what name it.
         var controls = new CowsDA40Definition(variant).GetPanelControls()["Cabin Heat and Vent"];
 
-        Assert.Equal(new[] { "DA40_CABIN_HEAT", "DA40_CABIN_AIR" }, controls.ToArray());
+        Assert.Equal(new[] { "DA40_CABIN_HEAT_SET", "DA40_CABIN_AIR_SET" }, controls.ToArray());
     }
 
     [Fact]
@@ -1557,7 +1564,7 @@ public class CowsDA40PanelStructureTests
         // The one place a slider is right: MainForm's TrackBar maps the value as a
         // percentage of 0-100, which is exactly what these are. The trim and the standby
         // subscale are not, which is why they are typed entries.
-        foreach (var key in new[] { "DA40_CABIN_HEAT", "DA40_CABIN_AIR" })
+        foreach (var key in new[] { "DA40_CABIN_HEAT_SET", "DA40_CABIN_AIR_SET" })
         {
             Assert.True(Ng().GetVariables()[key].RenderAsSlider);
         }
@@ -1889,7 +1896,7 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_FAIL_CAM_B", controls["FADEC and Sensors"]);
         Assert.Contains("DA40_FAIL_LEVER_A", controls["FADEC and Sensors"]);
         Assert.Contains("DA40_FAIL_GLOW", controls["FADEC and Sensors"]);
-        Assert.Contains("DA40_FAIL_COOLANT_LEAK", controls["Engine Failures"]);
+        Assert.Contains("DA40_FAIL_COOLANT_LEAK_SET", controls["Engine Failures"]);
     }
 
     [Fact]

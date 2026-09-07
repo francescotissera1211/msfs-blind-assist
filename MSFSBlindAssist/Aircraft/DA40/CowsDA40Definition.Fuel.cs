@@ -160,8 +160,8 @@ public partial class CowsDA40Definition
         // fuel system is a left/right selector and a different panel, still unbuilt), and
         // the AFM is explicit that the NG's tanks are named for their ROLE rather than
         // their wing. Refuel() below says the same words back.
-        AddTankLoad(v, "DA40_FUEL_MAIN_LOAD", "Main Tank Fuel");
-        AddTankLoad(v, "DA40_FUEL_AUX_LOAD", "Auxiliary Tank Fuel");
+        AddTankLoad(v, "DA40_FUEL_MAIN_LOAD_SET", "Main Tank Fuel");
+        AddTankLoad(v, "DA40_FUEL_AUX_LOAD_SET", "Auxiliary Tank Fuel");
 
         v["DA40_FUEL_FILL_FULL"] = new SimVarDefinition
         {
@@ -305,8 +305,8 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> FuelControls = new()
     {
-        "DA40_FUEL_MAIN_LOAD",
-        "DA40_FUEL_AUX_LOAD",
+        "DA40_FUEL_MAIN_LOAD_SET",
+        "DA40_FUEL_AUX_LOAD_SET",
         "DA40_FUEL_FILL_FULL",
         "DA40_FUEL_VALVE",
         "DA40_FUEL_WIRE",
@@ -397,10 +397,10 @@ public partial class CowsDA40Definition
     {
         switch (varKey)
         {
-            case "DA40_FUEL_MAIN_LOAD":
+            case "DA40_FUEL_MAIN_LOAD_SET":
                 return Refuel(simConnect, announcer, value, null);
 
-            case "DA40_FUEL_AUX_LOAD":
+            case "DA40_FUEL_AUX_LOAD_SET":
                 return Refuel(simConnect, announcer, null, value);
 
             case "DA40_FUEL_FILL_FULL":

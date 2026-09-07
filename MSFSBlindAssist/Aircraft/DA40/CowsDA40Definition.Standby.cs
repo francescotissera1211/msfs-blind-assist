@@ -125,6 +125,28 @@ public partial class CowsDA40Definition
         // The step is the PFD bezel's own knob event, verified live from outside the display
         // window (29.899 -> 29.910 inHg on A:KOHLSMAN SETTING HG:1), which is what makes a
         // panel button possible: it is the same SimConnect H-event write the window makes.
+        // ⚠️ A SEPARATE _SET KEY, AND THE "_SET" IS LOAD-BEARING, NOT DECORATION.
+        // MainForm.PanelBuilder gives a text box + Set button to a key that CONTAINS
+        // "_SET" and to nothing else; a numeric control without it falls through to a
+        // plain button, which fires the setter with no value the pilot chose. Added to
+        // the panel as the bare readout key first, this rendered as "Altimeter Setting
+        // button" - a button that could not carry a number.
+        //
+        // It is write-only (Never, no SimVar of its own) so it does NOT duplicate
+        // DA40_G1000_BARO's data definition; CurrentValueSourceKey is what puts the live
+        // value in the box when the pilot tabs into it.
+        v["DA40_G1000_BARO_SET"] = new SimVarDefinition
+        {
+            Name = "DA40_G1000_BARO_SET",
+            DisplayName = "Altimeter Setting",
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            IsAnnounced = false,
+            ExcludeFromMonitorManager = true,
+            CurrentValueSourceKey = "DA40_G1000_BARO",
+            HelpText = "The G1000 subscale. Takes hectopascals or inches."
+        };
+
         AddG1000BaroStep(v, "DA40_G1000_BARO_UP", "Altimeter Setting Up",
             "One hundredth of an inch up on the G1000.");
         AddG1000BaroStep(v, "DA40_G1000_BARO_DN", "Altimeter Setting Down",
@@ -280,7 +302,7 @@ public partial class CowsDA40Definition
     {
         // Both altimeters, main first, each with its typed box and its knob. They sit
         // together because the question a standby answers is whether the two AGREE.
-        "DA40_G1000_BARO",
+        "DA40_G1000_BARO_SET",
         "DA40_G1000_BARO_UP",
         "DA40_G1000_BARO_DN",
         "DA40_STBY_ALTIMETER_SET",
@@ -353,7 +375,7 @@ public partial class CowsDA40Definition
             // The G1000 subscale, typed. Same unit convention as everywhere else on this
             // aeroplane - the ranges cannot overlap, so magnitude says which was meant -
             // and the same K:KOHLSMAN_SET write Ctrl+B makes, in millibars times sixteen.
-            case "DA40_G1000_BARO":
+            case "DA40_G1000_BARO_SET":
             {
                 double inHg = Math.Clamp(value > 100 ? value / 33.8639 : value, 28.00, 31.50);
                 double mb = inHg * 33.8639;

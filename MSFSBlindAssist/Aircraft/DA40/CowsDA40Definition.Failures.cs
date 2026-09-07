@@ -60,10 +60,10 @@ public partial class CowsDA40Definition
             AddFailureModes(v, "DA40_FAIL_THERM_COOL", "FAILURES_THERMOSTAT:1", "Coolant Thermostat",
             new Dictionary<double, string> { [0] = "Normal", [1] = "Stuck closed", [2] = "Stuck open", [3] = "Stuck as is" });
             AddFailureFlag(v, "DA40_FAIL_WATER_PUMP", "FAILURES_WATER_PUMP:1", "Water Pump");
-            AddFailureFactor(v, "DA40_FAIL_COOLANT_LEAK", "FAILURES_COOLANT_LEAK:1", "Coolant Leak");
+            AddFailureFactor(v, "DA40_FAIL_COOLANT_LEAK_SET", "FAILURES_COOLANT_LEAK:1", "Coolant Leak");
             AddFailureFlag(v, "DA40_FAIL_OIL_P_SENSOR", "FAILURES_OIL_P_SENSOR:1", "Oil Pressure Sensor");
             AddFailureFlag(v, "DA40_FAIL_OIL_T_SENSOR", "FAILURES_OIL_TEMP_SENSOR:1", "Oil Temperature Sensor");
-            AddFailureFactor(v, "DA40_FAIL_TURBO", "FAILURES_TURBO:1", "Turbocharger");
+            AddFailureFactor(v, "DA40_FAIL_TURBO_SET", "FAILURES_TURBO:1", "Turbocharger");
             AddFailureFlag(v, "DA40_FAIL_WASTEGATE", "FAILURES_WASTEGATE:1", "Wastegate");
         }
 
@@ -86,7 +86,7 @@ public partial class CowsDA40Definition
             AddFailureFlag(v, "DA40_FAIL_PROP_A", "FAILURES_PROP_A:1", "Propeller Control, ECU A");
             AddFailureFlag(v, "DA40_FAIL_PROP_B", "FAILURES_PROP_B:1", "Propeller Control, ECU B");
             AddFailureFlag(v, "DA40_FAIL_GLOW", "FAILURES_GLOW", "Glow Plugs");
-            AddFailureFactor(v, "DA40_FAIL_BOOST_LEAK", "FAILURES_BOOST_LEAK:1", "Boost Leak");
+            AddFailureFactor(v, "DA40_FAIL_BOOST_LEAK_SET", "FAILURES_BOOST_LEAK:1", "Boost Leak");
         }
 
         // ---------- Fuel Failures ----------
@@ -336,10 +336,10 @@ public partial class CowsDA40Definition
         "DA40_FAIL_BYPASS",
         "DA40_FAIL_THERM_COOL",
         "DA40_FAIL_WATER_PUMP",
-        "DA40_FAIL_COOLANT_LEAK",
+        "DA40_FAIL_COOLANT_LEAK_SET",
         "DA40_FAIL_OIL_P_SENSOR",
         "DA40_FAIL_OIL_T_SENSOR",
-        "DA40_FAIL_TURBO",
+        "DA40_FAIL_TURBO_SET",
         "DA40_FAIL_WASTEGATE",
     };
 
@@ -359,7 +359,7 @@ public partial class CowsDA40Definition
         "DA40_FAIL_PROP_A",
         "DA40_FAIL_PROP_B",
         "DA40_FAIL_GLOW",
-        "DA40_FAIL_BOOST_LEAK"
+        "DA40_FAIL_BOOST_LEAK_SET"
     };
 
     private static readonly List<string> SimFuelControls = new()
@@ -490,9 +490,9 @@ public partial class CowsDA40Definition
     /// <summary>The factor failures, whose written value is a hundredth of what is typed.</summary>
     private static readonly HashSet<string> FailureFactorKeys = new()
     {
-        "DA40_FAIL_COOLANT_LEAK",
-        "DA40_FAIL_TURBO",
-        "DA40_FAIL_BOOST_LEAK",
+        "DA40_FAIL_COOLANT_LEAK_SET",
+        "DA40_FAIL_TURBO_SET",
+        "DA40_FAIL_BOOST_LEAK_SET",
         "DA40_FAIL_INJ_4"
     };
 

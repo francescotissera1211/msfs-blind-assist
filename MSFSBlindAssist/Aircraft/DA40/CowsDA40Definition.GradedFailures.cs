@@ -30,9 +30,9 @@ public partial class CowsDA40Definition
 
     private static readonly Dictionary<string, string> GradedFailures = new(StringComparer.Ordinal)
     {
-        ["DA40_FAIL_COOLANT_LEAK"] = "Coolant leak",
-        ["DA40_FAIL_TURBO"] = "Turbocharger failure",
-        ["DA40_FAIL_BOOST_LEAK"] = "Boost leak",
+        ["DA40_FAIL_COOLANT_LEAK_SET"] = "Coolant leak",
+        ["DA40_FAIL_TURBO_SET"] = "Turbocharger failure",
+        ["DA40_FAIL_BOOST_LEAK_SET"] = "Boost leak",
 
         // Not a failure, but exactly the same shape: a percentage that climbs, whose ONSET
         // is the news and whose value is not. The DA40 is not approved for flight into

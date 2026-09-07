@@ -103,7 +103,7 @@ public partial class CowsDA40Definition
 
         // COWS ship a "timer expired" voice alert; this is its setting. Named from their
         // own feature list rather than guessed from the variable.
-        AddOptionNumber(v, "DA40_OPT_TIMER_EXPIRED", "COWS_TIMER_EXP",
+        AddOptionNumber(v, "DA40_OPT_TIMER_EXPIRED_SET", "COWS_TIMER_EXP",
             "Timer Expired Alert",
             "The aircraft's own spoken alert when the G1000 timer runs out.");
 
@@ -143,7 +143,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private static readonly List<string> OptionControls = new()
     {
-        "DA40_OPT_TIMER_EXPIRED",
+        "DA40_OPT_TIMER_EXPIRED_SET",
         "DA40_OPT_KILL_FMA"
     };
 

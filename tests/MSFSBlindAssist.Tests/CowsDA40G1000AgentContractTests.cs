@@ -170,7 +170,7 @@ public class CowsDA40G1000AgentContractTests
         // to live.
         var controls = new CowsDA40Definition(variant).GetPanelControls()["Aircraft Options"];
 
-        Assert.Equal(new[] { "DA40_OPT_TIMER_EXPIRED", "DA40_OPT_KILL_FMA" }, controls.ToArray());
+        Assert.Equal(new[] { "DA40_OPT_TIMER_EXPIRED_SET", "DA40_OPT_KILL_FMA" }, controls.ToArray());
     }
 
     [Theory]

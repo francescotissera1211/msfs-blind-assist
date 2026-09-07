@@ -60,9 +60,9 @@ public partial class CowsDA40Definition
         AddLightSwitch(v, "DA40_LIGHT_STROBE", "LIGHT STROBE", "Strobe Lights");
 
         // Brightness knobs, 0-100 %.
-        AddBrightness(v, "DA40_LIGHT_INSTRUMENT", "LIGHT POTENTIOMETER:3", "Instrument Lights",
+        AddBrightness(v, "DA40_LIGHT_INSTRUMENT_SET", "LIGHT POTENTIOMETER:3", "Instrument Lights",
             "Rotary knob. Sets instrument panel brightness from 0 to 100 percent.");
-        AddBrightness(v, "DA40_LIGHT_FLOOD", "LIGHT POTENTIOMETER:5", "Flood Light",
+        AddBrightness(v, "DA40_LIGHT_FLOOD_SET", "LIGHT POTENTIOMETER:5", "Flood Light",
             "Rotary knob, 0 to 100 percent. The pilot's flood light is wired straight to " +
             "the main battery and works with the electric master off.");
 
@@ -129,8 +129,8 @@ public partial class CowsDA40Definition
         "DA40_LIGHT_TAXI",
         "DA40_LIGHT_POSITION",
         "DA40_LIGHT_STROBE",
-        "DA40_LIGHT_INSTRUMENT",
-        "DA40_LIGHT_FLOOD",
+        "DA40_LIGHT_INSTRUMENT_SET",
+        "DA40_LIGHT_FLOOD_SET",
         "DA40_LIGHT_CABIN_RIGHT",
         "DA40_LIGHT_CABIN_LEFT",
         "DA40_LIGHT_CABIN_BAGGAGE"
@@ -183,13 +183,13 @@ public partial class CowsDA40Definition
 
             // Percentage knobs. PANEL_LIGHTS_SET / GLARESHIELD_LIGHTS_SET are written
             // alongside so the boolean companion the model also reads stays consistent.
-            case "DA40_LIGHT_INSTRUMENT":
+            case "DA40_LIGHT_INSTRUMENT_SET":
                 simConnect.ExecuteCalculatorCode(
                     $"{value:0} (>K:LIGHT_POTENTIOMETER_3_SET) " +
                     $"{(value > 0 ? 1 : 0)} (>K:PANEL_LIGHTS_SET)");
                 return true;
 
-            case "DA40_LIGHT_FLOOD":
+            case "DA40_LIGHT_FLOOD_SET":
                 simConnect.ExecuteCalculatorCode(
                     $"{value:0} (>K:LIGHT_POTENTIOMETER_5_SET) " +
                     $"{(value > 0 ? 1 : 0)} (>K:GLARESHIELD_LIGHTS_SET)");

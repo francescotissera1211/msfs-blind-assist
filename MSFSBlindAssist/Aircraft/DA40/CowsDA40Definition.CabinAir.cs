@@ -49,9 +49,9 @@ public partial class CowsDA40Definition
 
         // A genuine 0-100 percentage, so a slider is right here — unlike the trim and the
         // standby subscale, whose ranges MainForm's TrackBar cannot express.
-        AddCabinLever(v, "DA40_CABIN_HEAT", "XMLVAR_CabinHeat", "Cabin Heat",
+        AddCabinLever(v, "DA40_CABIN_HEAT_SET", "XMLVAR_CabinHeat", "Cabin Heat",
             "Engine heat exchanger, so it needs a warm engine. The simulation models no cabin temperature.");
-        AddCabinLever(v, "DA40_CABIN_AIR", "XMLVAR_CabinAir", "Cabin Air",
+        AddCabinLever(v, "DA40_CABIN_AIR_SET", "XMLVAR_CabinAir", "Cabin Air",
             "Fresh air to the cabin. The simulation models no cabin temperature.");
 
         // ---------- Status ----------
@@ -96,8 +96,8 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> CabinAirControls = new()
     {
-        "DA40_CABIN_HEAT",
-        "DA40_CABIN_AIR"
+        "DA40_CABIN_HEAT_SET",
+        "DA40_CABIN_AIR_SET"
     };
 
     private static readonly List<string> CabinAirDisplay = new()
@@ -109,10 +109,10 @@ public partial class CowsDA40Definition
     private bool HandleCabinAirSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
-        if (varKey != "DA40_CABIN_HEAT" && varKey != "DA40_CABIN_AIR") return false;
+        if (varKey != "DA40_CABIN_HEAT_SET" && varKey != "DA40_CABIN_AIR_SET") return false;
 
         double pct = Math.Clamp(value, 0, 100);
-        simConnect.SetLVar(varKey == "DA40_CABIN_HEAT" ? "XMLVAR_CabinHeat" : "XMLVAR_CabinAir", pct);
+        simConnect.SetLVar(varKey == "DA40_CABIN_HEAT_SET" ? "XMLVAR_CabinHeat" : "XMLVAR_CabinAir", pct);
         return true;
     }
 }

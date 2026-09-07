@@ -81,7 +81,7 @@ public partial class CowsDA40Definition
 
         // Refuelling: the transaction, not a cockpit control (see Fuel.cs). Left and right,
         // because that is what the XLS's tanks are.
-        foreach (var (key, label) in new[] { ("DA40_XLS_FUEL_LEFT_LOAD", "Left Tank Fuel"), ("DA40_XLS_FUEL_RIGHT_LOAD", "Right Tank Fuel") })
+        foreach (var (key, label) in new[] { ("DA40_XLS_FUEL_LEFT_LOAD_SET", "Left Tank Fuel"), ("DA40_XLS_FUEL_RIGHT_LOAD_SET", "Right Tank Fuel") })
         {
             v[key] = new SimVarDefinition
             {
@@ -173,8 +173,8 @@ public partial class CowsDA40Definition
     {
         "DA40_XLS_FUEL_SELECTOR",
         "DA40_XLS_FUEL_PUMP",
-        "DA40_XLS_FUEL_LEFT_LOAD",
-        "DA40_XLS_FUEL_RIGHT_LOAD",
+        "DA40_XLS_FUEL_LEFT_LOAD_SET",
+        "DA40_XLS_FUEL_RIGHT_LOAD_SET",
         "DA40_XLS_FUEL_FILL"
     };
 
@@ -215,10 +215,10 @@ public partial class CowsDA40Definition
                 simConnect.ExecuteCalculatorCodeUnique($"{(value >= 0.5 ? 1 : 0)} (>K:ELECT_FUEL_PUMP1_SET)");
                 return true;
 
-            case "DA40_XLS_FUEL_LEFT_LOAD":
+            case "DA40_XLS_FUEL_LEFT_LOAD_SET":
                 return Refuel(simConnect, announcer, value, null, XlsTankUsableGal, PrimeEngineRunning);
 
-            case "DA40_XLS_FUEL_RIGHT_LOAD":
+            case "DA40_XLS_FUEL_RIGHT_LOAD_SET":
                 return Refuel(simConnect, announcer, null, value, XlsTankUsableGal, PrimeEngineRunning);
 
             case "DA40_XLS_FUEL_FILL":
