@@ -137,6 +137,12 @@ public partial class CowsDA40Definition
                 else spoken = "degrees celsius";
                 break;
 
+            // The XLS's cylinder gauges are drawn in Fahrenheit; the same setting decides.
+            case "fahrenheit":
+                if (_unitTemperature == "fahrenheit") spoken = "degrees fahrenheit";
+                else { converted = (value - 32.0) * 5.0 / 9.0; spoken = "degrees celsius"; }
+                break;
+
             case "pounds":
                 if (_unitWeight == "kilograms") { converted = value * KgPerLb; spoken = "kilograms"; }
                 else spoken = "pounds";

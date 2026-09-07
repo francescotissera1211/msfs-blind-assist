@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 9;
+    A.VERSION = 14;
 
     function visible(el) {
         if (!el) return false;
@@ -881,7 +881,10 @@
         if (!host) return [];
 
         var out = [];
-        var gauges = host.querySelectorAll(".eis-gauge");
+        // ⚠️ .eis-gauge AND .eis-dial-gauge: the XLS strip carries its two dials (MAN IN,
+        // RPM) under the second class, and selecting only the first read seven bars and
+        // neither number - the two the whole strip exists for on a Lycoming.
+        var gauges = host.querySelectorAll(".eis-gauge, .eis-dial-gauge");
 
         for (var i = 0; i < gauges.length; i++) {
             var g = gauges[i];
@@ -1168,6 +1171,58 @@
             if (out.length) return out;
         }
 
+        // THE NAVIGRAPH FLIGHT PLAN CATALOG. Its plan list is a plain stack of divs under
+        // an overflow-hidden scroller - 99 numbered slots, most of them "_ _ _ _/_ _ _ _" -
+        // with two status overlays ("Loading flights...", "Importing...") mounted beside
+        // them and shown only while true. Read generically, all 99 welded into one row
+        // with both overlays' text in it whether shown or not. One row per plan, the empty
+        // tail collapsed, and an overlay only when it is actually up.
+        var stack = box.querySelector("[class*='overflow-hidden']");
+        if (stack) {
+            var overlays = [];
+            var listEl = null;
+            for (var sc = 0; sc < stack.children.length; sc++) {
+                var kid = stack.children[sc];
+                if (!visible(kid)) continue;
+                if (/absolute/.test(String(kid.className))) { var ot = text(kid); if (ot) overlays.push(ot); }
+                else if (!listEl && kid.children.length >= 5) listEl = kid;
+            }
+            for (var o = 0; o < overlays.length; o++) out.push(overlays[o]);
+            if (listEl) {
+                var firstEmpty = -1, filled = 0;
+                for (var li = 0; li < listEl.children.length; li++) {
+                    var item = listEl.children[li];
+                    if (!visible(item)) continue;
+                    var it = text(item);
+                    if (!it) continue;
+                    // "1EGNX/EGHI" - the slot number and the plan run together in the DOM.
+                    it = it.replace(/^(\d+)(?=\S)/, "$1 ");
+                    if (/_ _/.test(it)) { if (firstEmpty < 0) firstEmpty = li + 1; continue; }
+                    filled++;
+                    var line = it;
+                    if (classList(item).indexOf("highlight-select") >= 0 ||
+                        item.querySelector(".highlight-select")) line += ", selected";
+                    out.push(line);
+                }
+                if (firstEmpty > 0) out.push(firstEmpty + " to " + listEl.children.length + " empty");
+            }
+            if (out.length) return out;
+        }
+
+        // A box of label / value pairs in plain flex rows ("Departure EGNX"), which the
+        // one-level walk welds into "Departure EGNX Destination EGHI Total Distance ...".
+        var pairs = box.querySelectorAll("div.flex");
+        var pairLines = [];
+        for (var pr = 0; pr < pairs.length; pr++) {
+            var spans = pairs[pr].children;
+            if (spans.length !== 2 || !visible(pairs[pr])) continue;
+            if (spans[0].tagName !== "SPAN" || spans[1].tagName !== "SPAN") continue;
+            var pl = text(spans[0]), pv = text(spans[1]);
+            if (!pl && !pv) continue;
+            pairLines.push(pl + ": " + (pv || "blank"));
+        }
+        if (pairLines.length >= 2) return pairLines;
+
         var rows = box.querySelectorAll(".mfd-system-setup-row, .mfd-setup-row, " +
                                         ".popout-menu-item, .mfd-status-row");
         for (var i = 0; i < rows.length; i++) {
@@ -1268,7 +1323,9 @@
         // registered VIEW, so the view key is the honest signal and the only one.
         var open = A.M.viewKey();
         if (open === "Da40NgChecklistSelectionPopup" ||
-            open === "Da40NgChecklistCategorySelectionPopup") {
+            open === "Da40NgChecklistCategorySelectionPopup" ||
+            open === "Da40ChecklistSelectionPopup" ||
+            open === "Da40ChecklistCategorySelectionPopup") {
             // Open - fall through and read it.
         } else if (open) {
             // The model answered, and it is not a selection popup. Nothing to report.
@@ -1509,6 +1566,13 @@
             if (l || v) return (l ? l + ": " : "") + v;
         }
 
+        var texts = g.querySelectorAll(".gauge-text");
+        if (texts.length >= 2) {
+            // The XLS's Electrical block: label in one node, value in the next.
+            var tl = text(texts[0]), tv = text(texts[1]);
+            if (tl || tv) return (tl ? tl + ": " : "") + tv;
+        }
+
         var welded = g.querySelector(".gauge-text");
         if (welded) {
             var t = text(welded);
@@ -1567,6 +1631,104 @@
         return lines;
     };
 
+    A.xlsEnginePageLines = function (p) {
+        if (classList(p).indexOf("da40-engine-page") < 0) return [];
+        var lines = [];
+
+        // The dials, in screen order. A centre dial carries its own label; a double dial
+        // carries units, and its NAME is the .oil-label / .fuel-label sibling - the first
+        // double is Oil, the second Fuel, which is the order the page draws them in.
+        var groupNames = [text(p.querySelector(".oil-label")) || "Oil",
+                          text(p.querySelector(".fuel-label")) || "Fuel"];
+        var doubles = 0;
+        var container = p.querySelector(".gauge-container") || p;
+        for (var c = 0; c < container.children.length; c++) {
+            var kid = container.children[c];
+            if (!visible(kid)) continue;
+            if (classList(kid).indexOf("double-gauge-page") >= 0) {
+                var halves = kid.querySelectorAll(".dial-gauge-parent");
+                var parts = [];
+                for (var h = 0; h < halves.length; h++) {
+                    var hl = text(halves[h].querySelector(".dial-gauge-label-left")) ||
+                             text(halves[h].querySelector(".dial-gauge-label-right"));
+                    var hv = text(halves[h].querySelector(".dial-gauge-value-left")) ||
+                             text(halves[h].querySelector(".dial-gauge-value-right"));
+                    if (hv || hl) parts.push((hv || "no reading") + (hl ? " " + hl : ""));
+                }
+                var name = groupNames[Math.min(doubles, groupNames.length - 1)];
+                doubles++;
+                if (parts.length) lines.push(name + ": " + parts.join(", "));
+            } else if (classList(kid).indexOf("dial-gauge-parent") >= 0) {
+                var dl = text(kid.querySelector(".dial-gauge-label-center"));
+                var dv = text(kid.querySelector(".dial-gauge-value-center"));
+                if (dl || dv) lines.push((dl ? dl + ": " : "") + (dv || "no reading"));
+            }
+        }
+
+        // The bar charts: the numbers the bars are drawn from, and the assist state.
+        var temps = p.querySelector(".temperature-container");
+        if (temps && visible(temps)) {
+            lines.push(text(temps.querySelector(".temperature-container-label")) || "Temperature");
+            var egt = [], cht = [];
+            for (var n = 1; n <= 4; n++) {
+                egt.push(n + ": " + A.lvar("L:DISP_EGT:" + n, 0));
+                cht.push(n + ": " + A.lvar("L:DISP_CHT:" + n, 0));
+            }
+            var egtLabel = text(temps.querySelector(".egt-bar-chart .bar-chart-label")) || "EGT °F";
+            var chtLabel = text(temps.querySelector(".cht-bar-chart .bar-chart-label")) || "CHT °F";
+            lines.push("  " + egtLabel + " - cylinder " + egt.join(", "));
+            lines.push("  " + chtLabel + " - cylinder " + cht.join(", "));
+            var peak = temps.querySelector(".bar-chart-delta-peak");
+            if (peak && visible(peak)) {
+                lines.push("  " + (text(peak.querySelector(".delta-peak-label")) || "Delta peak:") + " " +
+                           (text(peak.querySelector(".delta-peak-value")) || ""));
+            }
+            lines.push("  Lean assist: " + (A.lvar("L:DISP_LEAN_ASSIST", 0) > 0.5 ? "on" : "off"));
+        }
+
+        // Electrical and the fuel calculator share the NG's box reader; total time is its own.
+        var boxes = [
+            [".electrical-container", ".electrical-container-label"],
+            [".fuel-calculator-container", ".fuel-calculator-label"]
+        ];
+        for (var b = 0; b < boxes.length; b++) {
+            var box = p.querySelector(boxes[b][0]);
+            if (!box || !visible(box)) continue;
+            var heading = text(box.querySelector(boxes[b][1]));
+            if (heading) lines.push(heading);
+            var fields = box.querySelectorAll(".fuel-calculator-field");
+            for (var f = 0; f < fields.length; f++) {
+                if (!visible(fields[f])) continue;
+                var fk = fields[f].children;
+                if (fk.length >= 2) lines.push("  " + text(fk[0]) + ": " + text(fk[1]));
+            }
+            var gauges = box.querySelectorAll(".engine-page-gauge");
+            for (var i = 0; i < gauges.length; i++) {
+                if (!visible(gauges[i])) continue;
+                var line = A.engineGaugeLine(gauges[i]);
+                if (line) lines.push("  " + line);
+            }
+        }
+        var total = p.querySelector(".total-time-container");
+        if (total && visible(total)) {
+            var spans = total.querySelectorAll("span");
+            var tl = spans.length ? text(spans[0]) : "Total Time";
+            var tv = text(total.querySelector(".total-time-value"));
+            lines.push((text(total.querySelector(".total-time-container-label")) || "Total Time") +
+                       (tl && tv ? " - " + tl + ": " + tv : ""));
+        }
+        return lines;
+    };
+
+    /// A local variable read from inside the instrument - allowed, unlike a WRITE, which
+    /// silently no-ops from an injected agent. Rounded, because these are gauge figures.
+    A.lvar = function (name, fallback) {
+        try {
+            var v = SimVar.GetSimVarValue(name, "number");
+            return (typeof v === "number" && isFinite(v)) ? Math.round(v) : fallback;
+        } catch (e) { return fallback; }
+    };
+
     A.page = function () {
         var p = document.querySelector(".mfd-page.open");
         if (!p || !visible(p)) return [];
@@ -1584,6 +1746,18 @@
         // so the strip's reader finds nothing here and the page fell through to raw text:
         // "0100 Load % 303000 RPM 7000" - three gauges, their scale ends, and their values
         // welded into one token.
+        // THE XLS ENGINE PAGE. A different page from the NG's (.da40-engine-page): six
+        // dials, two of them DOUBLE (Oil = temperature and pressure, Fuel = flow and
+        // pressure) whose labels are the UNITS with the name in a sibling .oil-label /
+        // .fuel-label; then the EGT and CHT bar charts, which carry NO digits at all - the
+        // bars are drawn from L:DISP_EGT:n / L:DISP_CHT:n and those are read back, which
+        // is exactly the number each bar's height encodes - then the electrical block, the
+        // fuel calculator and the Hobbs-style total time. Read generically it came out as
+        // "Temperature EGT °F 1300 1400 1500 1600 1700 1 2 3 4 CHT °F ..." - the scale ticks
+        // and cylinder numbers welded together with no temperature in it anywhere.
+        var xls = A.xlsEnginePageLines(p);
+        if (xls.length) return xls;
+
         var dials = p.querySelectorAll(".dial-gauge-parent");
         if (dials.length) {
             for (var g = 0; g < dials.length; g++) {
@@ -1752,6 +1926,19 @@
         // the frame it is asked to and waiting a second for it is an eternity.
         var key = "";
         try { key = A.M.viewKey(); } catch (e) { key = ""; }
+
+        // A CHANGE OF VIEW SAYS WHERE IT LANDED. Accepting the Catalog's "Activate SimBrief
+        // flight plan?" jumps to the flight plan page, and the readback was "SILVA" - the
+        // leg the new page happened to focus - with nothing to say the page had changed.
+        // The first readback after the view changes leads with the page title (a dialog
+        // already leads with its own question). Only the first: a title on every field of
+        // a page is the "Cursor on" fourteen times over again.
+        if (A._saidView !== undefined && key !== A._saidView && key !== "MessageDialog") {
+            var title = "";
+            try { title = A.pageTitle(); } catch (e) { title = ""; }
+            if (title && summary.indexOf(title) < 0) summary = title + (summary ? ", " + summary : "");
+        }
+        A._saidView = key;
 
         // WHICH field the cursor is on, as a number. Without it the window cannot tell a
         // knob turn that moved from one that could not - the knob does NOT wrap at the end
@@ -2673,9 +2860,18 @@
             // The EIS tab carries the AIRCRAFT's own pages and is not in that table, so it
             // is added from the registered views. Leaving it out would hide the two pages
             // this aeroplane adds - the very ones a DA40 pilot most wants.
+            // ⚠️ TWO SPELLINGS. The NG's plugin registers Da40NgEnginePage and
+            // Da40NgChecklistPage; the XLS's registers Da40EnginePage and Da40ChecklistPage.
+            // Looking for the NG's alone left the XLS's Engine page - the one with EGT, CHT
+            // and the lean assist on it - out of the enumeration entirely (found by the
+            // coverage sweep, which never visited it).
             var eis = [];
-            if (A.M.has("Da40NgEnginePage")) eis.push({ name: "Engine", key: "Da40NgEnginePage" });
-            if (A.M.has("Da40NgChecklistPage")) eis.push({ name: "Checklist", key: "Da40NgChecklistPage" });
+            var engineKey = A.M.has("Da40NgEnginePage") ? "Da40NgEnginePage"
+                          : A.M.has("Da40EnginePage") ? "Da40EnginePage" : "";
+            var checklistKey = A.M.has("Da40NgChecklistPage") ? "Da40NgChecklistPage"
+                             : A.M.has("Da40ChecklistPage") ? "Da40ChecklistPage" : "";
+            if (engineKey) eis.push({ name: "Engine", key: engineKey });
+            if (checklistKey) eis.push({ name: "Checklist", key: checklistKey });
             if (eis.length) out.push({ group: tabs[out.length] || "EIS", pages: eis });
 
             A._pageMap = out;
@@ -2776,6 +2972,13 @@
     // neither of those is true.
     A.M.say = function () {
         var key = A.M.viewKey();
+
+        // A message dialog answers with its QUESTION before anything the list or the
+        // fields would say - it is the reason the pilot is looking at the screen.
+        if (key === "MessageDialog") {
+            var asked = A.dialogSay();
+            if (asked) return asked;
+        }
 
         var L = A.M.list();
         if (L) {
@@ -2891,14 +3094,19 @@
         // but that view registers no controls at all, so the readback said nothing and the
         // button read as dead. Reported as "either it's not clickable, or it's clickable
         // and it's not being clicked"; it was neither.
+        // A MESSAGE DIALOG IS ITS QUESTION. "Activate SimBrief flight plan?" read back as
+        // "NAV, OK" - a group label borrowed from the wrong ancestor and the focused
+        // button - so a pilot who pressed Activate heard nothing that said what OK would do.
         if (!f2) return A.M.dialogText();
 
         // A CHECKLIST POPUP HAS TO SAY WHICH LIST IT IS. Both popups are plain lists of
         // capitals, and "NORMAL OPERATING PROCEDURES" alone does not tell a pilot whether
         // they are choosing a GROUP or a CHECKLIST inside one - which is two different
         // presses of ENT away from two different places.
-        if (key === "Da40NgChecklistCategorySelectionPopup") return "Checklist group, " + f2;
-        if (key === "Da40NgChecklistSelectionPopup") return "Checklist, " + f2;
+        if (key === "Da40NgChecklistCategorySelectionPopup" ||
+            key === "Da40ChecklistCategorySelectionPopup") return "Checklist group, " + f2;
+        if (key === "Da40NgChecklistSelectionPopup" ||
+            key === "Da40ChecklistSelectionPopup") return "Checklist, " + f2;
         return f2;
     };
 
@@ -3116,6 +3324,7 @@
         rows.push("Page: " + (A.pageTitle() || "not shown"));
 
         A.pushUnits(rows);
+        A.pushDialog(rows);
         A.pushFields(rows);
 
         var bar = A.navDataBar();
@@ -3240,6 +3449,7 @@
         // The PFD's popouts - the transponder, the timer, the nearest-airport window - are
         // built from the same controls as the MFD's setup pages, so the same reader serves
         // them and a pilot can scan a popout instead of turning through it.
+        A.pushDialog(rows);
         A.pushFields(rows);
 
         A.pushPanes(rows);
@@ -3257,6 +3467,36 @@
     ///
     /// The values come from the instrument's own controls, so they are what the aeroplane
     /// has, not what a stylesheet happens to render.
+    /// The open message dialog - the G1000's yes/no box (.popout-dialog.msgdialog): its
+    /// question, the focused button, and the other. Rendered as ONE row placed before the
+    /// fields, because CowsDA40DisplayForm speaks the FIRST ROW THAT CHANGED after a
+    /// softkey press: "Activate" opening this dialog used to change "Fields (99)" to
+    /// "Fields (2)" first, and that was what got spoken.
+    A.dialogSay = function () {
+        var box = firstVisible(".popout-dialog.msgdialog.open");
+        if (!box) return "";
+        var question = spacedText(box.querySelector(".msgdialog-content"));
+        var buttons = box.querySelectorAll(".action-button");
+        var focused = "", others = [];
+        for (var i = 0; i < buttons.length; i++) {
+            if (!visible(buttons[i])) continue;
+            var label = text(buttons[i]);
+            if (!label) continue;
+            if (classList(buttons[i]).indexOf("highlight-select") >= 0) focused = label;
+            else others.push(label);
+        }
+        var parts = [];
+        if (question) parts.push(question);
+        if (focused) parts.push(focused);
+        if (others.length) parts.push("or " + others.join(", "));
+        return parts.join(", ");
+    };
+
+    A.pushDialog = function (rows) {
+        var said = A.dialogSay();
+        if (said) rows.push("Dialog: " + said);
+    };
+
     A.pushFields = function (rows) {
         var fields = [];
         try { fields = A.M.fieldRows(); } catch (e) { fields = []; }

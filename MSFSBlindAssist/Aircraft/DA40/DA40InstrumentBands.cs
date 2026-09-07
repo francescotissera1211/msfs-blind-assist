@@ -114,7 +114,41 @@ public static class DA40InstrumentBands
         // Fuel temperature, degrees C. Above 60 costs high-pressure pump efficiency and
         // the AFM has you reduce power and increase airspeed.
         ["DA40_FUEL_MAIN_TEMP"]       = new BandRange(-25, -20, 55, 60),
-        ["DA40_FUEL_AUX_TEMP"]        = new BandRange(-25, -20, 55, 60)
+        ["DA40_FUEL_AUX_TEMP"]        = new BandRange(-25, -20, 55, 60),
+
+        // ---- DA40-XLS (Lycoming IO-360-M1A), AFM 6.01.01-E rev 10, section 2.5 ----
+        // Its own keys, its own arcs: the Austro's 2300-rpm red line is the Lycoming's
+        // yellow band, and a shared key would have flagged a normal cruise.
+        // RPM: green 500-2400, yellow 2400-2700, red above 2700. No lower arcs.
+        ["DA40_XLS_RPM"]              = new BandRange(null, null, 2400, 2700),
+        // Oil pressure, psi: red below 25, yellow 25-55, green 56-95, yellow 96-97, red above 97.
+        // Measured 73.7 running, 0 stopped.
+        ["DA40_XLS_OIL_PRESSURE"]     = new BandRange(25, 56, 95, 97),
+        // Oil temperature, read in celsius: green 149-230 F (65-110 C), yellow to 245 F (118 C),
+        // red above. No lower red - a cold engine simply reads below green.
+        ["DA40_XLS_OIL_TEMP"]         = new BandRange(null, 65, 110, 118),
+        // Fuel flow, US gal/h: green 1-20, caution above 20. Measured 10.6 at 2200 rpm.
+        ["DA40_XLS_FUEL_FLOW"]        = new BandRange(null, 1, 20, null),
+        // Fuel pressure, in the model's BAR (the gauge draws psi at 14.5 per bar): red below
+        // 14 psi, green 14-35, red above 35. No yellow. Measured 1.616 bar = 23.4 psi.
+        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(0.965, 0.965, 2.413, 2.413),
+
+        // The XLS cylinder heads, in the gauge's own Fahrenheit: the MFD plugin draws
+        // green 150-475, caution 475-500, red above (Da40MfdPlugin 'CHT °F' bars). No
+        // lower arc - a cold head is a cold head.
+        ["DA40_XLS_CHT_HOT"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_1"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_2"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_3"] = new BandRange(null, null, 475, 500),
+        ["DA40_XLS_CHT_4"] = new BandRange(null, null, 475, 500),
+
+        // Exhaust has no AFM limit; the COWS POH recommends not exceeding 1350 F, so that
+        // is a caution and nothing is red.
+        ["DA40_XLS_EGT_HOT"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_1"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_2"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_3"] = new BandRange(null, null, 1350, null),
+        ["DA40_XLS_EGT_4"] = new BandRange(null, null, 1350, null)
     };
 
     /// <summary>The arcs for a variable, or null when that gauge has no published arcs.</summary>

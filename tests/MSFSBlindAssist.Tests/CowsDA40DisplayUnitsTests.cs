@@ -17,6 +17,17 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class CowsDA40DisplayUnitsTests
 {
+    [Fact]
+    public void AFahrenheitGaugeIsConvertedToCelsiusWhenThePilotChoseCelsius()
+    {
+        // The XLS's CHT/EGT bars are native Fahrenheit (the plugin titles them "EGT °F");
+        // the default G1000 setting is celsius, so 410 F must read as 210 C, and the
+        // celsius-declared readouts must be untouched by the new case.
+        var def = new CowsDA40Definition(DA40Variant.XLS);
+        Assert.Equal("210 degrees celsius, green", Render(def, "DA40_XLS_CHT_HOT", 410));
+        Assert.Equal("87 degrees celsius", Render(def, "DA40_XLS_OIL_TEMP", 87).Split(',')[0]);
+    }
+
     private static CowsDA40Definition Ng() => new(DA40Variant.NG);
 
     private static string Render(CowsDA40Definition def, string varKey, double value)

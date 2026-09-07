@@ -56,6 +56,63 @@ public class DA40InstrumentBandsTests
     public void AmmeterHasNoLowerArcs(double value, GaugeBand expected)
         => Assert.Equal(expected, Band("DA40_ELEC_DISP_AMPS", value));
 
+    // ---- DA40-XLS: the Lycoming's arcs, AFM 6.01.01-E section 2.5 ----
+
+    [Theory]
+    [InlineData(2000, GaugeBand.Normal)]       // the run-up figure
+    [InlineData(2400, GaugeBand.Normal)]       // top of green, still green
+    [InlineData(2500, GaugeBand.UpperCaution)] // 2400-2700 is yellow on the Lycoming, red on the Austro
+    [InlineData(2750, GaugeBand.UpperRed)]     // above 2700
+    public void XlsPropellerRpmArcs(double value, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_RPM", value));
+
+    [Theory]
+    [InlineData(20, GaugeBand.LowerRed)]       // below the 25 psi idle minimum
+    [InlineData(40, GaugeBand.LowerCaution)]   // 25-55
+    [InlineData(73.7, GaugeBand.Normal)]       // measured running, cold, at EGNX
+    [InlineData(96, GaugeBand.UpperCaution)]   // 96-97
+    [InlineData(100, GaugeBand.UpperRed)]      // above 97
+    public void XlsOilPressureArcs(double value, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_OIL_PRESSURE", value));
+
+    [Theory]
+    [InlineData(19, GaugeBand.LowerCaution)]   // the cold engine, measured at ambient - below green, not red
+    [InlineData(85, GaugeBand.Normal)]         // 149-230 F
+    [InlineData(115, GaugeBand.UpperCaution)]  // 231-245 F
+    [InlineData(120, GaugeBand.UpperRed)]      // above 245 F / 118 C
+    public void XlsOilTemperatureArcs(double value, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_OIL_TEMP", value));
+
+    [Theory]
+    [InlineData(0.5, GaugeBand.LowerCaution)]
+    [InlineData(10.6, GaugeBand.Normal)]       // measured at 2200 rpm
+    [InlineData(25, GaugeBand.UpperCaution)]
+    public void XlsFuelFlowArcs(double value, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_FUEL_FLOW", value));
+
+    [Theory]
+    [InlineData(0.5, GaugeBand.LowerRed)]      // 7 psi - below the 14 psi minimum
+    [InlineData(1.616, GaugeBand.Normal)]      // measured: 23.4 psi
+    [InlineData(2.6, GaugeBand.UpperRed)]      // 38 psi - above the 35 psi maximum
+    public void XlsFuelPressureArcsAreInBar(double bar, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_FUEL_PRESSURE", bar));
+
+    [Theory]
+    [InlineData(410, GaugeBand.Normal)]        // measured at run-up, hottest cylinder
+    [InlineData(480, GaugeBand.UpperCaution)]  // the plugin's 475-500 F caution band
+    [InlineData(505, GaugeBand.UpperRed)]      // above 500 F
+    public void XlsCylinderHeadArcsAreThePluginsFahrenheitBands(double f, GaugeBand expected)
+    {
+        Assert.Equal(expected, Band("DA40_XLS_CHT_HOT", f));
+        Assert.Equal(expected, Band("DA40_XLS_CHT_1", f));
+    }
+
+    [Theory]
+    [InlineData(1310, GaugeBand.Normal)]
+    [InlineData(1360, GaugeBand.UpperCaution)] // over the POH's recommended 1350 F maximum
+    public void XlsExhaustArcsCarryOnlyThePohsRecommendedMaximum(double f, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_EGT_HOT", f));
+
     [Fact]
     public void LoadHasNoUpperRed_BecauseTheAfmDefinesNone()
     {
@@ -95,12 +152,16 @@ public class DA40InstrumentBandsTests
     [Fact]
     public void EveryAnnotatedKeyIsARealVariable()
     {
-        // An arc attached to a key that no longer exists would silently never fire.
-        var vars = new CowsDA40Definition(DA40Variant.NG).GetVariables();
+        // An arc attached to a key that no longer exists would silently never fire. The
+        // table carries both airframes' gauges - the Austro's and the Lycoming's arcs
+        // differ, so they are separate keys - and a key is real if EITHER variant defines it.
+        var ng = new CowsDA40Definition(DA40Variant.NG).GetVariables();
+        var xls = new CowsDA40Definition(DA40Variant.XLS).GetVariables();
 
         foreach (var key in DA40InstrumentBands.AnnotatedKeys)
         {
-            Assert.True(vars.ContainsKey(key), $"{key} has arcs but is not a defined variable");
+            Assert.True(ng.ContainsKey(key) || xls.ContainsKey(key),
+                $"{key} has arcs but is not a defined variable on either variant");
         }
     }
 }

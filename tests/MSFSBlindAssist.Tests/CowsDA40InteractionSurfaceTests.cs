@@ -42,13 +42,15 @@ public class CowsDA40InteractionSurfaceTests
     private static readonly Dictionary<string, string> Surface = new(StringComparer.Ordinal)
     {
         // ---------------- engine, fuel and the FADEC ----------------
-        ["ENGINE_pedestal"] = "Power and Levers: power lever, engine master",
+        ["ENGINE_pedestal"] = "Power and Levers: power lever, engine master (NG); throttle (XLS)",
         ["ECU_TEST1"] = "ECU: test, and the 10-second reset-and-charge hold",
         ["ECU_VOTER1"] = "ECU: voter switch",
         ["MASTER_COVER1"] = "Engine Start: engine master guard",
-        ["STARTER"] = "Engine Start: start key",
-        ["FUEL"] = "Fuel System: fuel pumps",
-        ["FUEL_SELECTOR"] = "Fuel System: fuel valve",
+        // One component ID, two aeroplanes. On the NG it is the start key; on the XLS the
+        // same component is the five-position ignition key whose START detent cranks.
+        ["STARTER"] = "Engine Start: start key (NG). Magnetos: ignition key and starter (XLS)",
+        ["FUEL"] = "Fuel System: fuel pumps (NG); electric fuel pump (XLS)",
+        ["FUEL_SELECTOR"] = "Fuel System: fuel valve (NG); left/right/off tank selector (XLS)",
         ["FUEL_WIRE"] = "Fuel System: break the safety wire",
         ["ALTAIR"] = "Ice and Pitot: alternate air",
 
@@ -120,11 +122,8 @@ public class CowsDA40InteractionSurfaceTests
         ["DA40_Breakers"] = "Circuit Breakers: all 34",
 
         // ---------------- XLS only, and deliberately not built yet ----------------
-        ["ENGINE_Lever_Propeller_1"] =
-            "- XLS propeller lever. On NotBuiltYetOnXls: the XLS comes after the NG is " +
-            "finished, by plan, and its Lycoming shares no code with the Austro.",
-        ["ENGINE_Lever_Mixture_1"] =
-            "- XLS mixture lever. On NotBuiltYetOnXls, same reason.",
+        ["ENGINE_Lever_Propeller_1"] = "Power and Levers: propeller lever (XLS)",
+        ["ENGINE_Lever_Mixture_1"] = "Power and Levers: mixture (XLS)",
         ["ALT_Master"] =
             "- XLS alternator master. On NotBuiltYetOnXls, same reason.",
         ["Bat_Master"] =

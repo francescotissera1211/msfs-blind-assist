@@ -171,7 +171,7 @@ public partial class CowsDA40Definition
     /// to "will this speak", and the tests that ask it must get that one.
     /// </summary>
     public static IReadOnlyCollection<string> SilentCachedReadoutKeys =>
-        SilentCachedReadouts.Concat(HotkeyCachedReadouts).ToList();
+        SilentCachedReadouts.Concat(HotkeyCachedReadouts).Concat(PrimingCapturedKeys).Concat(XlsStartCapturedKeys).Concat(XlsMixtureCapturedKeys).ToList();
 
     private static readonly HashSet<string> SilentCachedReadouts = new()
     {
@@ -217,7 +217,13 @@ public partial class CowsDA40Definition
 
         // The G1000's VNAV output, polled for the Shift+D readout and never spoken on its own.
         "DA40_VNAV_TOD_DIST",
-        "DA40_VNAV_PATH_AVAIL"
+        "DA40_VNAV_PATH_AVAIL",
+
+        // The XLS's three levers. Cached so the readout hotkeys can say where they are;
+        // never spoken on their own - under hardware each would talk several times a second.
+        "DA40_XLS_THROTTLE_SET",
+        "DA40_XLS_PROP_SET",
+        "DA40_XLS_MIXTURE_SET"
     };
 
     /// <summary>
@@ -228,7 +234,16 @@ public partial class CowsDA40Definition
     /// </summary>
     private static bool IsSilentCachedReadout(string varName)
         => SilentCachedReadouts.Contains(varName)
-           || HotkeyCachedReadouts.Contains(varName);
+           || HotkeyCachedReadouts.Contains(varName)
+           // The XLS priming inputs: polled so the state can be classified from them,
+           // never spoken as numbers - the state is spoken instead, on its crossing.
+           || PrimingCapturedKeys.Contains(varName)
+           // The XLS start inputs: the readiness row is derived from them and the
+           // script's narration is spoken from its counter - the numbers stay silent.
+           || XlsStartCapturedKeys.Contains(varName)
+           // The XLS mixture inputs: eight temperatures, the assist pair, and the states'
+           // inputs - spoken as states on their crossings, never as numbers.
+           || XlsMixtureCapturedKeys.Contains(varName);
 
     /// <summary>
     /// Returning true means "handled" - the generic announcer never runs for that key.
@@ -241,6 +256,20 @@ public partial class CowsDA40Definition
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);
         NoteBusVoltage(varName, value);
+        // The XLS mag check: the tachometer is silent by design and this must see it, so
+        // the drop can be read from the RPM the key left BOTH at. Never announces itself.
+        NoteMagnetoChange(varName, value, announcer);
+        // The XLS priming state: its inputs are silent numbers, so this must see them here.
+        NotePrimingChange(varName, value, announcer);
+        // The XLS start readiness and auto-start narration: reads the master, selector,
+        // combustion and the captured fuel inputs as they pass; speaks on its own terms.
+        NoteXlsStartChange(varName, value, announcer);
+        // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
+        // and cylinder damage, each spoken on its crossing from the captured inputs.
+        NoteXlsMixtureChange(varName, value, announcer);
+        // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
+        // and cylinder damage, each spoken on its crossing from the captured inputs.
+        NoteXlsMixtureChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;
 
