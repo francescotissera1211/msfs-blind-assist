@@ -114,6 +114,22 @@ public partial class CowsDA40Definition
         AddStandbyBaroStep(v, "DA40_STBY_ALTIMETER_DN", "Standby Altimeter Down",
             "One hundredth of an inch down. Stops at 28.00.");
 
+        // ---------- THE MAIN ALTIMETER, ON A PANEL AT LAST ----------
+        //
+        // ⚠️ THE TWO ALTIMETERS WERE NOT SEPARATELY TUNABLE FROM ANY PANEL. The standby had
+        // a typed box; the G1000's subscale had NO panel control at all - only Ctrl+B, which
+        // sets BOTH together, and the display window's own knob keys. So the one thing a
+        // standby exists for - setting it differently from the main, or catching that it
+        // already is - could not be done from the panels a pilot browses.
+        //
+        // The step is the PFD bezel's own knob event, verified live from outside the display
+        // window (29.899 -> 29.910 inHg on A:KOHLSMAN SETTING HG:1), which is what makes a
+        // panel button possible: it is the same SimConnect H-event write the window makes.
+        AddG1000BaroStep(v, "DA40_G1000_BARO_UP", "Altimeter Setting Up",
+            "One hundredth of an inch up on the G1000.");
+        AddG1000BaroStep(v, "DA40_G1000_BARO_DN", "Altimeter Setting Down",
+            "One hundredth of an inch down on the G1000.");
+
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
         {
             Name = "DA40_STBY_GYRO_CAGE",
@@ -200,12 +216,29 @@ public partial class CowsDA40Definition
             Format = "F0"
         };
 
+        // ⚠️ THE BACKUP ALTITUDE WAS THE MAIN ALTIMETER'S, so the standby subscale had no
+        // readable consequence anywhere in MSFSBA.
+        //
+        // It read the stock INDICATED ALTITUDE, which the sim drives from KOHLSMAN SETTING
+        // HG:1 - the G1000's subscale. So a pilot could set the standby subscale, and the
+        // row labelled "Backup Altitude" would not move: it was reporting the instrument
+        // they had NOT touched, under the name of the one they had. Two altimeters
+        // disagreeing is the whole reason this aeroplane has a standby, and the disagreement
+        // was invisible.
+        //
+        // Measured live, ten clicks of the standby subscale (+0.10 inHg) on the ground:
+        //     L:PRESSURE_ALT_INDI   67.8 ft -> 155.5 ft
+        //     A:INDICATED ALTITUDE  47.3 ft -> 47.3 ft   (unchanged)
+        //
+        // L:PRESSURE_ALT_INDI is the model's own needle position - the value its altimeter
+        // strip and 100-foot needle are both animated from - and it carries the instrument's
+        // simulated LAG, which is what a mechanical altimeter actually shows.
         v["DA40_STBY_ALTITUDE"] = new SimVarDefinition
         {
-            Name = "INDICATED ALTITUDE",
+            Name = "PRESSURE_ALT_INDI",
             DisplayName = "Backup Altitude",
-            Type = SimVarType.SimVar,
-            Units = "feet",
+            Type = SimVarType.LVar,
+            Units = "number",
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
@@ -245,6 +278,11 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> StandbyControls = new()
     {
+        // Both altimeters, main first, each with its typed box and its knob. They sit
+        // together because the question a standby answers is whether the two AGREE.
+        "DA40_G1000_BARO",
+        "DA40_G1000_BARO_UP",
+        "DA40_G1000_BARO_DN",
         "DA40_STBY_ALTIMETER_SET",
         "DA40_STBY_ALTIMETER_UP",
         "DA40_STBY_ALTIMETER_DN",
@@ -293,19 +331,48 @@ public partial class CowsDA40Definition
 
             // ⚠️ UNIQUE, or a second detent in the same direction is a byte-identical calc
             // string and MobiFlight drops it - every other click of a sweep goes missing.
-            // ⚠️ AND IT DOES NOT ANNOUNCE. A detent is one of a burst; the baro settle
-            // announcer already waits for the knob to stop and speaks the resting value in
-            // both units. Announcing here would read a sweep as forty numbers.
+            //
+            // ⚠️ AND IT MUST NOT CALL MarkBaroSetByUs(). It did, copied from the TYPED
+            // setter beside it, and that made the knob SILENT: the mark opens a 3000 ms
+            // own-write grace and FlushBaroSettle returns early inside it, so the one
+            // channel that would have spoken the resting value was switched off by the
+            // very press that needed it. The mark is right for the typed setter, which
+            // announces the value ITSELF and would otherwise say it twice; it is exactly
+            // wrong for a detent, which announces nothing and DEPENDS on the settle.
+            // Shipped that way and caught by re-reading rather than by hearing it.
             case "DA40_STBY_ALTIMETER_UP":
-                MarkBaroSetByUs();
                 simConnect.ExecuteCalculatorCodeUnique(
                     "(L:KOHLSMAN SETTING HG:2) 0.01 + 31.5 min (>L:KOHLSMAN SETTING HG:2)");
                 return true;
 
             case "DA40_STBY_ALTIMETER_DN":
-                MarkBaroSetByUs();
                 simConnect.ExecuteCalculatorCodeUnique(
                     "(L:KOHLSMAN SETTING HG:2) 0.01 - 28 max (>L:KOHLSMAN SETTING HG:2)");
+                return true;
+
+            // The G1000 subscale, typed. Same unit convention as everywhere else on this
+            // aeroplane - the ranges cannot overlap, so magnitude says which was meant -
+            // and the same K:KOHLSMAN_SET write Ctrl+B makes, in millibars times sixteen.
+            case "DA40_G1000_BARO":
+            {
+                double inHg = Math.Clamp(value > 100 ? value / 33.8639 : value, 28.00, 31.50);
+                double mb = inHg * 33.8639;
+                simConnect.ExecuteCalculatorCode(
+                    $"{mb * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+                MarkBaroSetByUs();
+                announcer.AnnounceImmediate(
+                    $"Altimeter {mb:0} hectopascals, {inHg:0.00} inches");
+                return true;
+            }
+
+            // ⚠️ NO MarkBaroSetByUs HERE EITHER - see the standby detents above for the
+            // silent-knob trap this avoids.
+            case "DA40_G1000_BARO_UP":
+                simConnect.ExecuteCalculatorCodeUnique("1 (>H:AS1000_PFD_BARO_INC)");
+                return true;
+
+            case "DA40_G1000_BARO_DN":
+                simConnect.ExecuteCalculatorCodeUnique("1 (>H:AS1000_PFD_BARO_DEC)");
                 return true;
 
             case "DA40_STBY_GYRO_CAGE":
@@ -347,6 +414,10 @@ public partial class CowsDA40Definition
             inHg.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
             + " (>L:KOHLSMAN SETTING HG:2)");
     }
+
+    /// <summary>One detent of the G1000 subscale knob, fired as the PFD bezel event.</summary>
+    private static void AddG1000BaroStep(Dictionary<string, SimVarDefinition> v, string key,
+        string display, string help) => AddStandbyBaroStep(v, key, display, help);
 
     /// <summary>One detent of the standby subscale knob. A button: an action, not a state.</summary>
     private static void AddStandbyBaroStep(Dictionary<string, SimVarDefinition> v, string key,
