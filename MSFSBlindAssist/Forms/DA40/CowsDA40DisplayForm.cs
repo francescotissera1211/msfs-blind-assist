@@ -556,7 +556,7 @@ public sealed class CowsDA40DisplayForm : Form
                 return true;
             }
 
-            _ = TurnRadioKnob(knob.Event);
+            TurnRadioKnob(knob.Event);
             return true;
         }
 
@@ -669,59 +669,112 @@ public sealed class CowsDA40DisplayForm : Form
     /// </summary>
     private readonly SemaphoreSlim _knobGate = new(1, 1);
 
-    private async Task TurnRadioKnob(string knobEvent)
+    /// <summary>
+    /// How long after the LAST detent to read the radio back.
+    ///
+    /// ⚠️ FAST-SAMPLED. The frequencies are on per-var SIM_FRAME subscriptions, so this does
+    /// not have to outlast a batch period the way a batch-fed settle does - see
+    /// RadioSettleMs for that rule and why this one is exempt from it.
+    /// </summary>
+    private const int KnobSettleMs = 260;
+
+    private System.Windows.Forms.Timer? _knobSettle;
+
+    /// <summary>
+    /// What the radios read when the pilot last stopped turning. The next burst diffs
+    /// against it, so a press never has to wait on a socket read before the key fires.
+    /// </summary>
+    private string _knobBaseline = "";
+
+    /// <summary>
+    /// ⚠️ THE KEY FIRES FIRST AND NOTHING IS QUEUED BEHIND IT.
+    ///
+    /// The first version of this gated the WHOLE operation - read, fire, poll, announce -
+    /// on a semaphore, so each press held the gate for 90 to 540 ms and a pilot sweeping
+    /// the knob had the RADIO ITSELF falling behind their fingers. That fixed the triple
+    /// announcement by making the aeroplane slow, which is the wrong trade: a knob is turned
+    /// in bursts and the sim must track every detent as it is pressed.
+    ///
+    /// So the write is now synchronous and unqueued - the radio moves on the keystroke, at
+    /// any press rate - and only the ANSWER is coalesced. Each press restarts a short settle;
+    /// when the pilot stops, ONE read says where they landed. A sweep from 119.660 to 118.515
+    /// is one sentence instead of thirty-five, which is the same recital rule the bezel
+    /// read-back and the AP knob steps already follow.
+    ///
+    /// ⚠️ THE BASELINE IS CARRIED FROM THE PREVIOUS SETTLE, which is what makes the press
+    /// itself free. Reading "before" on each press would put a socket round trip ahead of the
+    /// key and reintroduce exactly the lag this removes. It is seeded ONCE per window, on the
+    /// very first press, because there is no previous settle to carry - that single read is
+    /// the only one that ever sits ahead of a keystroke.
+    /// </summary>
+    private void TurnRadioKnob(string knobEvent)
     {
-        const string Expr = "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
-
-        await _knobGate.WaitAsync();
-        try
-        {
-        string before;
-        try { before = await _client.InvokeAsync(Expr); } catch { before = ""; }
-        if (_disposed) return;
-
+        // THE WRITE, FIRST AND UNCONDITIONALLY. UNIQUE because a knob is turned in bursts and
+        // MobiFlight coalesces two byte-identical calc strings in a row - which on a radio
+        // means every second click of a sweep goes missing.
         _simConnect.ExecuteCalculatorCodeUnique($"1 (>H:AS1000_PFD_{knobEvent})");
 
-        // Bounded retry. A frame is normally enough; a few give the slow case room without
-        // ever leaving the key feeling unanswered.
-        string after = before;
-        for (int i = 0; i < 6 && !_disposed; i++)
+        if (_knobSettle == null)
         {
-            await Task.Delay(90);
-            if (_disposed) return;
-            try { after = await _client.InvokeAsync(Expr); } catch { break; }
-            if (after.Length > 0 && after != before) break;
+            _knobSettle = new System.Windows.Forms.Timer { Interval = KnobSettleMs };
+            _knobSettle.Tick += (_, _) => { _knobSettle?.Stop(); _ = FlushKnobSettle(); };
         }
+
+        // Restart on every detent: while the knob is moving nothing speaks, and it runs out
+        // only once the pilot has stopped.
+        _knobSettle.Stop();
+        _knobSettle.Start();
+
+        if (_knobBaseline.Length == 0) _ = SeedKnobBaseline();
+    }
+
+    /// <summary>
+    /// The one read that is allowed to sit ahead of a keystroke, and only ever the first.
+    /// ⚠️ It must not overwrite a baseline a later press already established.
+    /// </summary>
+    private async Task SeedKnobBaseline()
+    {
+        string seed;
+        try { seed = await _client.InvokeAsync(RadioRowsExpr); } catch { return; }
         if (_disposed) return;
+        if (_knobBaseline.Length == 0) _knobBaseline = seed;
+    }
+
+    private const string RadioRowsExpr =
+        "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
+
+    /// <summary>
+    /// The pilot has stopped turning. Read once, say where they landed, and keep that read
+    /// as the next burst's baseline so the next press is free too.
+    /// </summary>
+    private async Task FlushKnobSettle()
+    {
+        string after;
+        try { after = await _client.InvokeAsync(RadioRowsExpr); } catch { return; }
+        if (_disposed || after.Length == 0) return;
+
+        string before = _knobBaseline;
+        _knobBaseline = after;
 
         _ = _client.ScrapeNowAsync();
 
-        // Speak only the FIELD that moved. Nothing changed at all stays silent rather than
-        // repeating the old value, which is the specific lie this method exists to stop.
+        // Nothing to compare against yet (the seed lost its race with a very fast first
+        // burst) - silence beats guessing which field the pilot moved.
+        if (before.Length == 0) return;
+
         var moved = FirstChangedRadioField(before, after);
 
-        // ⚠️ A KNOB PRESS THAT CHANGED NOTHING SAYS NOTHING, DELIBERATELY. It is tempting to
-        // explain the silence - and a first attempt did, announcing "Avionics master off" off
-        // a SimVar reading. That diagnosis was WRONG (COM AVAILABLE was 1 and the PFD was
-        // drawing CAS messages and softkeys the whole time, so the G1000 was plainly powered),
-        // and the pilot's ruling is that a state the DISPLAY can report should be scanned for,
-        // not announced at them. The real cause is on the row itself now: NAV 2 and COM 2 carry
-        // FAILED, so a scan says why the knob does nothing while a press stays quiet.
+        // ⚠️ A BURST THAT CHANGED NOTHING SAYS NOTHING, DELIBERATELY - see the note on the
+        // knob push. A failed radio is carried on the row for a scan, not announced here.
         if (!moved.Found) return;
 
-        // ⚠️ TELL THE SETTLE ANNOUNCER THIS WAS OURS, or the pilot hears it twice: the
-        // read-back here, and the same frequency again a second later when the 1 Hz batch
-        // delivers it. Measured from the cockpit as
-        //   "COM 1, active 127.850, standby 121.725"   (this window)
-        //   "COM 1 standby 121.725"                    (the settle, 1.2 s later)
-        // The settle exists for a change made ELSEWHERE; a knob turned in this window is not
-        // one, and this is the only place that knows which key moved.
+        // ⚠️ TELL THE SETTLE ANNOUNCER THIS WAS OURS, or the pilot hears it twice: once here
+        // and once when the batch delivers the same change to the variable's own announcer.
         if (moved.VarKey.Length > 0) _owner?.MarkRadioTunedByWindow(moved.VarKey);
 
         _announcer.AnnounceImmediate(moved.Spoken);
-        }
-        finally { try { _knobGate.Release(); } catch { } }
     }
+
 
     /// <summary>
     /// Push the knob, then say which radio it landed on and what that radio's standby is.
@@ -739,7 +792,7 @@ public sealed class CowsDA40DisplayForm : Form
     /// </summary>
     private async Task PushRadioTuningBox(string eventSuffix, string spoken)
     {
-        const string Expr = "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.radios().join(\" | \")";
+        const string Expr = RadioRowsExpr;
 
         await _knobGate.WaitAsync();
         try

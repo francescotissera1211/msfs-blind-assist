@@ -60,13 +60,15 @@ public class CowsDA40ApKnobStepTests
         Assert.Contains($"\"{valueKey}\"", m.Value);
     }
 
-    [Fact]
-    public void EveryStepIsAButtonAndNoneEarnsAMonitorRow()
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryStepIsAButtonAndNoneEarnsAMonitorRow(DA40Variant variant)
     {
         // A detent is an ACTION, not a state: nothing to read back, and pressing it again
         // does not undo it - so it carries no resting label. And a control that announces
         // nothing must not earn a Ctrl+M checkbox that mutes nothing.
-        var def = new CowsDA40Definition(DA40Variant.NG);
+        var def = new CowsDA40Definition(variant);
         var vars = def.GetVariables();
 
         foreach (string key in new[]
@@ -84,12 +86,17 @@ public class CowsDA40ApKnobStepTests
         }
     }
 
-    [Fact]
-    public void EveryStepSitsOnTheGfc700PanelBesideTheValueItMoves()
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EveryStepSitsOnTheGfc700PanelBesideTheValueItMoves(DA40Variant variant)
     {
         // A control nobody can reach is the same as no control. The pair reads directly
         // after its typed value so a pilot arrowing the panel meets the three together.
-        var def = new CowsDA40Definition(DA40Variant.NG);
+        // ⚠️ BOTH VARIANTS. The GFC 700 and the G1000 are the SAME fit on the NG and the
+        // XLS - the Lycoming changes the engine, not the avionics - so a variant-gated
+        // autopilot panel would be a bug, and this is what says so out loud.
+        var def = new CowsDA40Definition(variant);
         var panels = def.GetPanelControls();
 
         Assert.True(panels.ContainsKey("GFC 700"));
