@@ -657,7 +657,6 @@ public class CowsDA40PanelStructureTests
         // Radio frequencies and courses: numbers, typed once.
         "DA40_RADIO_COM1_SET", "DA40_RADIO_COM2_SET",
         "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV2_SET",
-        "DA40_RADIO_CRS1_SET", "DA40_RADIO_HDG_BUG_SET",
         // Failure SEVERITIES. Nothing outside MSFSBA sets these, so there is no background
         // change to miss, and a percentage is a number to be read like any other.
         "DA40_FAIL_COOLANT_LEAK",
@@ -1996,8 +1995,13 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_AP_HDG_SET", panels["GFC 700"]);
         Assert.Contains("DA40_AP_CRS_SET", panels["GFC 700"]);
 
-        Assert.DoesNotContain("DA40_RADIO_HDG_BUG_SET", panels["Radios"]);
-        Assert.DoesNotContain("DA40_RADIO_CRS1_SET", panels["Radios"]);
+        // ⚠️ THEY ARE GONE ENTIRELY NOW, not merely off this panel. They were defined and
+        // had live setter cases but sat in NO panel, NO display list and NO hotkey, so a
+        // pilot could never reach them - two dead SimConnect definitions duplicating
+        // NAV OBS:1 and AUTOPILOT HEADING LOCK DIR, which is the batch-collision shape.
+        var all = new CowsDA40Definition(variant).GetVariables();
+        Assert.False(all.ContainsKey("DA40_RADIO_HDG_BUG_SET"));
+        Assert.False(all.ContainsKey("DA40_RADIO_CRS1_SET"));
     }
 
     [Theory]

@@ -55,31 +55,7 @@ public partial class CowsDA40Definition
             "Type a frequency in megahertz, 108.00 to 117.95.");
         AddSwap(v, "DA40_RADIO_NAV2_SWAP", "Swap NAV 2");
 
-        // The CRS knob's value. On a G1000 this is the OBS course for the selected NAV,
-        // and it is what the course pointer on the HSI is set to.
-        v["DA40_RADIO_CRS1_SET"] = new SimVarDefinition
-        {
-            Name = "NAV OBS:1",
-            DisplayName = "NAV 1 Course",
-            Type = SimVarType.SimVar,
-            Units = "degrees",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
-            Format = "F0",
-            HelpText = "Course for NAV 1, 0 to 359."
-        };
 
-        v["DA40_RADIO_HDG_BUG_SET"] = new SimVarDefinition
-        {
-            Name = "AUTOPILOT HEADING LOCK DIR",
-            DisplayName = "Heading Bug",
-            Type = SimVarType.SimVar,
-            Units = "degrees",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
-            Format = "F0",
-            HelpText = "Heading bug, 0 to 359."
-        };
 
         // ---------- Status ----------
 
@@ -297,22 +273,6 @@ public partial class CowsDA40Definition
                 AnnounceSwap(simConnect, announcer, "NAV2_RADIO_SWAP",
                     "DA40_RADIO_NAV2_SET", "NAV 2", "0.00");
                 return true;
-
-            case "DA40_RADIO_CRS1_SET":
-            {
-                int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                simConnect.ExecuteCalculatorCode($"{deg} (>K:VOR1_SET)");
-                announcer.AnnounceImmediate($"NAV 1 course {deg:000}");
-                return true;
-            }
-
-            case "DA40_RADIO_HDG_BUG_SET":
-            {
-                int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                simConnect.ExecuteCalculatorCode($"{deg} (>K:HEADING_BUG_SET)");
-                announcer.AnnounceImmediate($"Heading bug {deg:000}");
-                return true;
-            }
         }
 
         return false;

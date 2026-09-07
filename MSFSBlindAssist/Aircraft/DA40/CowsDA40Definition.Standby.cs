@@ -90,6 +90,30 @@ public partial class CowsDA40Definition
             HelpText = "Separate from the G1000 subscale - set both. Takes hectopascals or inches."
         };
 
+        // ---------- THE KNOB ITSELF ----------
+        //
+        // ⚠️ THE AEROPLANE HAS THIS KNOB AND MSFSBA COULD ONLY TYPE AT IT. The subscale
+        // was a typed box alone, which is not a thing the cockpit has - a sighted pilot
+        // grabs INSTRUMENT_Knob_Altimeter_1 and turns it. Same gap as the five GFC 700
+        // selected values, found by the same question.
+        //
+        // ⚠️ THE STEP IS THE MODEL'S OWN RPN, COPIED VERBATIM FROM COWS_DA40NG_IN.xml
+        // rather than written afresh - including its clamps, which are the aeroplane's
+        // and not ours:
+        //     CLOCKWISE      (L:KOHLSMAN SETTING HG:2) 0.01 + 31.5 min (>L:KOHLSMAN ...)
+        //     ANTICLOCKWISE  (L:KOHLSMAN SETTING HG:2) 0.01 - 28   max (>L:KOHLSMAN ...)
+        // Verified live on the airframe both ways: 29.92 -> 29.93 -> 29.92, with the
+        // STATE_BARO2 mirror following each step.
+        //
+        // ⚠️ IT MUST GO THROUGH THE CALCULATOR, NEVER SetLVar. The input's name carries a
+        // SPACE AND A COLON, so SetLVar refuses the calc path and its data-def fallback
+        // lands on the STOCK SimVar of that name - a different variable entirely. That is
+        // this aeroplane's documented write trap and the typed setter already avoids it.
+        AddStandbyBaroStep(v, "DA40_STBY_ALTIMETER_UP", "Standby Altimeter Up",
+            "One hundredth of an inch up. Stops at 31.50.");
+        AddStandbyBaroStep(v, "DA40_STBY_ALTIMETER_DN", "Standby Altimeter Down",
+            "One hundredth of an inch down. Stops at 28.00.");
+
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
         {
             Name = "DA40_STBY_GYRO_CAGE",
@@ -222,6 +246,8 @@ public partial class CowsDA40Definition
     private static readonly List<string> StandbyControls = new()
     {
         "DA40_STBY_ALTIMETER_SET",
+        "DA40_STBY_ALTIMETER_UP",
+        "DA40_STBY_ALTIMETER_DN",
         "DA40_STBY_GYRO_CAGE",
         "DA40_STBY_DISPLAY_BACKUP"
     };
@@ -265,6 +291,23 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            // ⚠️ UNIQUE, or a second detent in the same direction is a byte-identical calc
+            // string and MobiFlight drops it - every other click of a sweep goes missing.
+            // ⚠️ AND IT DOES NOT ANNOUNCE. A detent is one of a burst; the baro settle
+            // announcer already waits for the knob to stop and speaks the resting value in
+            // both units. Announcing here would read a sweep as forty numbers.
+            case "DA40_STBY_ALTIMETER_UP":
+                MarkBaroSetByUs();
+                simConnect.ExecuteCalculatorCodeUnique(
+                    "(L:KOHLSMAN SETTING HG:2) 0.01 + 31.5 min (>L:KOHLSMAN SETTING HG:2)");
+                return true;
+
+            case "DA40_STBY_ALTIMETER_DN":
+                MarkBaroSetByUs();
+                simConnect.ExecuteCalculatorCodeUnique(
+                    "(L:KOHLSMAN SETTING HG:2) 0.01 - 28 max (>L:KOHLSMAN SETTING HG:2)");
+                return true;
+
             case "DA40_STBY_GYRO_CAGE":
                 // Say what it did. A button that makes a noise and reports nothing is
                 // indistinguishable from a button that does nothing.
@@ -303,5 +346,23 @@ public partial class CowsDA40Definition
         simConnect.ExecuteCalculatorCodeUnique(
             inHg.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
             + " (>L:KOHLSMAN SETTING HG:2)");
+    }
+
+    /// <summary>One detent of the standby subscale knob. A button: an action, not a state.</summary>
+    private static void AddStandbyBaroStep(Dictionary<string, SimVarDefinition> v, string key,
+        string display, string help)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = key,
+            DisplayName = display,
+            Type = SimVarType.LVar,
+            UpdateFrequency = UpdateFrequency.Never,
+            RenderAsButton = true,
+            SuppressRestingButtonState = true,
+            IsAnnounced = false,
+            ExcludeFromMonitorManager = true,
+            HelpText = help
+        };
     }
 }
