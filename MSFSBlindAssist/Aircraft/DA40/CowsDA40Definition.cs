@@ -710,8 +710,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
         if (TryGetXlsStartDisplayOverride(varKey, value, out displayText)) return true;
+        // ⚠️ This was listed TWICE. Harmless - the second call can never run - but it is
+        // dead code in the one place a reader checks to find out which override owns a key.
         if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
-        if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetStandbyDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetPrimingDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsFuelDisplayOverride(varKey, value, out displayText)) return true;

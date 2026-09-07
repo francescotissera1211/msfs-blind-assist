@@ -57,12 +57,39 @@ public partial class CowsDA40Definition
             return true;
         }
 
+        // ⚠️ TWO FIELDS, ONE PER ALTIMETER, SEEDED FROM THE LIVE VALUES.
+        //
+        // This used to be a SINGLE field that wrote both. That is the common case and it is
+        // still one keystroke away - type the same number twice - but it could not express
+        // the state the standby exists to reveal: the two disagreeing. A pilot could not set
+        // them apart deliberately (a QFE standby against a QNH main), and could not correct
+        // one without silently overwriting the other's setting with it.
+        //
+        // Both are pre-filled with what the instrument currently reads, in INCHES to two
+        // decimals, so opening the dialog is also how you READ them side by side - and the
+        // box is selected on focus, so overtyping replaces rather than appends.
+        string SeedOf(string key) =>
+            ReadNow(simConnect, key) is double v && v > 0
+                ? v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+                : "";
+
         var dialog = new Forms.ValueInputForm(
             "Set Altimeters",
-            "Altimeter setting",
+            "Main altimeter setting",
             "948 to 1066 hectopascals, or 28.00 to 31.50 inches",
             announcer,
-            ValidateBaroEntry);
+            ValidateBaroEntry,
+            new List<Forms.ValueInputForm.ExtraFieldDef>
+            {
+                new()
+                {
+                    Label = "Standby altimeter setting",
+                    InitialValue = SeedOf("DA40_STBY_ALTIMETER_SET"),
+                    Validator = ValidateBaroEntry
+                }
+            });
+
+        dialog.InitialValue = SeedOf("DA40_G1000_BARO");
 
         if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) return true;
         if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
@@ -73,17 +100,54 @@ public partial class CowsDA40Definition
 
         // Same convention as the standby panel's own field: the ranges cannot overlap, so
         // magnitude says which unit was meant.
-        double inHg = Math.Clamp(entered > 100 ? entered / 33.8639 : entered, 28.00, 31.50);
-        double millibars = inHg * 33.8639;
+        // Same unit convention as everywhere else on this aeroplane: the ranges cannot
+        // overlap, so magnitude says which unit was meant, per field independently.
+        static double ToInHg(double v) =>
+            Math.Clamp(v > 100 ? v / 33.8639 : v, 28.00, 31.50);
 
+        double mainInHg = ToInHg(entered);
+        double stbyInHg = mainInHg;
+        if (dialog.ExtraValues.Count > 0 &&
+            double.TryParse(dialog.ExtraValues[0], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double stbyEntered))
+        {
+            stbyInHg = ToInHg(stbyEntered);
+        }
+
+        // ⚠️ THE TWO ALTIMETERS TAKE DIFFERENT TRANSPORTS - see this method's own summary.
+        // The G1000 subscale is the stock unindexed K:KOHLSMAN_SET in millibars times
+        // sixteen; the standby is a real L:var written through the calculator.
         simConnect.ExecuteCalculatorCode(
-            $"{millibars * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
-        SetStandbyBaro(simConnect, inHg);
+            $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+        SetStandbyBaro(simConnect, stbyInHg);
         MarkBaroSetByUs();
 
-        announcer.AnnounceImmediate(
-            $"Both altimeters set, {millibars:0} hectopascals, {inHg:0.00} inches");
+        // Say them SEPARATELY when they differ, and as one phrase when they do not. A pilot
+        // who deliberately set them apart needs to hear that it took; one who set them the
+        // same does not need the same number read twice.
+        announcer.AnnounceImmediate(BaroSetPhrase(mainInHg, stbyInHg));
         return true;
+    }
+
+    /// <summary>
+    /// What Ctrl+B says once both altimeters are set. Pure so the suite can pin it.
+    ///
+    /// ⚠️ A DISAGREEMENT IS NAMED, NEVER AVERAGED OR SUMMARISED. Two altimeters set apart is
+    /// either deliberate or a mistake, and both readings have to be spoken for the pilot to
+    /// tell which - "Both altimeters set" over two different numbers would hide exactly the
+    /// state the standby exists to reveal.
+    /// </summary>
+    internal static string BaroSetPhrase(double mainInHg, double stbyInHg)
+    {
+        static string P(double inHg) =>
+            $"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches";
+
+        // A hundredth of an inch is the knob's own detent, so anything smaller is rounding
+        // rather than a real difference.
+        if (Math.Abs(mainInHg - stbyInHg) < 0.005)
+            return $"Both altimeters set, {P(mainInHg)}";
+
+        return $"Main altimeter {P(mainInHg)}. Standby altimeter {P(stbyInHg)}.";
     }
 
     private static (bool isValid, string message) ValidateBaroEntry(string text)

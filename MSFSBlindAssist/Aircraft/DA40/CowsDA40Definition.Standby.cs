@@ -109,10 +109,6 @@ public partial class CowsDA40Definition
         // SPACE AND A COLON, so SetLVar refuses the calc path and its data-def fallback
         // lands on the STOCK SimVar of that name - a different variable entirely. That is
         // this aeroplane's documented write trap and the typed setter already avoids it.
-        AddStandbyBaroStep(v, "DA40_STBY_ALTIMETER_UP", "Standby Altimeter Up",
-            "One hundredth of an inch up. Stops at 31.50.");
-        AddStandbyBaroStep(v, "DA40_STBY_ALTIMETER_DN", "Standby Altimeter Down",
-            "One hundredth of an inch down. Stops at 28.00.");
 
         // ---------- THE MAIN ALTIMETER, ON A PANEL AT LAST ----------
         //
@@ -146,11 +142,6 @@ public partial class CowsDA40Definition
             CurrentValueSourceKey = "DA40_G1000_BARO",
             HelpText = "The G1000 subscale. Takes hectopascals or inches."
         };
-
-        AddG1000BaroStep(v, "DA40_G1000_BARO_UP", "Altimeter Setting Up",
-            "One hundredth of an inch up on the G1000.");
-        AddG1000BaroStep(v, "DA40_G1000_BARO_DN", "Altimeter Setting Down",
-            "One hundredth of an inch down on the G1000.");
 
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
         {
@@ -302,12 +293,19 @@ public partial class CowsDA40Definition
     {
         // Both altimeters, main first, each with its typed box and its knob. They sit
         // together because the question a standby answers is whether the two AGREE.
+        // ⚠️ NO UP/DOWN BUTTONS HERE, ON THE PILOT'S RULING. They were added as "the correct
+        // way" - a sighted pilot turns the knob - and then removed once both altimeters had
+        // a typed box: if you can type the value you can just type the value, and four more
+        // buttons on a seven-row panel is clutter that every pilot tabs through forever to
+        // reach the two rows that do the work. The knob feel is still available where it
+        // belongs, on the PFD bezel keys in the display window.
+        //
+        // ⚠️ This is NOT a general repeal - the GFC 700's ten step buttons stay, because
+        // there the panel is the ONLY way to step those five values; no bezel key reaches
+        // them. The rule that came out of it: a step button earns its place only where
+        // nothing else can turn that knob.
         "DA40_G1000_BARO_SET",
-        "DA40_G1000_BARO_UP",
-        "DA40_G1000_BARO_DN",
         "DA40_STBY_ALTIMETER_SET",
-        "DA40_STBY_ALTIMETER_UP",
-        "DA40_STBY_ALTIMETER_DN",
         "DA40_STBY_GYRO_CAGE",
         "DA40_STBY_DISPLAY_BACKUP"
     };
@@ -325,6 +323,30 @@ public partial class CowsDA40Definition
         "DA40_STBY_GYRO_SPEED",
         "DA40_STBY_GYRO_TOPPLE"
     };
+
+    /// <summary>
+    /// ⚠️ "1453 number" - THE UNIT FIELD IS THE DATA-DEFINITION UNIT, NOT A LABEL.
+    ///
+    /// A read-only readout renders "{value:Format} {Units}", and an L:var MUST be registered
+    /// Units = "number" or SimConnect converts from its own base unit and returns garbage
+    /// (this aeroplane's own rule, learned on the standby subscale). The two demands collide:
+    /// the honest unit for the data definition is the wrong word to say out loud. So the
+    /// UNIT a pilot hears comes from here, and the one SimConnect sees stays "number".
+    ///
+    /// It only became visible when Backup Altitude moved off the stock INDICATED ALTITUDE
+    /// (feet, a real unit) onto the model's own PRESSURE_ALT_INDI.
+    /// </summary>
+    private bool TryGetStandbyDisplayOverride(string varKey, double value, out string text)
+    {
+        if (varKey == "DA40_STBY_ALTITUDE")
+        {
+            text = $"{value:0} feet";
+            return true;
+        }
+
+        text = "";
+        return false;
+    }
 
     /// <summary>
     /// Standby writes. The subscale is a plain latching L:var clamped to the knob's own
@@ -362,16 +384,6 @@ public partial class CowsDA40Definition
             // announces the value ITSELF and would otherwise say it twice; it is exactly
             // wrong for a detent, which announces nothing and DEPENDS on the settle.
             // Shipped that way and caught by re-reading rather than by hearing it.
-            case "DA40_STBY_ALTIMETER_UP":
-                simConnect.ExecuteCalculatorCodeUnique(
-                    "(L:KOHLSMAN SETTING HG:2) 0.01 + 31.5 min (>L:KOHLSMAN SETTING HG:2)");
-                return true;
-
-            case "DA40_STBY_ALTIMETER_DN":
-                simConnect.ExecuteCalculatorCodeUnique(
-                    "(L:KOHLSMAN SETTING HG:2) 0.01 - 28 max (>L:KOHLSMAN SETTING HG:2)");
-                return true;
-
             // The G1000 subscale, typed. Same unit convention as everywhere else on this
             // aeroplane - the ranges cannot overlap, so magnitude says which was meant -
             // and the same K:KOHLSMAN_SET write Ctrl+B makes, in millibars times sixteen.
@@ -389,14 +401,6 @@ public partial class CowsDA40Definition
 
             // ⚠️ NO MarkBaroSetByUs HERE EITHER - see the standby detents above for the
             // silent-knob trap this avoids.
-            case "DA40_G1000_BARO_UP":
-                simConnect.ExecuteCalculatorCodeUnique("1 (>H:AS1000_PFD_BARO_INC)");
-                return true;
-
-            case "DA40_G1000_BARO_DN":
-                simConnect.ExecuteCalculatorCodeUnique("1 (>H:AS1000_PFD_BARO_DEC)");
-                return true;
-
             case "DA40_STBY_GYRO_CAGE":
                 // Say what it did. A button that makes a noise and reports nothing is
                 // indistinguishable from a button that does nothing.
@@ -437,25 +441,4 @@ public partial class CowsDA40Definition
             + " (>L:KOHLSMAN SETTING HG:2)");
     }
 
-    /// <summary>One detent of the G1000 subscale knob, fired as the PFD bezel event.</summary>
-    private static void AddG1000BaroStep(Dictionary<string, SimVarDefinition> v, string key,
-        string display, string help) => AddStandbyBaroStep(v, key, display, help);
-
-    /// <summary>One detent of the standby subscale knob. A button: an action, not a state.</summary>
-    private static void AddStandbyBaroStep(Dictionary<string, SimVarDefinition> v, string key,
-        string display, string help)
-    {
-        v[key] = new SimVarDefinition
-        {
-            Name = key,
-            DisplayName = display,
-            Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.Never,
-            RenderAsButton = true,
-            SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            ExcludeFromMonitorManager = true,
-            HelpText = help
-        };
-    }
 }

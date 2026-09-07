@@ -46,6 +46,44 @@ public partial class ValueInputForm : Form
         private readonly Func<string, (bool isValid, string message)> validator;
         private readonly Action<string>? onValueSet;
         private readonly IntPtr previousWindow;
+        /// <summary>
+        /// An ADDITIONAL labelled entry beside the main one.
+        ///
+        /// ⚠️ ADDITIVE BY CONSTRUCTION. With no extra fields the offset is zero and every
+        /// control keeps the exact position, tab index and accessible name it had, so a
+        /// dialog that does not ask for extras is unchanged for every other aircraft. That
+        /// is the whole reason this lives here rather than in a DA40-local fork of the form.
+        ///
+        /// It exists because a dialog can genuinely be about TWO numbers: the DA40 has two
+        /// altimeters on two independent transports, and Ctrl+B setting them to one shared
+        /// value could never express "they disagree", which is the state a standby exists
+        /// to reveal.
+        /// </summary>
+        public sealed class ExtraFieldDef
+        {
+            /// <summary>Spoken and shown. Becomes the field's AccessibleName.</summary>
+            public string Label { get; init; } = "";
+            /// <summary>Pre-filled and selected, so overtyping replaces it.</summary>
+            public string InitialValue { get; init; } = "";
+            /// <summary>Falls back to the main validator when null.</summary>
+            public Func<string, (bool isValid, string message)>? Validator { get; init; }
+        }
+
+        /// <summary>
+        /// Pre-fills the MAIN box, applied on Load and selected so overtyping replaces it.
+        /// Set after construction; empty leaves the box blank exactly as before.
+        /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public string InitialValue { get; set; } = "";
+
+        /// <summary>What the extra fields held when Set was pressed, in declaration order.</summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public IReadOnlyList<string> ExtraValues => _extraValues;
+
+        private readonly List<ExtraFieldDef> _extraDefs;
+        private readonly List<TextBox> _extraBoxes = new();
+        private readonly List<Label> _extraLabels = new();
+        private readonly List<string> _extraValues = new();
         private readonly List<ToggleButtonDef> _toggleDefs;
         private readonly List<Button> _toggleButtons = new();
         private System.Windows.Forms.Timer? _toggleRefreshTimer;
@@ -58,11 +96,22 @@ public partial class ValueInputForm : Form
         {
         }
 
+        /// <summary>The two-field shape: a main value plus one or more labelled extras.</summary>
+        public ValueInputForm(string title, string parameterType, string rangeText,
+            ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator,
+            List<ExtraFieldDef> extraFields)
+            : this(title, parameterType, rangeText, announcer, validator,
+                   new List<ToggleButtonDef>(), null, null, extraFields)
+        {
+        }
+
         public ValueInputForm(string title, string parameterType, string rangeText,
             ScreenReaderAnnouncer announcer, Func<string, (bool, string)> validator,
             List<ToggleButtonDef> toggles, Action<string>? onValueSet = null,
-            Func<bool>? inputEnabledCheck = null)
+            Func<bool>? inputEnabledCheck = null,
+            List<ExtraFieldDef>? extraFields = null)
         {
+            _extraDefs = extraFields ?? new List<ExtraFieldDef>();
             previousWindow = GetForegroundWindow();
             this.announcer = announcer;
             this.parameterType = parameterType;
@@ -92,7 +141,7 @@ public partial class ValueInputForm : Form
             int toggleOffset = _toggleDefs.Count * 35;
 
             Text = title;
-            Size = new Size(350, 200 + toggleOffset);
+            Size = new Size(350, 200 + toggleOffset + _extraDefs.Count * 48);
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -191,10 +240,39 @@ public partial class ValueInputForm : Form
                 toggleY += 35;
             }
 
+            // Each extra field is a label above its box, stacked under the main one. The
+            // MAIN box keeps its position, so an extras-free dialog is pixel-identical.
+            int extraY = 105 + toggleOffset;
+            foreach (var ef in _extraDefs)
+            {
+                var lbl = new Label
+                {
+                    Text = ef.Label,
+                    Location = new Point(20, extraY),
+                    Size = new Size(300, 18),
+                    AccessibleName = ef.Label
+                };
+                var box = new TextBox
+                {
+                    Text = ef.InitialValue,
+                    Location = new Point(20, extraY + 20),
+                    Size = new Size(150, 25),
+                    AccessibleName = $"{ef.Label} value",
+                    AccessibleDescription = $"Enter {ef.Label} and press Enter to set",
+                    TabIndex = tabIdx++
+                };
+                box.KeyDown += ValueTextBox_KeyDown;
+                box.GotFocus += (_, _) => box.SelectAll();
+                _extraLabels.Add(lbl);
+                _extraBoxes.Add(box);
+                extraY += 48;
+            }
+            int extraOffset = _extraDefs.Count * 48;
+
             okButton = new Button
             {
                 Text = "Set",
-                Location = new Point(185, 105 + toggleOffset),
+                Location = new Point(185, 105 + toggleOffset + extraOffset),
                 Size = new Size(60, 30),
                 AccessibleName = $"Set {parameterType}",
                 TabIndex = tabIdx++
@@ -204,7 +282,7 @@ public partial class ValueInputForm : Form
             cancelButton = new Button
             {
                 Text = "Cancel",
-                Location = new Point(255, 105 + toggleOffset),
+                Location = new Point(255, 105 + toggleOffset + extraOffset),
                 Size = new Size(60, 30),
                 DialogResult = DialogResult.Cancel,
                 AccessibleName = "Cancel",
@@ -216,6 +294,8 @@ public partial class ValueInputForm : Form
             foreach (var btn in _toggleButtons)
                 Controls.Add(btn);
             Controls.Add(valueTextBox);
+            foreach (var l in _extraLabels) Controls.Add(l);
+            foreach (var b in _extraBoxes) Controls.Add(b);
             Controls.Add(okButton);
             Controls.Add(cancelButton);
 
@@ -281,6 +361,11 @@ public partial class ValueInputForm : Form
                 Activate();
                 TopMost = true;
                 TopMost = false;
+                if (!string.IsNullOrEmpty(InitialValue))
+                {
+                    valueTextBox.Text = InitialValue;
+                    valueTextBox.SelectAll();
+                }
                 valueTextBox.Focus();
                 UpdateInputEnabled();
             };
@@ -338,8 +423,34 @@ public partial class ValueInputForm : Form
 
             var validationResult = validator(input);
 
+            // ⚠️ EVERY EXTRA FIELD IS VALIDATED BEFORE ANYTHING IS SENT, and focus is put on
+            // the first one that fails. A dialog that writes one altimeter and then rejects
+            // the other would leave the two set differently for a reason the pilot never
+            // asked for - which is precisely the fault state this dialog exists to make
+            // visible, so producing it by accident would be worse than useless.
+            for (int i = 0; i < _extraBoxes.Count; i++)
+            {
+                string ev = _extraBoxes[i].Text.Trim();
+                if (string.IsNullOrEmpty(ev))
+                {
+                    announcer.AnnounceImmediate($"Please enter {_extraDefs[i].Label}");
+                    _extraBoxes[i].Focus();
+                    return;
+                }
+                var r = (_extraDefs[i].Validator ?? validator)(ev);
+                if (!r.isValid)
+                {
+                    announcer.AnnounceImmediate(r.message);
+                    _extraBoxes[i].Focus();
+                    _extraBoxes[i].SelectAll();
+                    return;
+                }
+            }
+
             if (validationResult.isValid)
             {
+                _extraValues.Clear();
+                foreach (var b in _extraBoxes) _extraValues.Add(b.Text.Trim());
                 InputValue = input;
                 IsValidInput = true;
 
