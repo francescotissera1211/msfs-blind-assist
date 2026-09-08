@@ -183,15 +183,21 @@ larger capture radius and a longer rate-lead.
 Every supported aircraft carries an explicit profile — including the ones that simply take the
 baseline, so the choice is visible in the definition rather than inherited by accident.
 
-| Aircraft | Roll gain (°/° error) | Max bank | Max pitch | Capture radius | Speed floor | Rate-lead |
-|---|---|---|---|---|---|---|
-| A320 baseline — FBW A32NX (NEO), Fenix (CEO) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
-| PMDG 737-800 (baseline — 737-class narrowbody) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
-| iFly 737 MAX8 (baseline — 737-class narrowbody) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
-| Headwind A330neo | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.4 s |
-| PMDG 777 | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.3 s |
-| HorizonSim 787 | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.3 s |
-| FlyByWire A380X | 0.85 | 28° | 10° | 0.9 NM | 60 kt | 1.5 s |
+| Aircraft | Roll gain (°/° error) | Max bank | Roll rate | Max pitch | Capture radius | Speed floor | Rate-lead |
+|---|---|---|---|---|---|---|---|
+| **Fenix A320 CEO** — measured | **2.10** | 25° | 2.9°/s | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 0 s |
+| **FlyByWire A32NX (NEO)** — measured | **4.95** | 25° | 4.1°/s | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 0 s |
+| **FlyByWire A380X** — measured | **5.0** | 25° | 3.7°/s | 10° | 0.9 NM | 60 kt | 0 s |
+| **PMDG 777** — measured | **2.35** | 25° | 3.5°/s | 10° | 0.8 NM | 60 kt | 0.5 s |
+| Headwind A330neo — class estimate | 0.9 | 25° | 5.0°/s ᵈ | 10° | 0.8 NM | 60 kt | 1.4 s |
+| HorizonSim 787 — class estimate | 0.9 | 30° | 5.0°/s ᵈ | 10° | 0.8 NM | 60 kt | 1.3 s |
+| PMDG 737-800 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
+| iFly 737 MAX8 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
+
+ᵈ = inherited from `WaypointFlightDirectorProfile`'s baseline default rather than set explicitly.
+This table is generated from the definitions; if you change a profile, update the row. Note that
+every *measured* aircraft ended up with a rate-lead of 0 — see "The trap: a proportional law needs
+no lead" below.
 
 `TonePitchRangeDeg` (the pitch at which the tone frequency saturates) is **kept equal to
 `MaxPitchDeg`** on every profile — 12° on the narrowbodies, 10° on the widebodies. The FD clamps its
@@ -326,6 +332,49 @@ The A380 comparison still stands on its own four-run matrix — but the lesson g
 looked like a law and four looked like scatter.** Do not name a strategy until both directions have
 been flown at both speeds, and check the direction spread against the speed effect before believing
 either.
+
+**The Fenix A320 CEO is measured (2026-09), and it is the most important result in this table.**
+Four 90° AP-flown HDG SEL captures at 4000 ft, both directions at 180 kt and at 280 kt:
+
+| | 180 kt | 280 kt |
+| --- | --- | --- |
+| Steady bank | 25.0-25.2° | 25.0-25.2° |
+| Roll-in rate | 2.9°/s | 2.9°/s |
+| Roll-out rate | 2.37°/s | 2.75°/s |
+| Error when bank leaves the cap | **12.1°** | **5.1°** (and <6.3° on the reciprocal) |
+| Fitted gain over the rollout | **2.06-2.12** | ~5.5, and not constant |
+| Capture | settles within 0.2°, hunts ±0.15° | same |
+
+At 180 kt the Fenix looks like a textbook proportional controller. `bank ÷ track error` holds
+2.06-2.12 straight down both rollouts — 11.67° error at 24.68° bank, 9.99 at 22.60, 8.69 at 20.28,
+6.45 at 13.25, 5.08 at 10.37 — widening only at the rate-limited entry and the capture tail. Two runs
+in opposite directions agreed to within 1%. It was ready to be written up as gain 2.10, onset 11.9°.
+
+At 280 kt that law is simply false. A 2.10 gain says the bank leaves the cap at 11.9° of error; the
+aircraft held 25° through 5.1°, and on the reciprocal was still pinned at the cap with 6.3° to run.
+Through the rollout `bank ÷ error` marches 4.8 → 5.9 → 5.0 instead of holding flat, while the bank
+itself comes off at a near-constant 2.75°/s. **Fenix is anticipating its own rollout arc, not steering
+proportionally**, and the clean 2.10 fit was what that anticipation happens to look like at one speed.
+
+No speed-invariant gain reproduces both. Neither does adding a rate-lead: `err_onset = MaxBank/K +
+yawRate × lead` moves in the right direction (the slower speed turns faster and so rolls out earlier)
+but cannot span 12.1° → 5.1°; solving the two points gives a *negative* `MaxBank/K`. A rollout-arc
+model (onset ∝ roll-rate ÷ TAS) predicts a 1.85× shrink against the 2.35× measured. Two points cannot
+identify the law, so none is asserted — the same discipline the A320 taught one aircraft earlier.
+
+**The profile therefore takes 2.10, tuned to the speeds the director is used at** (course tracking and
+approaches, 140-250 kt), and will call the roll-out early on a large capture above ~250 kt. Raising
+the gain to split the difference was rejected on a second ground: the gain also multiplies the
+small-error command a hand-flying pilot spends most of the flight inside. At K=5.0 a 3° track error
+orders 15° of bank — an invitation to the pilot-induced oscillation the director exists to prevent.
+Being right at cruise is not worth being twitchy on final.
+
+**And the headline: Fenix CEO measures 2.10 where the FlyByWire A32NX measures 4.95.** Same aircraft
+type, same bank cap, same 25° Roll Limit 2 — a gain more than twice as large and a different control
+strategy (Fenix anticipates; FBW saturates then rate-limits). What this campaign measures is **the
+add-on developer's autopilot implementation, not the airframe.** That kills "A320 baseline" as a
+meaningful shared class, and it is the strongest argument in this document against carrying any
+measured gain from one product to another — even to the same aeroplane.
 
 ⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the
 kind of cross-type extrapolation the rest of this table exists to flag. Every other aircraft still
@@ -463,7 +512,11 @@ express it. Fit the gain FIRST; only reach for the lead if the aeroplane oversho
   pilot of hand-flying a turn the autopilot flew.
 - **Losing the rollout in the gap between sampling calls.** A 90° turn does not fit in one 30 s
   window, and the gap while Claude thinks between calls is enough to swallow the entire rollout.
-  Hence "say go 25-30° out": make the turn fit the window rather than bridging.
+  Hence "say go 25-30° out": make the turn fit the window rather than bridging. This recurred on the
+  Fenix 280 kt reciprocal even with the follow-up calls fired back-to-back with no analysis in
+  between — round-trip latency alone cost ~6° of turn and the whole rollout. When it happens, the
+  last sample of the truncated window is still worth reading: "bank still at the cap with 6.3° to
+  run" bounds the onset even though the fit is gone.
 - **Bridging with a cheaper sample.** Dropping to bank-only at 1 Hz to save a call lost the paired
   heading exactly when the rollout happened, and the run was unusable — reconstructing heading by
   integrating turn rate gave answers spanning 0.6 to 1.7 for the same data.
