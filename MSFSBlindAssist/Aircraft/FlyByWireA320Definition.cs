@@ -70,27 +70,33 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // still class estimates awaiting an in-sim roll-response measurement.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        // MEASURED off the aeroplane, 2026-09 (three AP-flown HDG SEL turns at 4000 ft: two left at
-        // 180 kt, one right at 280 kt), sampling bank + magnetic heading at 4 Hz.
+        // MEASURED off the aeroplane, 2026-09 — FOUR AP-flown HDG SEL turns at 4000 ft (two left at
+        // 180 kt, then right and left at 280), sampling bank + magnetic heading at 4 Hz.
         //
-        // Rollout onset — the load-bearing number — came out at 5.8° and 5.5° of heading error at
-        // 180 kt and 5.0° at 280. That is a near-constant HEADING lead (down only 9% across a 100 kt
-        // spread), which is exactly what this law produces with NO time-lead term, so unlike the A380
-        // this airframe fits it properly. Gain is cap / onset over the three runs.
+        // Rollout onset, the load-bearing number: 5.8 / 5.5° of heading error at 180 kt, 5.0 / 3.77° at
+        // 280. Mean 5.02, hence gain = cap / onset = 24.85 / 5.02.
         //
-        // ⚠️ Do NOT assume the A380 numbers transfer because both are Airbus. They agree exactly at
-        // 180 kt (2.12 s vs 2.13 s to target at onset) and then diverge: at 280 kt the A380 anticipates
-        // on constant TIME (onset collapses to 3.0°) while this one stays on constant HEADING. Same
-        // manufacturer, opposite strategy — it only showed up because both were flown at two speeds.
-        KRollDegPerDegTrack   = 4.6,
+        // ⚠️ Do NOT read a strategy into this the way the A380 comment does. After three runs it looked
+        // like a constant HEADING lead (5.8 / 5.5 / 5.0) and therefore a clean fit; the fourth run came
+        // in at 3.77 and killed that. Across both speeds the heading lead falls 22% while the time to
+        // target rises 22% — so it is neither constant-heading (which predicts 5.65° at 280) nor
+        // constant-time (3.58°), but sits between at 4.38°. And the LEFT/RIGHT spread at 280 kt is
+        // 1.23°, essentially the same size as the entire speed effect (1.27°), so four runs cannot
+        // separate the two. Treat the onset as ~5° with real scatter, not as a law.
+        //
+        // Lead stays 0 because that is what makes the onset speed-independent, which is the closest
+        // this law can get to a quantity that only drifts 22% — not because a constant-heading
+        // strategy was demonstrated. More runs per direction would be needed to claim that.
+        KRollDegPerDegTrack   = 4.95,
         // Measured 24.8° steady at 180 kt and 24.9° at 280 — not scaled by true airspeed, matching the
         // Airbus FG Roll Limit 2 ceiling this already carried from published data.
         MaxBankDeg            = 25.0,
         // Measured roll-in 4.09°/s at 180 kt and 4.16°/s at 280; rollout ~3.5°/s. Quicker than either
         // widebody (3.5-3.7), which is what a narrowbody should do.
         MaxBankRateDegPerSec  = 4.1,
-        // ZERO: the onset is constant in HEADING, so cap / gain alone reproduces it at both speeds.
-        // A positive lead would make the onset grow with turn rate, which the measurement rules out.
+        // ZERO — see the gain comment. A positive lead makes the onset GROW with turn rate, i.e. grow
+        // at the slower speed, and the measurement shows the opposite sign (onset is larger at 180 kt,
+        // where turn rate is higher). So no positive lead can fit, and 0 is the least-wrong choice.
         BankRateLeadSec       = 0.0,
         TypicalApproachAoaDeg = 5.0     // ~2° approach pitch on a 3° path
     };

@@ -299,26 +299,33 @@ airframe tweak.
 
 Its previous gain of 0.85 commanded about a SIXTH of the bank the aircraft uses.
 
-**The FlyByWire A320neo is measured (2026-09), and it breaks the family assumption.** Three AP-flown
-HDG SEL turns at 4000 ft — two left at 180 kt, one right at 280 kt:
+**The FlyByWire A320neo is measured (2026-09).** Four AP-flown HDG SEL turns at 4000 ft — two left at
+180 kt, then right and left at 280:
 
 | | A320neo | A380X | PMDG 777 |
 | --- | --- | --- | --- |
-| Steady bank | 24.8° (both speeds) | 25° | 25° |
+| Steady bank | 24.8-24.9° (both speeds) | 25° | 25° |
 | Roll rate | **4.1°/s** | 3.7°/s | 3.5°/s |
 | Onset @180 kt | 5.8 / 5.5° | 5.0° | 10.8° |
-| Onset @280 kt | **5.0°** | **3.0°** | 10.3° |
-| Anticipation | **constant HEADING** | constant TIME | constant HEADING |
-| Fitted gain | **4.6** (lead 0) | 5.0 (lead 0, compromise) | 2.35 (lead 0.5) |
+| Onset @280 kt | 5.0 / 3.77° | 3.0 / 3.2° | 10.3° |
+| Fitted gain | **4.95** (lead 0) | 5.0 (lead 0, compromise) | 2.35 (lead 0.5) |
 
-At 180 kt the two Airbuses look identical — 2.12 s versus 2.13 s to target at rollout onset — and it
-would have been natural to call that a family trait and move on. **The second speed destroyed that**
-reading: the A380's heading lead collapses 40% (5.0 → 3.0°) while the A320's barely moves (5.5 →
-5.0°, down 9%). Same manufacturer, opposite anticipation strategies; the A320 behaves like the Boeing.
+**A cautionary tale about stopping early.** After three runs the A320's onsets read 5.8 / 5.5 / 5.0 —
+a near-constant HEADING lead, the same strategy as the 777, and therefore a clean fit to this law.
+That was written up as a finding. The fourth run came in at **3.77°** and destroyed it. Across both
+speeds the heading lead actually falls 22% while time-to-target rises 22%: neither constant-heading
+(which predicts 5.65° at 280 kt) nor constant-time (3.58°), but sitting between at 4.38°.
 
-The practical consequence is that the A320 **fits this law exactly** — a constant heading onset is
-what `cap / gain` produces with no time-lead term — whereas the A380 needed a documented compromise.
-This is the strongest argument in this document for flying two speeds and not stopping at one.
+Worse for the analysis, the **left/right spread at 280 kt is 1.23°** — essentially the same magnitude
+as the entire speed effect (1.27°). Four runs cannot separate direction asymmetry from speed
+dependence. So the honest description is "onset ≈5° with real scatter", not a strategy; the gain is
+the mean over all four runs and the lead stays 0 because that is the least-wrong option, not because
+constant-heading behaviour was demonstrated.
+
+The A380 comparison still stands on its own four-run matrix — but the lesson generalises: **three runs
+looked like a law and four looked like scatter.** Do not name a strategy until both directions have
+been flown at both speeds, and check the direction spread against the speed effect before believing
+either.
 
 ⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the
 kind of cross-type extrapolation the rest of this table exists to flag. Every other aircraft still
