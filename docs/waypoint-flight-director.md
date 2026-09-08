@@ -195,7 +195,8 @@ baseline, so the choice is visible in the definition rather than inherited by ac
 | iFly 737 MAX8 — class estimate | 1.1 ᵈ | 30° | 5.0°/s ᵈ | 12° ᵈ | 0.5 NM ᵈ | 40 kt ᵈ | 1.0 s ᵈ |
 
 ᵈ = inherited from `WaypointFlightDirectorProfile`'s baseline default rather than set explicitly.
-This table is generated from the definitions; if you change a profile, update the row. Note that
+This table is transcribed by hand from the definitions and has drifted from them before, so treat
+the code as the source of truth and update the row when you change a profile. Note that
 every *measured* aircraft ended up with a rate-lead of 0 — see "The trap: a proportional law needs
 no lead" below.
 
