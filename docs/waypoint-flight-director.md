@@ -299,6 +299,27 @@ airframe tweak.
 
 Its previous gain of 0.85 commanded about a SIXTH of the bank the aircraft uses.
 
+**The FlyByWire A320neo is measured (2026-09), and it breaks the family assumption.** Three AP-flown
+HDG SEL turns at 4000 ft — two left at 180 kt, one right at 280 kt:
+
+| | A320neo | A380X | PMDG 777 |
+| --- | --- | --- | --- |
+| Steady bank | 24.8° (both speeds) | 25° | 25° |
+| Roll rate | **4.1°/s** | 3.7°/s | 3.5°/s |
+| Onset @180 kt | 5.8 / 5.5° | 5.0° | 10.8° |
+| Onset @280 kt | **5.0°** | **3.0°** | 10.3° |
+| Anticipation | **constant HEADING** | constant TIME | constant HEADING |
+| Fitted gain | **4.6** (lead 0) | 5.0 (lead 0, compromise) | 2.35 (lead 0.5) |
+
+At 180 kt the two Airbuses look identical — 2.12 s versus 2.13 s to target at rollout onset — and it
+would have been natural to call that a family trait and move on. **The second speed destroyed that**
+reading: the A380's heading lead collapses 40% (5.0 → 3.0°) while the A320's barely moves (5.5 →
+5.0°, down 9%). Same manufacturer, opposite anticipation strategies; the A320 behaves like the Boeing.
+
+The practical consequence is that the A320 **fits this law exactly** — a constant heading onset is
+what `cap / gain` produces with no time-lead term — whereas the A380 needed a documented compromise.
+This is the strongest argument in this document for flying two speeds and not stopping at one.
+
 ⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the
 kind of cross-type extrapolation the rest of this table exists to flag. Every other aircraft still
 carries a class estimate until it is flown the same way.
