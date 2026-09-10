@@ -674,7 +674,7 @@
                     var selected = mc.indexOf("highlight-select") >= 0 ||
                                    !!items[m].querySelector(".highlight-select");
                     lines.push(mt
-                        + (mc.indexOf("text-disabled") >= 0 ? ", not available" : "")
+                        + (mc.indexOf("text-disabled") >= 0 ? ", dimmed" : "")
                         + (selected ? ", selected" : ""));
                 }
                 var back = text(d.querySelector(".mfd-pagemenu-backmessage"));
@@ -1254,7 +1254,7 @@
             if (title && value && toggle && toggle !== value) line += ", " + toggle;
 
             var cls = classList(row);
-            if (cls.indexOf("text-disabled") >= 0) line += ", not available";
+            if (cls.indexOf("text-disabled") >= 0) line += ", dimmed";
             if (cls.indexOf("highlight-select") >= 0 ||
                 row.querySelector(".highlight-select")) line += ", selected";
 
@@ -2379,6 +2379,14 @@
             // know it is there and why the knob skips it - the Aux page's Time Offset is
             // unavailable precisely because Time Format is UTC. Silently dropping it would
             // be deciding on the pilot's behalf what they are allowed to know about.
+            //
+            // ⚠️ IT IS SPOKEN AS ", dimmed" - ONE WORD FOR ONE IDEA, APP-WIDE. The A380 MFD,
+            // the A380 MCDU and the flyPad browser view all say "dimmed"; this display said
+            // ", not available" in three places and " (not available)" in a fourth, so a
+            // pilot flying both aeroplanes met three spellings of the same fact. The one
+            // survivor of that phrase is A.M.goPage's RETURN CODE, which means a page key
+            // the display does not know - a different thing entirely, and read by the window
+            // rather than spoken.
             var able = true;
             try { if (c.getIsFocusable) able = !!c.getIsFocusable(); } catch (e2) { }
 
@@ -3025,7 +3033,7 @@
             // answers what a pilot actually wants to know, and it is what the screen says.
             var s = (f.group ? f.group + ", " : "") +
                     (f.label ? f.label + ": " : "") + (f.value || "blank");
-            if (f.able === false) s += ", not available";
+            if (f.able === false) s += ", dimmed";
             if (f.active) {
                 // "Editing" is not decoration. It is the difference between the next turn
                 // moving to the next field and the next turn changing this one, and a pilot
@@ -3173,7 +3181,7 @@
 
             var line = (f[i].group ? "  " : "") +
                        (f[i].label ? f[i].label + ": " : "") + (f[i].value || "blank");
-            if (f[i].able === false) line += " (not available)";
+            if (f[i].able === false) line += ", dimmed";
             if (f[i].focused) line += "   <-- cursor" + (f[i].active ? ", editing" : "");
             rows.push(line);
         }
@@ -3325,42 +3333,52 @@
     //   - TITLE AND VALUES BOTH, because a box whose title happens to appear in a row is not
     //     necessarily a box whose CONTENT was read.
     A.pushUnreadBoxes = function (rows) {
-        var said = "";
+        // ⚠️ THE TEST IS "DOES THIS BOX CONTAIN A REGISTERED CONTROL", NOT "DID ANYONE SAY
+        // THE WORDS". The first version compared the box's text against the rows already
+        // built, and on Aux System Setup that marked TEN boxes dimmed - Date / Time,
+        // Display Units, COM Configuration and the rest - every one of which the pilot can
+        // select perfectly well. The field walk emits "Date: 10 - SEP - 26" while the box's
+        // own text concatenates differently, so the match failed and a selectable box was
+        // announced as unselectable. Telling a pilot they cannot reach something they can
+        // is worse than the gap this pass exists to close.
+        //
+        // ⚠️ It also slipped the duplication check, because the duplicated lines differ in
+        // INDENTATION and that check compared whole lines. A text-similarity test cannot
+        // answer a structural question; ask the instrument instead.
+        //
+        // A.M.fields() reports, per field, the groupbox title it sits in. So the set of
+        // group names IS the set of boxes that have controls, straight from the view's own
+        // scroll controller - and a visible box whose title is not in that set is one the
+        // page draws and registers nothing for.
+        var owned = {};
         try {
-            said = rows.join(" ").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            var f = A.M.fields() || [];
+            for (var i = 0; i < f.length; i++) {
+                var g = f[i].group;
+                if (g) owned[String(g).toUpperCase().replace(/[^A-Z0-9]/g, "")] = true;
+            }
         } catch (e) { return; }
 
         var boxes;
         try { boxes = document.querySelectorAll(".groupbox"); } catch (e) { return; }
 
-        var emitted = 0;
         for (var b = 0; b < boxes.length; b++) {
             var box = boxes[b];
             if (!visible(box)) continue;
 
             var title = text(box.querySelector(".groupbox-title"));
             if (!title) continue;
+            if (owned[title.toUpperCase().replace(/[^A-Z0-9]/g, "")]) continue;
 
             var lines = A.rowsOf(box);
             if (!lines.length) continue;
 
-            // Already said, by whichever reader owns this page: the title AND enough of the
-            // content to be sure it was the box and not a coincidence of wording.
-            var key = (title + " " + lines.join(" ")).toUpperCase().replace(/[^A-Z0-9]/g, "");
-            if (!key) continue;
-            if (said.indexOf(key) >= 0) continue;
-
-            // The title alone being present is not enough, but the title being present AND
-            // most of the content too means a reader has it in a different shape.
-            var titleKey = title.toUpperCase().replace(/[^A-Z0-9]/g, "");
-            var bodyKey = lines.join(" ").toUpperCase().replace(/[^A-Z0-9]/g, "");
-            if (titleKey && bodyKey && said.indexOf(titleKey) >= 0 && said.indexOf(bodyKey) >= 0)
-                continue;
-
-            if (!emitted) rows.push("Shown, not selectable:");
-            emitted++;
-            rows.push("  " + title + ":");
-            for (var r = 0; r < lines.length; r++) rows.push("    " + lines[r]);
+            // ⚠️ "dimmed", THE WORD THE REST OF THIS APP ALREADY USES. The A380 MFD, the
+            // A380 MCDU and the flyPad browser view all mark an unselectable control by
+            // suffixing ", dimmed" to the item itself. One word for one idea, so a pilot who
+            // flies both aeroplanes never meets a second spelling of the same fact.
+            rows.push(title + ", dimmed:");
+            for (var r = 0; r < lines.length; r++) rows.push("  " + lines[r]);
         }
     };
 
