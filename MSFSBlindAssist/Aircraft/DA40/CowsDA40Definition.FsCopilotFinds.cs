@@ -227,8 +227,6 @@ public partial class CowsDA40Definition
             "Radiator Temperature", "Celsius. Measured 37.6 on the ground.");
         AddFind(v, "DA40_ENG_THERMOSTAT", "WC_THERMOSTAT:1", SimVarType.LVar,
             "Thermostat", "How far the thermostat has opened.");
-        AddFind(v, "DA40_ENG_GEARBOX_TEMP", "GC_GEARBOX_TEMPERATURE:1", SimVarType.LVar,
-            "Gearbox Temperature", "Celsius, from the sensor rather than the display var.");
 
         // The coolant, both halves: how much is left and how fast it is going.
         AddFind(v, "DA40_ENG_COOLANT_LEVEL", "RECIP ENG COOLANT RESERVOIR PERCENT:1",
@@ -301,8 +299,10 @@ public partial class CowsDA40Definition
     private static readonly List<string> FsCopilotEngineRows = new()
     {
         "DA40_ENG_FIRE", "DA40_ENG_FAILED",
+        // No gauge exists for these three, so there is no indication to read around - the
+        // same judgement already made for engine damage and health.
         "DA40_ENG_BLOCK_TEMP", "DA40_ENG_RAD_TEMP", "DA40_ENG_THERMOSTAT",
-        "DA40_ENG_GEARBOX_TEMP", "DA40_ENG_COOLANT_LEVEL", "DA40_ENG_COOLANT_LEAK_RATE"
+        "DA40_ENG_COOLANT_LEVEL", "DA40_ENG_COOLANT_LEAK_RATE"
     };
 
     private static readonly List<string> FsCopilotEcuRows = new()
@@ -337,22 +337,46 @@ public partial class CowsDA40Definition
     };
 
     // ==================================================================================
-    // THIRD PASS: the rest of it, including the ones that look pointless.
+    // THIRD PASS - and the correction that decided what belongs in it.
     //
-    // WARNING: EVERY ENGINE TEMPERATURE IN THIS DEFINITION READS A DISP_ VARIABLE, which
-    // is the G1000's DRAWN value and not the measurement. This project already learned that
-    // once - "take RPM from PROP_RPM_SENS:1, never DISP_PROP_RPM, the display var is
-    // quantised" - and the lesson was applied to RPM ALONE. Oil temperature, coolant
-    // temperature, gearbox temperature, oil pressure and cabin-heat source all still come
-    // from DISP_OT / DISP_WT / DISP_GT / DISP_OP / DISP_CT. Measured live: DISP_GT against
-    // GC_GEARBOX_TEMPERATURE:1 at 80.79.
+    // WARNING: RETRACTED - "EVERY ENGINE TEMPERATURE READS A DISP_ VARIABLE" WAS REPORTED
+    // AS A DEFECT AND IS NOT ONE. THE DISP_ BINDINGS ARE CORRECT.
     //
-    // These are ADDED BESIDE the display rows, never swapped in over them, on purpose. A
-    // gauge's coloured BAND is looked up from the value the gauge itself carries, so
-    // replacing the source under a band lookup would change which arc a reading falls in -
-    // a silent behaviour change to the one thing on this aeroplane that says whether a
-    // temperature is safe. The two answer different questions and both are now available;
-    // which the panels should PREFER is a decision for the pilot, not a refactor to slip in.
+    // The claim was that DISP_ is the quantised drawn value and the physics behind it is
+    // the honest reading. COWS's own Documentation/Failures.txt settles it the other way,
+    // and a live injection proved it:
+    //
+    //     --Engine Indications--
+    //     L:FAILURES_DISP_OT,   Loss of oil temperature indication
+    //     L:FAILURES_DISP_VOLT, Loss of VOLTS indication      ... and ten more
+    //
+    // The INDICATION failures are named for the DISP_ variables, because DISP_ IS THE
+    // INDICATION. Measured live:
+    //     FAILURES_DISP_OT   = 1  ->  DISP_OT    87.59 -> 0, WC_TEMP_OIL_SENS still 86.70
+    //     FAILURES_DISP_VOLT = 1  ->  DISP_VOLTS 28.14 -> 0
+    //
+    // So reading WC_TEMP_OIL or WC_TEMP_OIL_SENS on a panel would show a blind pilot a
+    // perfect oil temperature off a DEAD GAUGE - defeating an entire failure class COWS
+    // deliberately modelled, and handing them something the sighted pilot cannot have. The
+    // six gauge-backed readouts added in the first version of this pass were removed again.
+    //
+    // THE LINE THAT CAME OUT OF IT, and it is the one to apply to the XLS and the DA42:
+    //   - a quantity WITH an indication is read from the INDICATION (DISP_), so that when
+    //     the indication fails the blind pilot loses it exactly as the sighted pilot does;
+    //   - a quantity with NO indication at all (block temperature, radiator temperature,
+    //     the thermostat, damage and health) may be exposed from the model, because there
+    //     is no indication to defeat - which is the same judgement already made for the
+    //     engine damage and health figures.
+    //
+    // WARNING: DISP_ ALSO LAGS, and that is the gauge's own needle dynamics rather than a
+    // fault: measured 87.59 drawn against 86.70 computed on a COOLING engine, the drawn
+    // value trailing high. A sighted pilot reads the lagging needle too.
+    //
+    // WARNING: THE RPM RULE SURVIVES, but only by luck of the airframe. "Take RPM from
+    // PROP_RPM_SENS:1, never DISP_PROP_RPM" bypasses the indication - and FAILURES_DISP_RPM
+    // does NOT EXIST on the NG (it is in the XLS-flavoured failure document along with MAP,
+    // CHT and EGT). On the XLS that same rule WOULD read straight through a failed RPM
+    // indication, so it has to be re-decided there rather than inherited.
     // ==================================================================================
 
     private static Dictionary<string, SimVarDefinition> BuildFsCopilotThirdPassVariables()
@@ -361,22 +385,10 @@ public partial class CowsDA40Definition
         var yesNo = new Dictionary<double, string> { [0] = "No", [1] = "Yes" };
 
         // ---------- THE MEASURED TEMPERATURES, BESIDE THE DRAWN ONES ----------
-        AddFind(v, "DA40_ENG_OIL_TEMP_ACTUAL", "WC_TEMP_OIL:1", SimVarType.LVar,
-            "Oil Temperature Measured", "Celsius, unquantised. The panel row is the drawn value.");
-        AddFind(v, "DA40_ENG_WATER_TEMP_ACTUAL", "WC_TEMP_WATER:1", SimVarType.LVar,
-            "Coolant Temperature Measured", "Celsius, unquantised.");
 
         // The SENSORS, which are a third thing again: what the instrument is being TOLD,
         // so a failed sensor shows up as a sensor reading that disagrees with the physical
         // temperature beside it.
-        AddFind(v, "DA40_ENG_OIL_TEMP_SENSOR", "WC_TEMP_OIL_SENS:1", SimVarType.LVar,
-            "Oil Temperature Sensor", "What the sensor reports, which a failure can bias.");
-        AddFind(v, "DA40_ENG_WATER_TEMP_SENSOR", "WC_TEMP_WATER_SENS:1", SimVarType.LVar,
-            "Coolant Temperature Sensor", "What the sensor reports.");
-        AddFind(v, "DA40_ENG_GEARBOX_TEMP_SENSOR", "WC_TEMP_GC_SENS:1", SimVarType.LVar,
-            "Gearbox Temperature Sensor", "What the sensor reports.");
-        AddFind(v, "DA40_ENG_FUEL_PRESS_SENSOR", "FUEL_PRESS_SENS:1", SimVarType.LVar,
-            "Fuel Pressure Sensor", "What the sensor reports.");
 
         // ---------- THE RAW DAMAGE ACCUMULATORS ----------
         //
@@ -440,9 +452,9 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> FsCopilotEngineRows2 = new()
     {
-        "DA40_ENG_OIL_TEMP_ACTUAL", "DA40_ENG_WATER_TEMP_ACTUAL",
-        "DA40_ENG_OIL_TEMP_SENSOR", "DA40_ENG_WATER_TEMP_SENSOR",
-        "DA40_ENG_GEARBOX_TEMP_SENSOR", "DA40_ENG_FUEL_PRESS_SENSOR",
+        // ⚠️ The six gauge-backed temperature readouts that were here are GONE - see the
+        // retraction above. What is left are the two stock SWITCH mirrors, which are
+        // switch positions rather than instrument readings and so defeat no indication.
         "DA40_ENGINE_MASTER_STOCK", "DA40_FUEL_PUMP_STOCK"
     };
 

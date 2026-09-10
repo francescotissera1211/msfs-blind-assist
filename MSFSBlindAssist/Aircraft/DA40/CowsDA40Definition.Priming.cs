@@ -122,7 +122,11 @@ public partial class CowsDA40Definition
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "Off, on the Engine page menu",
+                // ⚠️ "Off", not "Off, on the Engine page menu". A ValueDescriptions
+                // label is read EVERY time the row is scanned, so a label carrying
+                // directions becomes a sentence the pilot hears on every pass. Where the
+                // setting lives belongs in HelpText, which is read once and on demand.
+                [0] = "Off",
                 [1] = "On"
             }
         };
@@ -137,7 +141,9 @@ public partial class CowsDA40Definition
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {
-                [0] = "Idle, needs the pump on and the engine stopped",
+                // ⚠️ "Idle", not the prerequisites. Same rule: a state label names the
+                // STATE, and what it would take to leave that state is HelpText.
+                [0] = "Idle",
                 [1] = "Computing"
             }
         };

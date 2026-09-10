@@ -424,7 +424,9 @@ public partial class CowsDA40Definition
                 if (!unlocked && pos != 0)
                 {
                     announcer.AnnounceImmediate(
-                        "Fuel valve is locked to Main. Break the safety wire first.");
+                        // ⚠️ The condition alone. "Break the safety wire first" was an
+                        // instruction, and the wire is a control on this same panel.
+                        "Fuel valve is wired to Main.");
                 }
                 return true;
             }

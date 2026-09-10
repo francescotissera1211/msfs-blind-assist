@@ -460,8 +460,13 @@ public partial class CowsDA40Definition
                 if (master is > 0.5)
                 {
                     announcer.AnnounceImmediate(
-                        "Turn the engine master off first. With it on this button runs the " +
-                        "ECU test instead.");
+                        // ⚠️ THE CONDITION, NOT THE REMEDY. "Turn the engine master off
+                        // first" told the pilot what to do; a refusal owes them why it was
+                        // refused, which is the house pattern ("Will not open at 34 knots.
+                        // The limit is 30."). What the button WOULD do stays, because that
+                        // is the hazard rather than advice: the same hold runs a different
+                        // function entirely.
+                        "Engine master is on. This button runs the ECU test instead.");
                     return true;
                 }
 
