@@ -102,8 +102,13 @@ public partial class CowsDA40Definition
         // Unit deliberately unnamed; see the class comment.
         AddFsCopilotReadout(v, "DA40_ELEC_BATT_ECU_CAPACITY", "ELEC_BATT_ECU_CAPACITY",
             "ECU Battery Capacity", "The FADEC's backup battery. Falls as it discharges.");
+        // ⚠️ IT RUNS 0 DOWN TO -2, NOT 0 TO 100, and calling it a "charge" made a rested
+        // battery read "0.0" as though it were flat. The model clamps it (`-2 max 0 min`),
+        // drives it NEGATIVE while the battery is loaded and recovers it toward 0 when the
+        // load comes off, then feeds it into the charge factor as -SURF/6. So zero is the
+        // RESTED state and -2 is the worst case - the opposite reading to the obvious one.
         AddFsCopilotReadout(v, "DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF",
-            "Battery Surface Charge", "Surface charge, which recovers after a load is removed.");
+            "Battery Surface Depletion", "0 when rested, down to -2 under load.");
 
         // Is the autopilot POWERED - a different question from whether it is engaged, and
         // one the GFC 700 panel could not answer at all. It lives on the avionics bus.
