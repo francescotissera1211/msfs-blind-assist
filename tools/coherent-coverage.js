@@ -123,6 +123,61 @@ const SWEEP = `(function(){
         if (o.r.width * o.r.height < r.width * r.height) return true;
       }
     }
+
+    // ⚠️ AND THE SAME TRICK AGAIN WHERE THE COVERING LAYER HAS NO TEXT OF ITS OWN.
+    //
+    // The G1000 draws its softkey row TWICE: the base instrument template's .SoftKey divs,
+    // carrying placeholder "KEY2".."KEY9" and whatever labels the PREVIOUS page left behind,
+    // and painted over them pixel for pixel the Working Title .softkey-tab row with the live
+    // ones. Measured on WPT Airport Information: .SoftKey[9] and .softkey-tab[9] BOTH at
+    // (765,734 85x34), the tab on top and correctly reading "blank" while the dead layer
+    // underneath still said "Detail". 22 such stale strings across 8 pages were reported as
+    // unread content no pilot can see.
+    //
+    // ⚠️ NEITHER RULE ABOVE CAN CATCH IT, and the second attempt at this failed too. The
+    // areas are EQUAL, so the smaller-than test cannot fire; and the covering slot is BLANK,
+    // so it carries no text and never enters the boxes list at all - a rule comparing candidates
+    // against other TEXT elements has nothing to compare against. What covers a label need
+    // not be a label.
+    //
+    // So ask the browser what it actually paints here. elementFromPoint is exact where a
+    // z-index and stacking-order reimplementation would not be.
+    var hit = null;
+    try { hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); }
+    catch (x) { hit = null; }
+
+    // ⚠️ EVERY UNCERTAIN CASE KEEPS THE CANDIDATE. This tool exists to find content nobody
+    // reads, so a filter that drops a real gap is far worse than one that lets a false hit
+    // through - a wrong number here is worse than no tool. Nothing at that point (a page
+    // with pointer-events:none throughout), or a hit inside the candidate, or a hit on one
+    // of its ANCESTORS - which means the candidate simply is not hit-testable itself, not
+    // that anything covers it - all keep it.
+    if (!hit) return false;
+    if (hit === e || e.contains(hit) || hit.contains(e)) return false;
+
+    // ⚠️ AND THE COVERING ELEMENT MUST HAVE ESSENTIALLY THE SAME RECTANGLE. THE HIT TEST
+    // ALONE IS NOT ENOUGH - that was tried and it silently HID REAL CONTENT, the one thing
+    // this tool must never do. On its own it dropped the PFD's DTK box (the compass SVG is
+    // painted across it) and the OAT label (the bottom info panel), both of which a sighted
+    // pilot reads perfectly well. The count fell from 22 to 6 and looked like an improvement
+    // while the tool had quietly started lying.
+    //
+    // Same position AND same size is what makes something a duplicate LAYER rather than a
+    // big graphic a label sits on top of: the compass and the info panel are far larger than
+    // the labels they cover and are excluded by that alone, while a second copy of the same
+    // widget is not.
+    //
+    // ⚠️ CLIMB FROM THE HIT, because elementFromPoint returns the DEEPEST element and that is
+    // usually an inner part of the covering widget rather than the widget. The softkey case
+    // again: the hit is .softkey-tab-borders at (765,741 85x33), inset seven pixels inside
+    // the .softkey-tab at (765,734 85x34) which is the layer that actually coincides. Testing
+    // the hit alone kept every one of the 22 stale strings this exists to remove.
+    for (var a = hit, up = 0; a && up < 4; a = a.parentElement, up++) {
+      if (a === e || e.contains(a) || a.contains(e)) break;
+      var hr = a.getBoundingClientRect();
+      if (Math.abs(hr.left - r.left) <= 2 && Math.abs(hr.top - r.top) <= 2 &&
+          Math.abs(hr.width - r.width) <= 2 && Math.abs(hr.height - r.height) <= 2) return true;
+    }
     return false;
   }
 

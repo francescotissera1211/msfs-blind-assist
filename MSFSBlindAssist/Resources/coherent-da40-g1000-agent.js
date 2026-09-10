@@ -315,6 +315,23 @@
     /// rows and `right` the two COM rows; each row is a
     /// `.navcom-frequencyelement-container` carrying `select` when the knob is on it, with
     /// `.navcom-freqstandby` and `.navcom-freqactive` inside.
+    // WHICH FACILITY THE TUNED COM BELONGS TO — "VCBI GROUND" beside the frequency.
+    //
+    // The G1000 names the station for the active COM in its own box on the PFD, and a
+    // sighted pilot therefore knows they are about to talk to Ground rather than Tower
+    // without decoding the number. We read every frequency and never read the name; found
+    // by the coverage sweep, which saw it drawn on most PFD pages and absent from everything
+    // MSFSBA said.
+    //
+    // The box exists on the PFD only (measured: one .com-info-box there, none on the MFD),
+    // so this contributes nothing on the MFD rather than needing a side test.
+    A.pushComStation = function (rows) {
+        var box = firstVisible(".com-info-box");
+        if (!box) return;
+        var name = text(box);
+        if (name) rows.push("COM station: " + name);
+    };
+
     A.radios = function () {
         var out = [];
 
@@ -395,11 +412,28 @@
 
         // The boxes carry their own abbreviation ("HDG 006"), so the label is stripped
         // rather than lower-cased - "Selected hdg 006" reads as a typo, not a heading.
+        //
+        // ⚠️ BUT THE ABBREVIATION IS THE FACT, NOT NOISE — IT WAS STRIPPED AND THEN A FIXED
+        // WORD WAS PUT BACK, AND THE TWO DISAGREED. The lower box swaps between CRS and DTK
+        // and this said "course" for both, so a pilot tracking a GPS leg with the HSI
+        // showing "DTK 220" heard "Selected course: 220°" — told they had dialled something
+        // they had not. They are different quantities: CRS is the course the PILOT selects
+        // for VOR/LOC or OBS, DTK is the DESIRED TRACK the GPS computes from the active leg,
+        // which no knob sets. Which one is showing also says whether the HSI is in OBS mode,
+        // and that is not recoverable from the number. Found by the coverage sweep, which
+        // reported "DTK" drawn on nine of fifteen pages and never spoken.
+        var ABBREV = { HDG: "heading", CRS: "course", DTK: "desired track" };
         function selected(sel, label) {
             var e = shown(sel);
             if (!e) return;
-            var v = spacedText(e).replace(/^(HDG|CRS|DTK)\s*/i, "").trim();
-            if (v) out.push("Selected " + label + ": " + v);
+            var raw = spacedText(e).trim();
+            var m = /^(HDG|CRS|DTK)\s*/i.exec(raw);
+            var v = raw.replace(/^(HDG|CRS|DTK)\s*/i, "").trim();
+            // A "Selected" value the pilot did NOT select would be a lie, so DTK drops the
+            // word rather than borrowing it.
+            var word = m ? ABBREV[m[1].toUpperCase()] : label;
+            if (!v) return;
+            out.push((word === "desired track" ? "Desired track: " : "Selected " + word + ": ") + v);
         }
         selected(".hdg-box", "heading");
         selected(".dtk-box", "course");
@@ -598,7 +632,15 @@
                 index: i + 1,
                 label: label,
                 value: value,
-                active: cls.indexOf("active") >= 0 || cls.indexOf("highlight") >= 0
+                active: cls.indexOf("active") >= 0 || cls.indexOf("highlight") >= 0,
+                // ⚠️ A GREYED-OUT SOFTKEY READ AS AN ORDINARY ONE. The G1000 disables a
+                // softkey it cannot honour on the current page and marks it `text-disabled`
+                // (grey, rgb(70,70,70)) — 22 labelled keys across 8 pages, measured live.
+                // Without this the pilot hears "Softkey 5: Activate", presses it, and gets
+                // silence with nothing to say why. The Flight Plan Catalog is the worst
+                // case: NINE of its twelve keys are dimmed until a flight is focused, and
+                // that page IS the documented SimBrief import workflow.
+                disabled: cls.indexOf("text-disabled") >= 0
             });
         }
 
@@ -833,8 +875,67 @@
     // The page selector is the fallback, and it works while CLOSED: it keeps its active
     // tab and highlighted entry in the DOM, so it can still say which group and page are
     // current long after it has faded out.
+    //
+    // ⚠️ AND THE DATA BAR LIES. IT NAMED A DIFFERENT PAGE ON NINE OF THE SEVENTEEN.
+    //
+    // Measured across every real MFD page: VOR Information, NDB Information and Intersection
+    // Information all announced "WPT - Airport Information"; Nearest Intersections, Nearest
+    // NDB and Nearest VOR all announced "NRST - Nearest Airports"; Airport Information
+    // announced "WPT - Airport Chart". The pageKey was correct every single time — only the
+    // drawn title lagged, and it is not BLANK when it lags, so the page-selector fallback
+    // below never ran. A pilot who jumps with Ctrl+G and is told they are still on the page
+    // they left has no way to tell a stale title from a jump that failed.
+    //
+    // So the INSTRUMENT decides which page this is — the same rule the cursor, the field
+    // list and the open-dialog test already follow — and the drawn title is allowed only to
+    // ADD to that name, never to replace it. "Aux - System Setup 1" extends "System Setup"
+    // with the sub-page number and is kept; "Airport Information" does not extend "VOR
+    // Information" and is discarded.
+    //
+    // ⚠️ THE PFD IS UNTOUCHED AND MUST STAY SO. Its openPageKey is permanently empty (it has
+    // windows, not pages), so pageName() returns "" there and every PFD path falls through
+    // to exactly the DOM behaviour it had before.
+
+
     A.pageTitle = function () {
         var shown = text(firstVisible(".nav-data-bar-page-title"));
+
+        var model = A.M.pageName();
+        if (model && model.page) {
+            // The drawn title's own page half, after the group prefix if it has one. Both a
+            // hyphen and an en dash appear in the live markup.
+            var drawnPage = shown ? String(shown).split(/\s+[-–—]\s+/).pop().trim() : "";
+            var norm = function (t) { return String(t).toUpperCase().replace(/[^A-Z0-9]/g, ""); };
+
+            // ⚠️ A DRAWN TITLE THAT NAMES ANOTHER PAGE IS STALE; ONE THAT NAMES NO PAGE IS A
+            // SUB-VIEW, AND THROWING IT AWAY LOSES REAL INFORMATION. Both shapes are live
+            // here: on VorInformation the bar still says "Airport Information", which IS a
+            // page in the map and is simply the one we left; on AirportInformation it says
+            // "Airport Chart", which is NO page in the map because it is the Charts tab of
+            // this one, and the pilot is genuinely looking at a chart. An earlier rule kept
+            // the drawn name only when it EXTENDED the model's, which fixed the stale half
+            // and silently renamed the chart back to "Airport Information".
+            //
+            // So: name another page and you are stale. Otherwise you are detail, and detail
+            // wins - that is what keeps "System Setup 1" numbered and the chart a chart.
+            var stale = false;
+            if (drawnPage && norm(drawnPage) !== norm(model.page)) {
+                try {
+                    var map = A.M.pageMap() || [];
+                    for (var g = 0; g < map.length && !stale; g++) {
+                        var ps = map[g].pages || [];
+                        for (var p = 0; p < ps.length; p++) {
+                            if (ps[p].key && norm(ps[p].name) === norm(drawnPage)) { stale = true; break; }
+                        }
+                    }
+                } catch (e) { stale = true; }   // cannot check - trust the instrument
+            }
+
+            // The GROUP always comes from the model, so the name a pilot hears back is the
+            // name they picked out of the Ctrl+G jump list.
+            return model.group + " - " + ((drawnPage && !stale) ? drawnPage : model.page);
+        }
+
         if (shown) return shown;
 
         var d = document.querySelector(".mfd-pageselect");
@@ -1014,6 +1115,37 @@
         return parts.length ? parts.join(", ") : spacedText(row);
     };
 
+    // One spelling for one title, so a box and the field walk's `group` can be compared
+    // without caring about spacing, case or punctuation ("Date / Time" vs "DATE/TIME").
+    function normKey(t) {
+        return String(t || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    }
+
+    // THE SET OF GROUP BOXES THAT CONTAIN A REGISTERED CONTROL.
+    //
+    // ⚠️ THE TEST IS STRUCTURAL — "does this box hold a control" — NEVER "did anyone say the
+    // words". An earlier attempt compared a box's TEXT against the rows already built and on
+    // Aux System Setup marked TEN boxes dimmed, Date / Time and Display Units among them,
+    // every one of which the pilot can select perfectly well: the field walk renders
+    // "Date: 10 - SEP - 26" while the box concatenates differently, so the match failed.
+    // Telling a pilot they cannot reach something they can is worse than the gap this closes.
+    // A.M.fields() reports each field's own groupbox title, straight from the view's scroll
+    // controller, so the answer comes from the instrument rather than from string similarity.
+    //
+    // Returns null when the view cannot be asked — and a null `owned` marks NOTHING dimmed,
+    // which is the safe direction: a missing answer must never invent unselectable boxes.
+    A.ownedGroupTitles = function () {
+        var owned = {};
+        try {
+            var f = A.M.fields() || [];
+            if (!f.length) return null;
+            for (var i = 0; i < f.length; i++) {
+                if (f[i].group) owned[normKey(f[i].group)] = true;
+            }
+        } catch (e) { return null; }
+        return owned;
+    };
+
     // Every box of labelled rows under one root, as "Title:" then its rows indented.
     //
     // SHARED between pages and dialogs, because the G1000 builds both the same way. The
@@ -1021,7 +1153,13 @@
     // came out at the END of each line ("BRG 020 DIS 0.4 NM Location") because the title
     // element is last in the DOM, so the pilot heard every field before being told what
     // the group was.
-    A.groupboxLines = function (root) {
+    //
+    // ⚠️ `owned` IS OPTIONAL AND ONLY THE PAGE PATH PASSES IT. When given, it is the set of
+    // groupbox titles that contain a REGISTERED CONTROL (from A.M.fields()), and a box
+    // outside it is marked ", dimmed" — the G1000 draws it and the knob walks straight past.
+    // Dialogs deliberately pass nothing: a dialog box with no registered field would other-
+    // wise be announced as unselectable purely because the view models dialogs differently.
+    A.groupboxLines = function (root, owned) {
         var lines = [];
         var boxes = root.querySelectorAll(".groupbox");
         for (var b = 0; b < boxes.length; b++) {
@@ -1032,7 +1170,8 @@
             var boxLines = A.rowsOf(box);
             if (!boxLines.length) continue;
 
-            if (boxTitle) lines.push(boxTitle + ":");
+            if (boxTitle) lines.push(boxTitle
+                + (owned && !owned[normKey(boxTitle)] ? ", dimmed" : "") + ":");
             for (var r = 0; r < boxLines.length; r++) {
                 lines.push((boxTitle ? "  " : "") + boxLines[r]);
             }
@@ -1795,7 +1934,7 @@
         // in which no individual setting can be arrowed to or read on its own. These are
         // the pages a pilot CHANGES things on, so they are the ones that most need to be
         // read a field at a time.
-        var boxed = A.groupboxLines(p);
+        var boxed = A.groupboxLines(p, A.ownedGroupTitles());
         if (boxed.length) return boxed;
 
         // Prefer the page's own row-like structures where it has them: a flight plan and
@@ -2891,6 +3030,27 @@
         }
     };
 
+    // ⚠️ DEFINED HERE, NOT BESIDE A.pageTitle WHICH USES IT. A.M does not exist until
+    // much further down this file, so declaring this next to its caller threw
+    // "undefined is not an object (evaluating 'A.M')" at LOAD — and a load that throws
+    // leaves the PREVIOUS agent resident, so every read still answered and the change
+    // simply appeared to do nothing. It needs A.M.pageKey and A.M.pageMap, so it goes
+    // after both.
+    A.M.pageName = function () {
+        try {
+            var key = String(A.M.pageKey() || "");
+            if (!key) return "";
+            var map = A.M.pageMap() || [];
+            for (var g = 0; g < map.length; g++) {
+                var ps = map[g].pages || [];
+                for (var p = 0; p < ps.length; p++) {
+                    if (ps[p].key === key) return { group: map[g].group, page: ps[p].name };
+                }
+            }
+        } catch (e) { }
+        return "";
+    };
+
     A.M.has = function (key) {
         var vs = A.M.vs();
         try { return !!(vs && vs.registeredViews && vs.registeredViews.get(key)); }
@@ -3303,84 +3463,75 @@
     // contract here means the DA40 needs no client of its own and inherits every piece of
     // connection handling that client already gets right - re-installing on a still-open
     // socket, the connect lock, the reconnect backoff.
-    A.rows = function () {
-        var rows = A.side() === "MFD" ? A.mfdRows() : A.pfdRows();
-        A.pushUnreadBoxes(rows);
-        return rows;
-    };
-
-    // WHATEVER NO READER COVERED, SAID ANYWAY - the backstop that makes "a sighted pilot
-    // can see it, so we can see it" true rather than aspirational.
+    // THE OPEN CHOICE LIST — the dropdown the G1000 puts up when a field is activated.
     //
-    // ⚠️ THE HOLE THIS CLOSES. A.M.fields() walks the view's REGISTERED controls, so a box
-    // that renders a value and registers nothing is invisible to it. Aux System Setup draws
-    // ten boxes and registers five: BARO Transition Alert, Airspace Alerts, Arrival Alert,
-    // Flight Director and GPS CDI render their settings and register nothing. It was known
-    // that the knob walks past them FOR A SIGHTED PILOT TOO, and that was taken as the end
-    // of the matter - it is not. Not being able to SELECT something is the aeroplane
-    // treating both pilots alike; not being able to READ it is not. The pilot's rule: we
-    // get everything they get, and the choice of what to say is then ours.
+    // ⚠️ THIS WAS COMPLETELY UNREAD, AND IT IS THE WHOLE IFR PROCEDURE WORKFLOW. Opening
+    // PFD Select Departure at VCBI puts up a sixteen-entry list with ANUT1D under the
+    // cursor, and the pilot heard nothing of it — not the options, not which one the knob
+    // was on. Same list for Select Arrival, Select Approach, the runway and transition
+    // fields, and every setup-page enum. The coverage sweep found it: 13 departure names
+    // and 15 arrival names visible on screen and absent from everything MSFSBA said.
     //
-    // ⚠️ IT RUNS LAST, OVER document, AND COMPARES AGAINST THE ROWS ALREADY BUILT. All three
-    // matter and the first attempt at this got two of them wrong:
-    //   - LAST, so every dedicated reader (the flight plan page, the WPT pages, the nearest
-    //     lists, the checklist) has already had its say and its content is in `rows` to be
-    //     matched against. Comparing against fieldRows() alone re-emits whole pages that a
-    //     bespoke reader already read properly.
-    //   - document, NOT A.M.view().el - a view is a view-service object, not a DOM subtree,
-    //     so querySelectorAll on it finds nothing and the pass silently does nothing. That
-    //     is exactly how the first version of this shipped as a no-op and had to be reverted.
-    //   - TITLE AND VALUES BOTH, because a box whose title happens to appear in a row is not
-    //     necessarily a box whose CONTENT was read.
-    A.pushUnreadBoxes = function (rows) {
-        // ⚠️ THE TEST IS "DOES THIS BOX CONTAIN A REGISTERED CONTROL", NOT "DID ANYONE SAY
-        // THE WORDS". The first version compared the box's text against the rows already
-        // built, and on Aux System Setup that marked TEN boxes dimmed - Date / Time,
-        // Display Units, COM Configuration and the rest - every one of which the pilot can
-        // select perfectly well. The field walk emits "Date: 10 - SEP - 26" while the box's
-        // own text concatenates differently, so the match failed and a selectable box was
-        // announced as unselectable. Telling a pilot they cannot reach something they can
-        // is worse than the gap this pass exists to close.
-        //
-        // ⚠️ It also slipped the duplication check, because the duplicated lines differ in
-        // INDENTATION and that check compared whole lines. A text-similarity test cannot
-        // answer a structural question; ask the instrument instead.
-        //
-        // A.M.fields() reports, per field, the groupbox title it sits in. So the set of
-        // group names IS the set of boxes that have controls, straight from the view's own
-        // scroll controller - and a visible box whose title is not in that set is one the
-        // page draws and registers nothing for.
-        var owned = {};
-        try {
-            var f = A.M.fields() || [];
-            for (var i = 0; i < f.length; i++) {
-                var g = f[i].group;
-                if (g) owned[String(g).toUpperCase().replace(/[^A-Z0-9]/g, "")] = true;
-            }
-        } catch (e) { return; }
+    // A.M.list() could not see it. That reads the VIEW's own listRef, and a context menu
+    // is a separate overlay view stacked on top — so the field walk kept describing the
+    // page underneath while the pilot was actually inside a list.
+    //
+    // ⚠️ ASK THE INSTRUMENT WHETHER IT IS OPEN. The checklist popups taught this the hard
+    // way (they stay in the DOM at opacity 1 long after closing), and although THIS overlay
+    // happens to hide honestly — measured: items drop to 0 and the ancestor walk returns
+    // false — the view key is the signal that cannot rot. `ContextMenuDialog` is the
+    // instrument's own name for it, and it is empty the moment the list is dismissed.
+    A.contextMenuLines = function () {
+        var open = "";
+        try { open = String(A.M.viewKey() || ""); } catch (e) { return []; }
+        if (open !== "ContextMenuDialog") return [];
 
-        var boxes;
-        try { boxes = document.querySelectorAll(".groupbox"); } catch (e) { return; }
+        var host = firstVisible(".contextmenu-background");
+        if (!host) return [];
 
-        for (var b = 0; b < boxes.length; b++) {
-            var box = boxes[b];
-            if (!visible(box)) continue;
+        var items = host.querySelectorAll(".contextmenu-item");
+        var lines = [], selected = null, at = 0, n = 0;
 
-            var title = text(box.querySelector(".groupbox-title"));
-            if (!title) continue;
-            if (owned[title.toUpperCase().replace(/[^A-Z0-9]/g, "")]) continue;
-
-            var lines = A.rowsOf(box);
-            if (!lines.length) continue;
-
-            // ⚠️ "dimmed", THE WORD THE REST OF THIS APP ALREADY USES. The A380 MFD, the
-            // A380 MCDU and the flyPad browser view all mark an unselectable control by
-            // suffixing ", dimmed" to the item itself. One word for one idea, so a pilot who
-            // flies both aeroplanes never meets a second spelling of the same fact.
-            rows.push(title + ", dimmed:");
-            for (var r = 0; r < lines.length; r++) rows.push("  " + lines[r]);
+        for (var i = 0; i < items.length; i++) {
+            if (!visible(items[i])) continue;
+            var label = text(items[i]);
+            if (!label) continue;
+            n++;
+            var chosen = classList(items[i]).indexOf("highlight-select") >= 0;
+            if (chosen) { selected = label; at = n; }
+            lines.push("  " + label + (chosen ? " (selected)" : ""));
         }
+
+        if (!lines.length) return [];
+
+        // Lead with where the knob IS, so a pilot who hears only the first line still knows
+        // their position, then let them arrow the list. Same shape as the checklist popups.
+        var head = "Choice list open, " + n + " option" + (n === 1 ? "" : "s");
+        if (selected) head += ", currently on " + selected + ", " + at + " of " + n;
+        lines.unshift(head + ":");
+        return lines;
     };
+
+    A.rows = function () {
+        // ⚠️ THIS USED TO END WITH A pushUnreadBoxes() BACKSTOP AND THE PAGE WAS THEN READ
+        // THREE TIMES. Aux System Setup came to 111 rows for about forty distinct facts: the
+        // field walk (what the cursor reaches), "Page content" (everything drawn), and the
+        // backstop re-emitting the five unowned boxes a third time. "Page content" already
+        // covered them, so the backstop's ONLY real contribution was the ", dimmed" marking —
+        // which now happens in A.groupboxLines where the pilot reads the value, per item, the
+        // way the A380 MFD marks one. Same information, twelve fewer rows on that page, and
+        // one place that decides whether a box is selectable instead of two.
+        var rows = A.side() === "MFD" ? A.mfdRows() : A.pfdRows();
+
+        // ⚠️ THE OPEN LIST GOES FIRST, ON BOTH DISPLAYS. A choice list is MODAL — it is the
+        // only thing the knob and ENT can act on — so it outranks the page underneath, and
+        // the window's "first row that changed" announcement then names the option the
+        // pilot just scrolled onto rather than something on the page behind it.
+        var menu = A.contextMenuLines();
+        return menu.length ? menu.concat(rows) : rows;
+    };
+
+
 
     // ---------------------------------------------------------------- MFD rows
     //
@@ -3399,7 +3550,8 @@
             var startKeys = A.softkeys();
             for (var z = 0; z < startKeys.length; z++) {
                 rows.push("Softkey " + startKeys[z].index + ": " +
-                    (startKeys[z].label || "blank"));
+                    (startKeys[z].label || "blank") +
+                    (startKeys[z].disabled && startKeys[z].label ? ", dimmed" : ""));
             }
             return rows;
         }
@@ -3425,6 +3577,7 @@
         // reporting a hidden one.
         var radioRows = A.radios();
         for (var r = 0; r < radioRows.length; r++) rows.push("Radio: " + radioRows[r]);
+        A.pushComStation(rows);
 
         // The armed state (standby / inactive / transmitting) is the one thing A.radios()
         // does not carry, so it rides alongside rather than replacing anything.
@@ -3518,6 +3671,7 @@
         // state and are correct, they are simply not where the knobs are.
         var pfdRadios = A.radios();
         for (var r = 0; r < pfdRadios.length; r++) rows.push("Radio: " + pfdRadios[r]);
+        A.pushComStation(rows);
 
         var pfdNc = A.navcom();
         for (var r = 0; r < pfdNc.length; r++) {
@@ -3615,7 +3769,12 @@
             rows.push("Softkey " + key.index + ": "
                 + (key.label || "blank")
                 + (key.value ? " " + key.value : "")
-                + (key.active ? ", selected" : ""));
+                + (key.active ? ", selected" : "")
+                // ", dimmed" — the same word the A380 MFD, the A380 MCDU, the flyPad view
+                // and this display's own fields and group boxes already use. One word for
+                // one idea. A blank slot still reads "blank": no label means nothing is
+                // greyed out, it means the key does nothing here at all.
+                + (key.disabled && key.label ? ", dimmed" : ""));
         }
     };
 

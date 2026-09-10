@@ -115,14 +115,50 @@ public partial class CowsDA40Definition
     private string _wptLegNext = "";
     private string _wptLegPrev = "";
     private DateTime _wptLegAskedAt = DateTime.MinValue;
+    private DateTime _wptLegReadAt = DateTime.MinValue;
     private int _wptLegBusy;
 
     /// <summary>How often to ask the display for the leg names. They change on sequencing only.</summary>
     private const int LegPollMs = 1500;
 
-    private void RequestActiveLegNames()
+    /// <summary>
+    /// How long a plan-sourced name may outrank the live SimVar.
+    ///
+    /// ⚠️ WITHOUT THIS BOUND Ctrl+W ANSWERED THE OLD WAYPOINT FOR THE REST OF THE SESSION.
+    /// Reported from the cockpit on the XLS: assign a Direct-To and the readout keeps naming
+    /// the previous waypoint "unless you restarted the MSFSBA app" — and a restart is exactly
+    /// what clears these two fields, which is what pinned the cause here.
+    ///
+    /// Three things had to line up and all three were ours. The plan name beat the SimVar
+    /// UNCONDITIONALLY; it was written only on a SUCCESSFUL read, deliberately, so that a
+    /// momentarily unavailable socket would not blank the passing call; and nothing ever
+    /// expired it. So any condition that stops the read succeeding freezes the answer for
+    /// good — and the obvious one is routine: the leg names are fetched on the CAS monitor's
+    /// PFD socket, Coherent GT allows exactly ONE inspector per view, and opening the PFD
+    /// display window takes it. The pilot then has a frozen ident and no indication of it.
+    ///
+    /// A Direct-To is the case where the fallback is known-good: it DOES populate the ident
+    /// SimVars (unlike a SID or STAR, which is why the plan path exists at all), so letting
+    /// a stale plan name lapse gives the correct new waypoint rather than silence.
+    ///
+    /// Sized at three poll intervals, so an answer survives a couple of missed reads — the
+    /// best-effort behaviour the passing call needs — without ever outliving the flight.
+    /// </summary>
+    private const int LegFreshMs = LegPollMs * 3;
+
+    /// <summary>
+    /// The plan-sourced names, or null once they are too old to outrank the live SimVar.
+    /// Null is the whole point: <see cref="GpsWaypointSequencer.Read"/> treats an absent plan
+    /// name as "fall back", which is the behaviour a fresh install has and the one a restart
+    /// used to be needed to get back.
+    /// </summary>
+    private bool LegNamesAreFresh =>
+        _wptLegReadAt != DateTime.MinValue &&
+        (DateTime.UtcNow - _wptLegReadAt).TotalMilliseconds <= LegFreshMs;
+
+    private void RequestActiveLegNames(bool force = false)
     {
-        if ((DateTime.UtcNow - _wptLegAskedAt).TotalMilliseconds < LegPollMs) return;
+        if (!force && (DateTime.UtcNow - _wptLegAskedAt).TotalMilliseconds < LegPollMs) return;
         if (System.Threading.Interlocked.Exchange(ref _wptLegBusy, 1) == 1) return;
         _wptLegAskedAt = DateTime.UtcNow;
 
@@ -142,6 +178,10 @@ public partial class CowsDA40Definition
                     var parts = r.Split('|');
                     _wptLegPrev = parts[0].Trim();
                     _wptLegNext = parts.Length > 1 ? parts[1].Trim() : "";
+                    // ⚠️ STAMPED ONLY HERE, ON A READ THAT ACTUALLY ANSWERED. A stamp moved
+                    // when the request was ISSUED would call a permanently failing socket
+                    // fresh and restore the very bug this closes.
+                    _wptLegReadAt = DateTime.UtcNow;
                 }
             }
             catch (Exception ex) { Utils.Logging.Log.Debug("DA40", $"Active leg read: {ex.Message}"); }
@@ -170,6 +210,11 @@ public partial class CowsDA40Definition
         _wptSimConnect = null;
         _wptAnnouncer = null;
         _wptLastNextId = null;
+        // Restarting the app was the pilot's only workaround for a frozen ident; an aircraft
+        // switch or a reconnect must clear it too, and leave nothing to outrank the SimVar.
+        _wptLegNext = "";
+        _wptLegPrev = "";
+        _wptLegReadAt = DateTime.MinValue;
     }
 
     private void OnGpsWaypoint(object? sender, SimConnectManager.GpsWaypointData data)
@@ -178,7 +223,8 @@ public partial class CowsDA40Definition
         {
             RequestActiveLegNames();
 
-            var reading = GpsWaypointSequencer.Read(data, _wptLastNextId, _wptLegNext, _wptLegPrev);
+            var reading = GpsWaypointSequencer.Read(
+                data, _wptLastNextId, FreshLegNext, FreshLegPrev);
             _wptLastNextId = reading.NextId;
 
             if (reading.PassedId.Length == 0) return;
@@ -204,12 +250,22 @@ public partial class CowsDA40Definition
     /// carries a standing once-a-second subscription and re-issuing its id as a one-shot would
     /// cancel it outright, which is the trap that froze the A380's managed-altitude derivation.
     /// </summary>
+    private string FreshLegNext => LegNamesAreFresh ? _wptLegNext : null!;
+    private string FreshLegPrev => LegNamesAreFresh ? _wptLegPrev : null!;
+
     private string ComposeWaypointReadout()
     {
+        // ⚠️ ASK BEFORE ANSWERING. The leg names used to be refreshed from exactly ONE place,
+        // the GPS frame handler, so Ctrl+W read whatever happened to be cached and never
+        // caused a read of its own. Forced past the poll interval because the pilot pressing
+        // the key IS the reason to go and look; the answer lands for the next press, and this
+        // press falls back to the live SimVar if the cache has gone stale.
+        RequestActiveLegNames(force: true);
+
         var last = _wptSimConnect?.LastGpsWaypoint;
         if (last == null) return "Waypoint information not available yet.";
         return GpsWaypointSequencer.ComposeReadout(
-            GpsWaypointSequencer.Read(last.Value, _wptLastNextId, _wptLegNext, _wptLegPrev),
+            GpsWaypointSequencer.Read(last.Value, _wptLastNextId, FreshLegNext, FreshLegPrev),
             DistanceText);
     }
 

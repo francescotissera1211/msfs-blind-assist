@@ -193,4 +193,160 @@ public class CowsDA40G1000AgentContractTests
             Assert.True(vars[key].IsAnnounced, key + " would change in silence.");
         }
     }
+    /// <summary>
+    /// ONE WORD FOR ONE IDEA: an unselectable thing is ", dimmed".
+    ///
+    /// The pilot's own ruling, given after this display had shipped ", not available",
+    /// " (not available)" and a "Shown, not selectable:" heading for the same fact:
+    /// "That's how the A380 MFD does things that are not selectable. It says dimmed.
+    /// So, standardize that, please." A pilot who flies both aeroplanes must never meet
+    /// a second spelling of it.
+    ///
+    /// The one survivor of the old phrase is A.M.goPage's RETURN CODE, which means a page
+    /// key the display does not know — a different thing entirely, and read by the window
+    /// rather than spoken.
+    /// </summary>
+    [Fact]
+    public void UnselectableIsAlwaysSpokenAsDimmed()
+    {
+        // ⚠️ SCAN THE CODE, NOT THE COMMENTS. The comments deliberately QUOTE the retired
+        // spellings so the next reader knows what was replaced and why, and a raw substring
+        // scan therefore fails on the very documentation that records the rule.
+        string agent = string.Join(" ", Agent()
+            .Split('\u000A')
+            .Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        foreach (var banned in new[] { "\", not available\"", "\" (not available)\"",
+                                       "Shown, not selectable" })
+        {
+            Assert.False(agent.Contains(banned, StringComparison.Ordinal),
+                "The display speaks " + banned + " where the app-wide word is \", dimmed\".");
+        }
+
+        // The ONE survivor is A.M.goPage's RETURN CODE — a page key the display does not
+        // know, which is a different fact and is read by the window rather than spoken.
+        Assert.Contains("if (!A.M.has(key)) return \"not available\"", agent,
+            StringComparison.Ordinal);
+
+        Assert.Contains("\", dimmed\"", agent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A GREYED-OUT SOFTKEY MUST SAY SO.
+    ///
+    /// The G1000 disables a softkey it cannot honour on the current page and marks it
+    /// `text-disabled`. Measured live across the 17 real MFD pages: 22 labelled keys are
+    /// dimmed at rest, and the Flight Plan Catalog — the page the documented SimBrief
+    /// import workflow runs on — has NINE of its twelve dimmed until a flight is focused.
+    /// Without this the pilot hears "Softkey 5: Activate", presses it, and gets silence
+    /// with nothing to say why.
+    ///
+    /// A blank slot is deliberately NOT dimmed: no label means the key does nothing here
+    /// at all, which is a different fact and already has its own word.
+    /// </summary>
+    [Fact]
+    public void ADisabledSoftkeyIsReportedDimmed()
+    {
+        string agent = Agent();
+
+        Assert.Contains("disabled: cls.indexOf(\"text-disabled\") >= 0", agent,
+            StringComparison.Ordinal);
+        Assert.Contains("key.disabled && key.label ? \", dimmed\" : \"\"", agent,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// WHETHER A GROUP BOX IS SELECTABLE IS A STRUCTURAL QUESTION, ASKED OF THE INSTRUMENT.
+    ///
+    /// ⚠️ NEVER "did anyone say the words". An earlier version compared a box's TEXT against
+    /// the rows already built and marked TEN boxes on Aux System Setup dimmed — Date / Time
+    /// and Display Units among them — every one of which the pilot can select perfectly
+    /// well, because the field walk renders "Date: 10 - SEP - 26" while the box concatenates
+    /// differently and the match simply failed. It scored BETTER on the coverage sweep than
+    /// the version it replaced, which is exactly what made it look right. Telling a pilot
+    /// they cannot reach something they can is worse than the gap it was closing.
+    ///
+    /// A.M.fields() reports each field's own groupbox title, straight from the view's scroll
+    /// controller — so the answer comes from the instrument, not from string similarity.
+    /// And a view that cannot be asked returns null, which marks NOTHING dimmed: a missing
+    /// answer must never invent unselectable boxes.
+    /// </summary>
+    [Fact]
+    public void GroupBoxSelectabilityComesFromTheViewNotFromTextMatching()
+    {
+        string agent = Agent();
+
+        Assert.Contains("A.ownedGroupTitles = function ()", agent, StringComparison.Ordinal);
+        Assert.Contains("A.M.fields()", agent, StringComparison.Ordinal);
+
+        // Null means "could not ask", and must be the safe direction.
+        int start = agent.IndexOf("A.ownedGroupTitles = function ()", StringComparison.Ordinal);
+        int end = agent.IndexOf("A.groupboxLines = function", start, StringComparison.Ordinal);
+        Assert.True(end > start, "ownedGroupTitles must sit above groupboxLines.");
+        string body = agent.Substring(start, end - start);
+        Assert.Contains("return null", body, StringComparison.Ordinal);
+
+        // Dialogs must NOT pass an ownership set - see groupboxLines' own comment.
+        Assert.Contains("A.groupboxLines(p, A.ownedGroupTitles())", agent,
+            StringComparison.Ordinal);
+        Assert.Contains("A.groupboxLines(d)", agent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// THE PAGE IS READ ONCE, NOT THREE TIMES.
+    ///
+    /// A.rows() once ended with a pushUnreadBoxes() backstop, and Aux System Setup then came
+    /// to 111 rows for about forty distinct facts: the field walk, "Page content" (which
+    /// already covered every box), and the backstop re-emitting five of them a third time.
+    /// Nearest Airports was worse — 114 rows with 36 duplicates, down to 73 with none.
+    /// Removing it cost NOTHING in coverage (the sweep stayed at its 22 known overdraw
+    /// false positives), because the dimmed marking moved into A.groupboxLines where the
+    /// pilot reads the value.
+    /// </summary>
+    [Fact]
+    public void TheBackstopThatReadEveryPageAThirdTimeIsGone()
+    {
+        string agent = Agent();
+
+        Assert.DoesNotContain("A.pushUnreadBoxes = function", agent, StringComparison.Ordinal);
+        Assert.DoesNotContain("A.pushUnreadBoxes(rows)", agent, StringComparison.Ordinal);
+    }
+    /// <summary>
+    /// NOTHING MAY TOUCH A.M BEFORE A.M EXISTS.
+    ///
+    /// ⚠️ THIS FAILURE IS SILENT AND LOOKS LIKE "MY CHANGE DID NOTHING". The agent is one
+    /// script evaluated top to bottom, so an `A.M.foo = ...` written above `A.M = {}` throws
+    /// "undefined is not an object (evaluating 'A.M')" at LOAD — and a load that throws
+    /// leaves the PREVIOUS agent resident in the page. Every function still answers, every
+    /// readout still works, and the edit simply never arrives. Paid for while moving the page
+    /// title onto the instrument: three live sweeps in a row reported the identical old
+    /// numbers before the injection result was read.
+    ///
+    /// A helper that NEEDS A.M belongs beside the rest of A.M, however far that is from its
+    /// caller — calls resolve at run time, definitions do not.
+    /// </summary>
+    [Fact]
+    public void NothingAssignsIntoTheModelBeforeItExists()
+    {
+        string[] lines = Agent().Split('\u000A');
+
+        int created = -1;
+        for (int i = 0; i < lines.Length && created < 0; i++)
+        {
+            if (lines[i].Contains("A.M = {}", StringComparison.Ordinal)) created = i;
+        }
+
+        Assert.True(created >= 0, "The agent no longer creates A.M; this guard needs updating.");
+
+        for (int i = 0; i < created; i++)
+        {
+            string line = lines[i];
+            if (line.TrimStart().StartsWith("//", StringComparison.Ordinal)) continue;
+            Assert.False(Regex.IsMatch(line, @"^\s*A\.M\.\w+\s*="),
+                $"Line {i + 1} assigns into A.M before A.M is created on line {created + 1}: " +
+                line.Trim());
+        }
+    }
+
+
 }
