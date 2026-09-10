@@ -3597,10 +3597,54 @@
         var orient = firstVisible(".map-orientation");
         if (orient) rows.push("Map orientation: " + text(orient));
 
+        // ⚠️ SAY IT ONCE. On a setup page the field walk above and this content walk are two
+        // descriptions of the SAME pavement: the walk reports what the knob can reach, in
+        // knob order, and this reports what is drawn, in visual order - and on Aux System
+        // Setup fourteen rows appeared in both. The pilot's report of the general problem was
+        // "the values are shown twice", and a settings page that reads its own contents twice
+        // is a page nobody can scan.
+        //
+        // The field walk KEEPS its copy, because that is the one carrying the cursor and the
+        // dimmed marking; this walk drops the repeats and keeps everything the field walk
+        // cannot see - Date, Time, MAG VAR, Fuel, Position, and every box with no control
+        // behind it. Compared on the normalised text, because the two render the same field
+        // differently ("Time Offset: +00:00, dimmed" against "Time Offset: + 00:00 --:--"),
+        // which is exactly why a plain string compare never caught this.
+        //
+        // Inert on every page that emits no field walk: there is then nothing to repeat.
         var page = A.page();
         if (page.length) {
-            rows.push("Page content:");
-            for (var g = 0; g < page.length; g++) rows.push("  " + page[g]);
+            var already = {};
+            for (var k = 0; k < rows.length; k++) {
+                var kk = String(rows[k]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (kk) already[kk] = true;
+            }
+
+            var kept = [];
+            for (var g = 0; g < page.length; g++) {
+                // ⚠️ A HEADING IS STRUCTURE, NOT A REPEAT. "Date / Time:" names the box the
+                // rows under it belong to, so deduping it against the field walk's copy left
+                // "Date: 10 - SEP - 26" indented beneath nothing - a screen reader then reads
+                // a value at a depth whose parent was never announced. Headings are kept
+                // wherever they appear; only VALUES are said once.
+                if (/:$/.test(String(page[g]).trim())) { kept.push(page[g]); continue; }
+
+                var pk = String(page[g]).toUpperCase().replace(/[^A-Z0-9]/g, "");
+                if (pk && already[pk]) continue;
+                kept.push(page[g]);
+            }
+
+            // A block that came down to nothing but its own headings is not content.
+            var anyValue = false;
+            for (var v = 0; v < kept.length; v++) {
+                if (!/:$/.test(String(kept[v]).trim())) { anyValue = true; break; }
+            }
+            if (!anyValue) kept = [];
+
+            if (kept.length) {
+                rows.push("Page content:");
+                for (var q = 0; q < kept.length; q++) rows.push("  " + kept[q]);
+            }
         }
 
         // A page that tells you how to leave it. The flight plan page carries one, and it
