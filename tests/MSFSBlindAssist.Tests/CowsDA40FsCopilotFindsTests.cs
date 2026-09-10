@@ -23,8 +23,6 @@ public class CowsDA40FsCopilotFindsTests
     [InlineData("DA40_G1000_MINIMUMS", "COWS_MINIMUMS_ALTITUDE")]
     [InlineData("DA40_FUEL_TOTALISER_REM", "FUEL_TOTALISER_REM")]
     [InlineData("DA40_FUEL_TOTALISER_USED", "FUEL_TOTALISER_USE")]
-    [InlineData("DA40_FUEL_TEMP_LEFT", "FUEL_TEMP_C:1")]
-    [InlineData("DA40_FUEL_TEMP_RIGHT", "FUEL_TEMP_C:2")]
     [InlineData("DA40_PITOT_TEMP", "PITOT_TEMP")]
     [InlineData("DA40_ELEC_BATT_ECU_CAPACITY", "ELEC_BATT_ECU_CAPACITY")]
     [InlineData("DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF")]
@@ -49,7 +47,7 @@ public class CowsDA40FsCopilotFindsTests
         var vars = new CowsDA40Definition(DA40Variant.NG).GetVariables();
         foreach (string key in new[]
         {
-            "DA40_G1000_MINIMUMS", "DA40_FUEL_TOTALISER_REM", "DA40_FUEL_TEMP_LEFT",
+            "DA40_G1000_MINIMUMS", "DA40_FUEL_TOTALISER_REM",
             "DA40_PITOT_TEMP", "DA40_ELEC_BATT_ECU_CAPACITY", "DA40_AP_POWERED"
         })
         {
@@ -70,7 +68,7 @@ public class CowsDA40FsCopilotFindsTests
         foreach (string key in new[]
         {
             "DA40_G1000_MINIMUMS", "DA40_FUEL_TOTALISER_REM", "DA40_FUEL_TOTALISER_USED",
-            "DA40_FUEL_TEMP_LEFT", "DA40_FUEL_TEMP_RIGHT", "DA40_PITOT_TEMP",
+            "DA40_PITOT_TEMP",
             "DA40_ELEC_BATT_ECU_CAPACITY", "DA40_ELEC_BATT_SURF", "DA40_AP_POWERED"
         })
             Assert.Contains(key, all);

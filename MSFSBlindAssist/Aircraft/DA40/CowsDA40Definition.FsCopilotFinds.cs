@@ -79,12 +79,18 @@ public partial class CowsDA40Definition
         AddFsCopilotReadout(v, "DA40_FUEL_TOTALISER_USED", "FUEL_TOTALISER_USE",
             "Fuel Calculator Used", "Fuel counted as burned since the totaliser was set.");
 
-        // Diesel fuel waxes when it gets cold, so on THIS engine fuel temperature is an
-        // operating limit rather than trivia.
-        AddFsCopilotReadout(v, "DA40_FUEL_TEMP_LEFT", "FUEL_TEMP_C:1",
-            "Left Fuel Temperature", "Celsius. Diesel waxes when cold.");
-        AddFsCopilotReadout(v, "DA40_FUEL_TEMP_RIGHT", "FUEL_TEMP_C:2",
-            "Right Fuel Temperature", "Celsius. Diesel waxes when cold.");
+        // ⚠️ NO FUEL TEMPERATURES HERE, AND THEY WERE REMOVED RATHER THAN NEVER ADDED.
+        // FUEL_TEMP_C:1/:2 are the physics behind DISP_FT:1/:2, which this definition
+        // already reads AND which carry an indication failure it already binds
+        // (FAILURES_DISP_FUEL_T:1/:2). Measured: the failure drove DISP_FT:1 from 36.73 to
+        // -63.26 while FUEL_TEMP_C:1 sat at 36.81, so the pair would have read a healthy
+        // fuel temperature off a dead gauge - the exact thing the oil and coolant readouts
+        // were retracted for, missed on the first pass because diesel waxing made them look
+        // like safety information rather than a duplicate.
+        //
+        // ⚠️ AND THE FAILURE SIGNATURE IS NOT ALWAYS ZERO. Oil temperature and volts both
+        // went to 0; fuel temperature goes OFF-SCALE NEGATIVE. Never test for a failed
+        // indication by comparing against 0.
 
         // ⚠️ THE ANSWER TO "IS THE PITOT HEAT ACTUALLY WORKING". The switch position and the
         // CAS message both say what was COMMANDED; this is the only thing that says the
@@ -123,8 +129,6 @@ public partial class CowsDA40Definition
                 text = $"{value:0.0} gallons";
                 return true;
 
-            case "DA40_FUEL_TEMP_LEFT":
-            case "DA40_FUEL_TEMP_RIGHT":
             case "DA40_PITOT_TEMP":
                 text = $"{value:0} degrees C";
                 return true;
@@ -142,8 +146,7 @@ public partial class CowsDA40Definition
     /// <summary>Where each find is read. Appended to the panels they belong to.</summary>
     private static readonly List<string> FsCopilotFuelRows = new()
     {
-        "DA40_FUEL_TOTALISER_REM", "DA40_FUEL_TOTALISER_USED",
-        "DA40_FUEL_TEMP_LEFT", "DA40_FUEL_TEMP_RIGHT"
+        "DA40_FUEL_TOTALISER_REM", "DA40_FUEL_TOTALISER_USED"
     };
 
     private static readonly List<string> FsCopilotElectricalRows = new()
