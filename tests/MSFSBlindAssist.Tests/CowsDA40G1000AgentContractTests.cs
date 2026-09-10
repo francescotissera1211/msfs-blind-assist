@@ -347,6 +347,23 @@ public class CowsDA40G1000AgentContractTests
                 line.Trim());
         }
     }
+    /// <summary>
+    /// THE SOFTKEY-ROW SUMMARY MUST NOT BE COMMA-JOINED, BECAUSE A LABEL NOW CONTAINS A COMMA.
+    ///
+    /// A dimmed key reads "Activate, dimmed". Comma-joining the twelve labels turned the
+    /// Flight Plan Catalog - nine of whose keys are dimmed until a flight is focused - into
+    /// "New, dimmed, Activate, dimmed, Invert, dimmed, ...", in which "dimmed" reads as a key
+    /// of its own and there is no telling where one label ends and the next begins.
+    /// </summary>
+    [Fact]
+    public void TheSoftkeyRowSummaryIsNotCommaJoined()
+    {
+        string form = Form();
+
+        Assert.DoesNotContain("string.Join(\", \", SoftkeyLabels", form, StringComparison.Ordinal);
+        Assert.Contains("string.Join(\"; \", SoftkeyLabels", form, StringComparison.Ordinal);
+    }
+
 
 
 }

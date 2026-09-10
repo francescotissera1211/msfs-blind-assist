@@ -1335,8 +1335,17 @@ public sealed class CowsDA40DisplayForm : Form
         var rows = await _client.ScrapeNowAsync();
         if (_disposed) return;
 
-        string joined = string.Join(", ", SoftkeyLabels(rows));
-        if (joined != string.Join(", ", SoftkeyLabels(before)))
+        // ⚠️ SEMICOLONS, BECAUSE A LABEL CAN NOW CONTAIN A COMMA. A dimmed key reads
+        // "Activate, dimmed", so comma-joining the row turned the Flight Plan Catalog —
+        // nine of whose twelve keys are dimmed until a flight is focused — into
+        // "New, dimmed, Activate, dimmed, Invert, dimmed, ...", in which "dimmed" reads as
+        // a key of its own and the pilot cannot tell where one label ends.
+        //
+        // The comparison uses the same join on both sides, so it is unaffected — and it now
+        // fires when only the AVAILABILITY changed, which is right: focusing a flight in the
+        // catalog enables eight keys without altering one label, and that used to be silent.
+        string joined = string.Join("; ", SoftkeyLabels(rows));
+        if (joined != string.Join("; ", SoftkeyLabels(before)))
         {
             _announcer.AnnounceImmediate("Softkeys now: " + joined);
             return;
