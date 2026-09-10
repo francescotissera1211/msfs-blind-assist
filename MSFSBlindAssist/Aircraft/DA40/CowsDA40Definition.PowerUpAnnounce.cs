@@ -48,11 +48,22 @@ public partial class CowsDA40Definition
     /// <summary>The two switches whose consequence is worth reading back.</summary>
     private bool NotePowerSwitchChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
+        // ⚠️ THE ELECTRIC MASTER ONLY. The avionics master used to arm this too, and it
+        // re-read the SAME THREE VOLTAGES a second time - main, essential and battery are
+        // on the battery side and do not move when the avionics bus comes up (this
+        // aeroplane's own systems.cfg: bus.1 = BUS_BAT carries the displays and the first
+        // radios, bus.2 = BUS_AVN only the second set). So the pilot heard an identical
+        // sentence twice a session, the second time INTERRUPTING whatever was being said,
+        // for no new information at all.
+        //
+        // The avionics master keeps its own switch announcement, which is the whole of the
+        // news: there is no avionics-bus voltage to report, so a read-back could only
+        // repeat the battery side. Same reasoning as the switched-OFF case below - when the
+        // switch has already said it, saying it again is noise.
         string label;
         switch (varKey)
         {
             case "DA40_ELEC_MASTER_BATTERY": label = "Electric master"; break;
-            case "DA40_ELEC_AVIONICS_MASTER": label = "Avionics master"; break;
             default: return false;
         }
 
@@ -86,9 +97,7 @@ public partial class CowsDA40Definition
         // master's own row mutes its consequence too, which is what a pilot un-ticking that row
         // is asking for.
         var muted = Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet;
-        string key = _powerPendingLabel.StartsWith("Electric", StringComparison.Ordinal)
-            ? "DA40_ELEC_MASTER_BATTERY" : "DA40_ELEC_AVIONICS_MASTER";
-        if (muted.Contains(key)) { _powerPendingLabel = ""; return; }
+        if (muted.Contains("DA40_ELEC_MASTER_BATTERY")) { _powerPendingLabel = ""; return; }
 
         string text = ComposeBusState(_powerPendingOn, _lastMainBusVolts, _lastEssBusVolts,
                                       _lastBattBusVolts);

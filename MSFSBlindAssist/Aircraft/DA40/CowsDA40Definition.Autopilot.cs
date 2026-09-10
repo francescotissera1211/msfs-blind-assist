@@ -178,7 +178,12 @@ public partial class CowsDA40Definition
                 [-2] = "FAILED",
                 [-1] = "FAILED",
                 [0] = "not started",
-                [1] = "running - do not touch the disconnect",
+                // ⚠️ "running", NOT "running - do not touch the disconnect". That tail was
+                // COACHING - it told the pilot what not to do, which is the one thing an
+                // announcement must never carry. That the disconnect fails the test is in
+                // the HelpText below, which is documentation for a control and exempt from
+                // the rule; it does not belong on a state a pilot hears in flight.
+                [1] = "running",
                 [2] = "passed",
                 [3] = "passed"
             },
@@ -353,6 +358,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private static readonly List<string> AutopilotDisplayRows = new()
     {
+        // Found by diffing FS Copilot's COWS_DA40NG.yaml against this definition.
         "DA40_AP_SELFTEST",
         "DA40_AP_PFT",
         "DA40_AP_FAILED"

@@ -319,6 +319,7 @@ public partial class CowsDA40Definition
     // the lock, what is feeding, how much there is, how hot it is, what is moving.
     private static readonly List<string> FuelDisplay = new()
     {
+        // Found by diffing FS Copilot's COWS_DA40NG.yaml against this definition.
         "DA40_FUEL_WIRE_STATE",
         "DA40_FUEL_TANK_SELECTED",
         "DA40_FUEL_MAIN_IND",

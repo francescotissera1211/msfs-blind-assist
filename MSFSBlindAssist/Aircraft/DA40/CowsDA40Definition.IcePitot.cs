@@ -140,6 +140,7 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> IcePitotDisplay = new()
     {
+        // Found by diffing FS Copilot's COWS_DA40NG.yaml against this definition.
         "DA40_ICE_PITOT_STATE",
         "DA40_ICE_ALT_AIR_STATE",
         "DA40_ICE_FILTER",

@@ -276,6 +276,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        // Nine readouts found by diffing FS Copilot's own definition for this airframe
+        // against everything above. See CowsDA40Definition.FsCopilotFinds.cs.
+        foreach (var kv in BuildFsCopilotFindVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
         foreach (var kv in BuildFlapsVariables())
         {
             vars[kv.Key] = kv.Value;
@@ -616,6 +623,24 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) d[PowerPanel] = new List<string>(XlsPowerDisplay);
         if (!IsNG) d[PrimingPanel] = new List<string>(PrimingDisplay);
         if (!IsNG) d[FuelPanel] = new List<string>(XlsFuelDisplay);
+
+        // ⚠️ The nine FS Copilot finds, appended AFTER every panel exists so the source
+        // lists above stay readable as the aircraft's own inventory.
+        //
+        // ⚠️ NG ONLY for the fuel and pitot rows. The totaliser, the two fuel temperatures
+        // and PITOT_TEMP were read live on the NG; the XLS is a different engine with a
+        // different fuel system and its own YAML, and claiming a reading exists on an
+        // airframe it was never measured on is the failure mode this whole exercise exists
+        // to avoid. The XLS gets its own pass against COWS_DA40XLS.yaml.
+        if (IsNG)
+        {
+            d[FuelPanel].AddRange(FsCopilotFuelRows);
+            d[IcePitotPanel].AddRange(FsCopilotIcePitotRows);
+        }
+
+        // Electrical and the autopilot are shared: same battery model, same GFC 700.
+        d[ElectricalPanel].AddRange(FsCopilotElectricalRows);
+        d[AutopilotPanel].AddRange(FsCopilotAutopilotRows);
         if (!IsNG) d[EngineStartPanel] = new List<string>(XlsStartDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
@@ -714,6 +739,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // dead code in the one place a reader checks to find out which override owns a key.
         if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetStandbyDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetFsCopilotDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetPrimingDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsFuelDisplayOverride(varKey, value, out displayText)) return true;

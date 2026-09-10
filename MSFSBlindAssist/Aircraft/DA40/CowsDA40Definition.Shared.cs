@@ -266,9 +266,12 @@ public partial class CowsDA40Definition
         NoteXlsStartChange(varName, value, announcer);
         // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
         // and cylinder damage, each spoken on its crossing from the captured inputs.
-        NoteXlsMixtureChange(varName, value, announcer);
-        // The XLS mixture states: lean-assist peaks, the red box, fouling, shock cooling
-        // and cylinder damage, each spoken on its crossing from the captured inputs.
+        //
+        // ⚠️ THIS WAS CALLED TWICE. Unlike the duplicated line in the display-override
+        // chain - harmless, because the first call returns - this one is a VOID call with
+        // side effects, so every crossing ran its logic twice: a lean-assist peak, a red-box
+        // entry or a fouling warning could be announced twice, and any state the method
+        // latches was advanced two steps per update.
         NoteXlsMixtureChange(varName, value, announcer);
 
         if (IsSilentCachedReadout(varName)) return true;

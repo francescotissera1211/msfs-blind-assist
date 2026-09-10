@@ -195,6 +195,7 @@ public partial class CowsDA40Definition
     // batteries, then the alternator.
     private static readonly List<string> ElectricalDisplay = new()
     {
+        // Found by diffing FS Copilot's COWS_DA40NG.yaml against this definition.
         "DA40_ELEC_DISP_VOLTS",
         "DA40_ELEC_DISP_AMPS",
         "DA40_ELEC_BUS_MAIN_VOLT",

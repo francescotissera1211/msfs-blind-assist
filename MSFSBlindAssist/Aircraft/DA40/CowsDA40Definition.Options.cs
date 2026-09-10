@@ -91,9 +91,13 @@ public partial class CowsDA40Definition
             "Panel Shake Suppressed", "No - panel shakes", "Yes - panel steady",
             "Note the sense: 1 means shake is SUPPRESSED, which is the variable's own name.");
 
+        // ⚠️ Named for the STATE, not the action. As "Hide G1000 FMA" with values
+        // "FMA shown"/"FMA hidden" it announced "Hide G1000 FMA: FMA shown" - the letters
+        // FMA three times in one breath, and a control whose name is an instruction read
+        // against a value that contradicts it.
         AddOptionSwitch(v, "DA40_OPT_KILL_FMA", "COWS_KILL_FMA",
-            "Hide G1000 FMA", "FMA shown", "FMA hidden",
-            "Hides the flight-mode annunciator strip along the top of the PFD.");
+            "G1000 FMA", "Shown", "Hidden",
+            "The flight-mode annunciator strip along the top of the PFD.");
 
         // 0 is off; the model tests 1, 2, 3 and 4 and nothing else. It names none of them,
         // so neither do we - inventing four labels would be a guess presented as fact.
