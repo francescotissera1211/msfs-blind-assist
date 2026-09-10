@@ -3296,7 +3296,72 @@
     // connection handling that client already gets right - re-installing on a still-open
     // socket, the connect lock, the reconnect backoff.
     A.rows = function () {
-        return A.side() === "MFD" ? A.mfdRows() : A.pfdRows();
+        var rows = A.side() === "MFD" ? A.mfdRows() : A.pfdRows();
+        A.pushUnreadBoxes(rows);
+        return rows;
+    };
+
+    // WHATEVER NO READER COVERED, SAID ANYWAY - the backstop that makes "a sighted pilot
+    // can see it, so we can see it" true rather than aspirational.
+    //
+    // ⚠️ THE HOLE THIS CLOSES. A.M.fields() walks the view's REGISTERED controls, so a box
+    // that renders a value and registers nothing is invisible to it. Aux System Setup draws
+    // ten boxes and registers five: BARO Transition Alert, Airspace Alerts, Arrival Alert,
+    // Flight Director and GPS CDI render their settings and register nothing. It was known
+    // that the knob walks past them FOR A SIGHTED PILOT TOO, and that was taken as the end
+    // of the matter - it is not. Not being able to SELECT something is the aeroplane
+    // treating both pilots alike; not being able to READ it is not. The pilot's rule: we
+    // get everything they get, and the choice of what to say is then ours.
+    //
+    // ⚠️ IT RUNS LAST, OVER document, AND COMPARES AGAINST THE ROWS ALREADY BUILT. All three
+    // matter and the first attempt at this got two of them wrong:
+    //   - LAST, so every dedicated reader (the flight plan page, the WPT pages, the nearest
+    //     lists, the checklist) has already had its say and its content is in `rows` to be
+    //     matched against. Comparing against fieldRows() alone re-emits whole pages that a
+    //     bespoke reader already read properly.
+    //   - document, NOT A.M.view().el - a view is a view-service object, not a DOM subtree,
+    //     so querySelectorAll on it finds nothing and the pass silently does nothing. That
+    //     is exactly how the first version of this shipped as a no-op and had to be reverted.
+    //   - TITLE AND VALUES BOTH, because a box whose title happens to appear in a row is not
+    //     necessarily a box whose CONTENT was read.
+    A.pushUnreadBoxes = function (rows) {
+        var said = "";
+        try {
+            said = rows.join(" ").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        } catch (e) { return; }
+
+        var boxes;
+        try { boxes = document.querySelectorAll(".groupbox"); } catch (e) { return; }
+
+        var emitted = 0;
+        for (var b = 0; b < boxes.length; b++) {
+            var box = boxes[b];
+            if (!visible(box)) continue;
+
+            var title = text(box.querySelector(".groupbox-title"));
+            if (!title) continue;
+
+            var lines = A.rowsOf(box);
+            if (!lines.length) continue;
+
+            // Already said, by whichever reader owns this page: the title AND enough of the
+            // content to be sure it was the box and not a coincidence of wording.
+            var key = (title + " " + lines.join(" ")).toUpperCase().replace(/[^A-Z0-9]/g, "");
+            if (!key) continue;
+            if (said.indexOf(key) >= 0) continue;
+
+            // The title alone being present is not enough, but the title being present AND
+            // most of the content too means a reader has it in a different shape.
+            var titleKey = title.toUpperCase().replace(/[^A-Z0-9]/g, "");
+            var bodyKey = lines.join(" ").toUpperCase().replace(/[^A-Z0-9]/g, "");
+            if (titleKey && bodyKey && said.indexOf(titleKey) >= 0 && said.indexOf(bodyKey) >= 0)
+                continue;
+
+            if (!emitted) rows.push("Shown, not selectable:");
+            emitted++;
+            rows.push("  " + title + ":");
+            for (var r = 0; r < lines.length; r++) rows.push("    " + lines[r]);
+        }
     };
 
     // ---------------------------------------------------------------- MFD rows
