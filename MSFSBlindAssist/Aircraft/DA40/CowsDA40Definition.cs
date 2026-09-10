@@ -58,6 +58,25 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     // Panel structure — Sections → Panels
     // ==================================================================================
 
+    /// <summary>
+    /// Append rows to a panel, creating the entry when it has none yet.
+    ///
+    /// ⚠️ d[panel].AddRange(...) THROWS when that panel has no list for this variant, and
+    /// several do: PowerPanel's display is XLS-only, the failure panels are NG-only. An
+    /// exception there takes out GetPanelDisplayVariables entirely, which is how a panel
+    /// wiring mistake turns into every panel disappearing at once.
+    /// </summary>
+    private static void AddRows(Dictionary<string, List<string>> map, string panel,
+        List<string> rows)
+    {
+        if (!map.TryGetValue(panel, out var list))
+        {
+            list = new List<string>();
+            map[panel] = list;
+        }
+        list.AddRange(rows);
+    }
+
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
         var structure = new Dictionary<string, List<string>>
@@ -239,6 +258,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
         if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
 
+        // The aeroplane's four resets. Buttons: actions with no state to read back, and
+
+        // NG-only because the XLS has its own reset set.
+
+
+
+
         return controls;
     }
 
@@ -282,6 +308,17 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         {
             vars[kv.Key] = kv.Value;
         }
+
+        foreach (var kv in BuildFsCopilotSecondPassVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in BuildFsCopilotThirdPassVariables())
+        {
+            vars[kv.Key] = kv.Value;
+        }
+
 
         foreach (var kv in BuildFlapsVariables())
         {
@@ -634,13 +671,36 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // to avoid. The XLS gets its own pass against COWS_DA40XLS.yaml.
         if (IsNG)
         {
-            d[FuelPanel].AddRange(FsCopilotFuelRows);
-            d[IcePitotPanel].AddRange(FsCopilotIcePitotRows);
+            AddRows(d, FuelPanel, FsCopilotFuelRows);
+            AddRows(d, IcePitotPanel, FsCopilotIcePitotRows);
         }
 
         // Electrical and the autopilot are shared: same battery model, same GFC 700.
-        d[ElectricalPanel].AddRange(FsCopilotElectricalRows);
-        d[AutopilotPanel].AddRange(FsCopilotAutopilotRows);
+        AddRows(d, ElectricalPanel, FsCopilotElectricalRows);
+        AddRows(d, AutopilotPanel, FsCopilotAutopilotRows);
+
+        // ⚠️ THE SECOND AND THIRD PASSES ARE NG-ONLY, ALL OF THEM. Every one was verified
+        // against the NG's own package and read on the NG airframe; the XLS is a different
+        // engine with its own YAML and gets its own pass. Binding an NG reading on the XLS
+        // would put a row on a panel that can only ever sit at zero.
+        if (IsNG)
+        {
+            AddRows(d, PowerPanel, FsCopilotEngineRows);
+            AddRows(d, PowerPanel, FsCopilotEngineRows2);
+            AddRows(d, EcuPanel, FsCopilotEcuRows);
+            AddRows(d, EcuPanel, FsCopilotEcuRows2);
+            AddRows(d, EngineStartPanel, FsCopilotStartRows);
+            AddRows(d, TrimPanel, FsCopilotTrimRows);
+            AddRows(d, IcePitotPanel, FsCopilotIcePitotRows2);
+            AddRows(d, SimDamagePanel, FsCopilotDamageRows);
+            AddRows(d, SimDamagePanel, FsCopilotDamageRows2);
+            AddRows(d, SimFuelPanel, FsCopilotFuelFailureRows);
+            AddRows(d, SimEnginePanel, FsCopilotEngineFailureRows);
+            AddRows(d, SimEnginePanel, FsCopilotEngineFailureRows2);
+        }
+
+        // The autopilot servo forces and the TO/GA read-back are GFC 700, shared.
+        AddRows(d, AutopilotPanel, FsCopilotApRows2);
         if (!IsNG) d[EngineStartPanel] = new List<string>(XlsStartDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
