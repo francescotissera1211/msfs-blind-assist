@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Forms.DA40;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.SimConnect;
 using System.Windows.Forms;
@@ -275,7 +276,7 @@ public partial class CowsDA40Definition
     }
 
     private bool HandleDA40Readout(HotkeyAction action, SimConnectManager simConnect,
-        ScreenReaderAnnouncer announcer)
+        ScreenReaderAnnouncer announcer, Form? parentForm)
     {
         var speeds = DA40Speeds.For(_variant);
 
@@ -583,6 +584,23 @@ public partial class CowsDA40Definition
                 Add(bits, simConnect, "DA40_ELEC_BUS_MAIN_VOLT", "Bus");
                 Add(bits, simConnect, "DA40_ELEC_DISP_AMPS", "Amps");
 
+                // ⚠️ A WINDOW, NOT ONE UTTERANCE. Fourteen readings spoken end to end is a
+                // sighted pilot's single look turned into a paragraph no part of which can
+                // be re-heard. The pilot's ruling: "output alt plus s should open up a
+                // little refreshing window, all that in one go might be hard for some
+                // users." The ROWS are unchanged - same keys, same display overrides, so a
+                // value here can never disagree with the panel showing it.
+                //
+                // The reading is rebuilt on each tick from the live cache, so the window
+                // keeps up with the engine rather than freezing what it said on opening.
+                if (parentForm != null)
+                {
+                    ShowEngineGlance(parentForm, simConnect);
+                    return true;
+                }
+
+                // No parent to own a window (a headless or early-startup path): fall back to
+                // the sentence, which is always better than nothing happening.
                 announcer.AnnounceImmediate(bits.Count == 0
                     ? "Engine readings not available yet"
                     : string.Join(". ", bits) + ".");
@@ -790,5 +808,58 @@ public partial class CowsDA40Definition
 
         return label + " " + Math.Round(value.Value).ToString("N0",
             System.Globalization.CultureInfo.InvariantCulture) + " " + unit + ".";
+    }
+
+    /// <summary>
+    /// The Alt+S window, opened once and re-shown thereafter, so a pilot pressing the key
+    /// twice gets the window they already have rather than a stack of them.
+    /// </summary>
+    private CowsDA40EngineGlanceForm? _engineGlance;
+
+    private void ShowEngineGlance(Form parentForm, SimConnectManager simConnect)
+    {
+        if (_engineGlance == null || _engineGlance.IsDisposed)
+        {
+            _engineGlance = new CowsDA40EngineGlanceForm(() => EngineGlanceRows(simConnect));
+            _engineGlance.FormClosed += (_, _) => _engineGlance = null;
+            _engineGlance.Show(parentForm);
+            return;
+        }
+
+        if (_engineGlance.WindowState == FormWindowState.Minimized)
+            _engineGlance.WindowState = FormWindowState.Normal;
+        _engineGlance.Activate();
+    }
+
+    /// <summary>
+    /// One row per reading, from the SAME keys and the SAME display overrides the spoken
+    /// form used - so the window and the panels can never disagree, and every gauge with a
+    /// published arc still reports its arc, because the arc IS the reading a sighted pilot
+    /// takes.
+    ///
+    /// ⚠️ BOTH VARIANTS' KEYS ARE LISTED AND THE MISSING ONES SIMPLY DO NOT ADD A ROW. That
+    /// is how the spoken form worked and it is why one list serves the Austro and the
+    /// Lycoming without a variant test here.
+    /// </summary>
+    internal List<string> EngineGlanceRows(SimConnectManager simConnect)
+    {
+        var rows = new List<string>();
+
+        Add(rows, simConnect, "DA40_POWER_LOAD", "Load");
+        Add(rows, simConnect, "DA40_XLS_MAP", "Manifold pressure");
+        Add(rows, simConnect, "DA40_POWER_RPM", "");
+        Add(rows, simConnect, "DA40_XLS_RPM", "");
+        Add(rows, simConnect, "DA40_START_OIL_PRESSURE", "Oil pressure");
+        Add(rows, simConnect, "DA40_XLS_OIL_PRESSURE", "Oil pressure");
+        Add(rows, simConnect, "DA40_START_OIL_TEMP", "Oil");
+        Add(rows, simConnect, "DA40_XLS_OIL_TEMP", "Oil");
+        Add(rows, simConnect, "DA40_START_COOLANT_TEMP", "Coolant");
+        Add(rows, simConnect, "DA40_START_GEARBOX_TEMP", "Gearbox");
+        Add(rows, simConnect, "DA40_POWER_FUEL_FLOW", "Fuel flow");
+        Add(rows, simConnect, "DA40_XLS_FUEL_FLOW", "Fuel flow");
+        Add(rows, simConnect, "DA40_ELEC_BUS_MAIN_VOLT", "Bus");
+        Add(rows, simConnect, "DA40_ELEC_DISP_AMPS", "Amps");
+
+        return rows;
     }
 }

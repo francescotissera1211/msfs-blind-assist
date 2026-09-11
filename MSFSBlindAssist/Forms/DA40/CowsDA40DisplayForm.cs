@@ -1014,7 +1014,23 @@ public sealed class CowsDA40DisplayForm : Form
         // knob opened the selector (its flag), the selector closed onto a page (the page's
         // flag), and each swap read as a cursor the pilot had never touched. A cursor
         // change only means anything when it happens to the SAME view twice running.
-        if (view == _lastView && cursorOn != _lastCursorOn)
+        // ⚠️ REMEMBERED PER VIEW, NOT JUST "THE VIEW DID NOT CHANGE". Requiring the view to
+        // be the SAME swallowed the announcement whenever the cursor was armed on the first
+        // press after ARRIVING somewhere - which is the normal habit, go to the page then
+        // arm - and it was reported from the cockpit as the arm/disarm message no longer
+        // being announced at all.
+        //
+        // The view test was right about WHY it existed and wrong about how: every view owns
+        // its own scroll controller, and the page SELECTOR is itself a view opened by the
+        // very knob the pilot is turning, so comparing one view's flag against another's
+        // made the cursor appear to switch itself on and off. Comparing THIS view's flag
+        // against what THIS view last reported keeps that fixed and stops swallowing a real
+        // change: the selector is measured against the selector, the page against the page.
+        bool knownHere = _cursorByView.TryGetValue(view, out bool wasOnHere);
+        bool cursorChangedHere = knownHere && cursorOn != wasOnHere;
+        _cursorByView[view] = cursorOn;
+
+        if (cursorChangedHere)
         {
             toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
         }
@@ -1403,6 +1419,13 @@ public sealed class CowsDA40DisplayForm : Form
     /// The label off a softkey row, e.g. "Softkey 3: Standby" gives "Standby". Blank rows
     /// read as "blank", which is a real answer and is left alone.
     /// </summary>
+    /// <summary>
+    /// The cursor state each view last reported. A view owns its own scroll controller, so
+    /// the only meaningful comparison is against the SAME view's previous answer - bounded
+    /// by the thirty-odd views this display has.
+    /// </summary>
+    private readonly Dictionary<string, bool> _cursorByView = new();
+
     /// <summary>
     /// The stop the last knob turn ran into - direction, focused field and view together.
     /// All three, because "the same stop" must mean the same field in the same view hit

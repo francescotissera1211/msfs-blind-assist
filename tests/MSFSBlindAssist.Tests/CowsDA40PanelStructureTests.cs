@@ -1827,7 +1827,22 @@ public class CowsDA40PanelStructureTests
         var display = Ng().GetPanelDisplayVariables()["Cabin Heat and Vent"];
 
         Assert.Contains("DA40_CABIN_OAT", display);
-        Assert.Contains("DA40_CABIN_HEAT_SOURCE", display);
+
+        // ⚠️ THE COOLANT ROW USED TO BE ITS OWN DEFINITION ON DISP_CT AND READ 0 C WITH THE
+        // ENGINE HOT. Measured live against a running engine whose EIS coolant gauge sat at
+        // 59 per cent of its arc: DISP_CT = 0, DISP_WT = 81. It now shows the Engine Start
+        // panel's key, which was on DISP_WT all along - a display row needs a KEY, not a
+        // definition of its own.
+        Assert.Contains("DA40_START_COOLANT_TEMP", display);
+        Assert.False(Ng().GetVariables().ContainsKey("DA40_CABIN_HEAT_SOURCE"),
+            "The dead DISP_CT definition must not come back.");
+
+        // ⚠️ AND THE XLS MUST NOT GAIN A COOLANT ROW. Its Lycoming is AIR-cooled and takes
+        // cabin heat from an exhaust muff; there is no coolant temperature to show there.
+        var xls = new CowsDA40Definition(DA40Variant.XLS)
+            .GetPanelDisplayVariables()["Cabin Heat and Vent"];
+        Assert.Contains("DA40_CABIN_OAT", xls);
+        Assert.DoesNotContain("DA40_START_COOLANT_TEMP", xls);
     }
 
     // ==============================================================================

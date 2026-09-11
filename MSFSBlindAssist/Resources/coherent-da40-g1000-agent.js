@@ -4013,19 +4013,27 @@
         var box = firstVisible(".popout-dialog.msgdialog.open");
         if (!box) return "";
         var question = spacedText(box.querySelector(".msgdialog-content"));
+        // ⚠️ THE BUTTONS KEEP THEIR OWN ORDER AND THE FOCUSED ONE IS MARKED. This used to
+        // put the focused button FIRST and the rest after an "or", so the SimBrief import
+        // dialog read "Import plan from SimBrief, OK or cancel" and then, one cursor move
+        // later, "cancel or OK" - the same two buttons announced in two different orders,
+        // which reads as the dialog having changed rather than the cursor having moved.
+        // Reported from the cockpit as exactly that.
+        //
+        // ", selected" is the word this display already uses for the focused item of a
+        // softkey row and a choice list, so a dialog now answers the same way.
         var buttons = box.querySelectorAll(".action-button");
-        var focused = "", others = [];
+        var labels = [];
         for (var i = 0; i < buttons.length; i++) {
             if (!visible(buttons[i])) continue;
             var label = text(buttons[i]);
             if (!label) continue;
-            if (classList(buttons[i]).indexOf("highlight-select") >= 0) focused = label;
-            else others.push(label);
+            labels.push(label +
+                (classList(buttons[i]).indexOf("highlight-select") >= 0 ? ", selected" : ""));
         }
         var parts = [];
         if (question) parts.push(question);
-        if (focused) parts.push(focused);
-        if (others.length) parts.push("or " + others.join(", "));
+        if (labels.length) parts.push(labels.join(", "));
         return parts.join(", ");
     };
 

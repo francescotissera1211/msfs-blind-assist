@@ -210,9 +210,15 @@ public partial class CowsDA40Definition
             }
 
             case "DA40_PAYLOAD_BAGGAGE_CHECK":
+                // ⚠️ BOTH UNITS, LIKE EVERY OTHER WEIGHT ON THIS PANEL. This row alone read
+                // "Baggage Limit: 0 of 66 pounds" while Gross Weight and Weight Margin beside
+                // it gave pounds AND kilograms - so the one number a pilot compares against a
+                // bag on a scale was in the unit they had not chosen.
                 displayText = value > BaggageMaxLb
-                    ? $"{value:0} pounds — OVER the {BaggageMaxLb:0} pound limit"
-                    : $"{value:0} of {BaggageMaxLb:0} pounds";
+                    ? $"{value:0} pounds, {value * KgPerLb:0} kilograms — OVER the " +
+                      $"{BaggageMaxLb:0} pound, {BaggageMaxLb * KgPerLb:0} kilogram limit"
+                    : $"{value:0} of {BaggageMaxLb:0} pounds, " +
+                      $"{value * KgPerLb:0} of {BaggageMaxLb * KgPerLb:0} kilograms";
                 return true;
 
             case "DA40_GROSS_WEIGHT":

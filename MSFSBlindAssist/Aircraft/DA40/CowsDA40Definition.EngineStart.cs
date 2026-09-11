@@ -176,7 +176,11 @@ public partial class CowsDA40Definition
         v["DA40_START_COMBUSTION"] = new SimVarDefinition
         {
             Name = "GENERAL ENG COMBUSTION:1",
-            DisplayName = "Engine Running",
+            // ⚠️ "Engine Running: Running". The label asked the question the value already
+            // answers, so the row said the same word twice - and "Engine Running: Stopped"
+            // reads as a contradiction. The label names the SUBJECT; the value carries the
+            // state, which is the convention every other row here follows.
+            DisplayName = "Engine",
             Type = SimVarType.SimVar,
             Units = "bool",
             UpdateFrequency = UpdateFrequency.OnRequest,

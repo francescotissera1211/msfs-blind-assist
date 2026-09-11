@@ -438,14 +438,21 @@ public partial class CowsDA40Definition
         // Bound as the STOCK variables the sim itself keeps, beside the model's own inputs.
         // They are what an external tool sees, and a disagreement between the two is exactly
         // the kind of fault that is otherwise invisible.
+        // ⚠️ A SWITCH IS OFF OR ON, NOT "No". These three read "Pitot Heat Switch: No",
+        // "Fuel Pump Switch: No", "Engine Master Switch: No" - an answer to a question
+        // nobody asked, where every other switch on this aeroplane says Off or On. The
+        // yes/no wording belongs to the FAULT flags above it ("Trim Runaway: No"), which
+        // genuinely are questions.
+        var offOn = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
+
         AddFind(v, "DA40_PITOT_HEAT_STOCK", "PITOT HEAT SWITCH:1", SimVarType.SimVar,
-            "Pitot Heat Switch", "The stock switch state.", "bool", "F0", yesNo);
+            "Pitot Heat Switch", "The stock switch state.", "bool", "F0", offOn);
         AddFind(v, "DA40_ENGINE_MASTER_STOCK", "RECIP ENG ENGINE MASTER SWITCH:1",
             SimVarType.SimVar, "Engine Master Switch", "The stock switch state.",
-            "bool", "F0", yesNo);
+            "bool", "F0", offOn);
         AddFind(v, "DA40_FUEL_PUMP_STOCK", "GENERAL ENG FUEL PUMP SWITCH EX1:1",
             SimVarType.SimVar, "Fuel Pump Switch", "The stock switch state.",
-            "bool", "F0", yesNo);
+            "bool", "F0", offOn);
 
         return v;
     }

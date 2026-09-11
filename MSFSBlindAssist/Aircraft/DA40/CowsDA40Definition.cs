@@ -650,7 +650,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         d[CbLightingPanel] = new List<string>(CbLightingDisplay);
         d[CbAirframeSystemsPanel] = new List<string>(CbAirframeSystemsDisplay);
         d[DoorsPanel] = new List<string>(DoorDisplay);
-        d[CabinAirPanel] = new List<string>(CabinAirDisplay);
+        d[CabinAirPanel] = CabinAirDisplayFor();
         d[RadiosPanel] = new List<string>(RadioDisplay);
         d[PayloadPanel] = new List<string>(PayloadDisplay);
 
@@ -728,7 +728,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             return true;
         }
 
-        if (HandleDA40Readout(action, simConnect, announcer)) return true;
+        if (HandleDA40Readout(action, simConnect, announcer, parentForm)) return true;
 
         // Alt+P and Alt+N. The display windows are DIRECT Alt keys app-wide - the A380
         // uses Alt+E, Alt+S, Alt+N, Alt+P and Alt+I for exactly this - so the DA40 follows

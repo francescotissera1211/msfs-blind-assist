@@ -70,9 +70,18 @@ public partial class CowsDA40Definition
             Format = "F0"
         };
 
-        // Cabin heat comes off the engine heat exchanger, so this is whether there is any
-        // heat to be had at all.
-        AddReadout(v, "DA40_CABIN_HEAT_SOURCE", "DISP_CT", "Coolant Temperature", "celsius", "F0");
+        // ⚠️ THE COOLANT ROW WAS BOUND TO THE WRONG L:VAR AND READ 0 C WITH THE ENGINE HOT.
+        // This panel used to define its own DA40_CABIN_HEAT_SOURCE on DISP_CT. Measured live
+        // with the engine running and the EIS coolant gauge showing a real needle at 59 per
+        // cent of its arc: DISP_CT = 0, DISP_WT = 81. DISP_WT is the coolant (water)
+        // temperature and is what the Engine Start panel already reads as
+        // DA40_START_COOLANT_TEMP; DISP_CT is something else the package never names, and a
+        // row that confidently says 0 degrees is worse than no row - a pilot checking
+        // whether there is cabin heat to be had would read it as a cold engine.
+        //
+        // No second definition: the display list below shows the EXISTING key. Same rule the
+        // Radios and Audio panels now follow - a display row needs a KEY, not a definition
+        // of its own.
 
         return v;
     }
@@ -100,11 +109,21 @@ public partial class CowsDA40Definition
         "DA40_CABIN_AIR_SET"
     };
 
-    private static readonly List<string> CabinAirDisplay = new()
-    {
-        "DA40_CABIN_OAT",
-        "DA40_CABIN_HEAT_SOURCE"
-    };
+    /// <summary>
+    /// ⚠️ VARIANT-DEPENDENT, BECAUSE ONLY ONE OF THESE ENGINES HAS COOLANT. The NG's Austro
+    /// is liquid-cooled and its cabin heat comes off the engine heat exchanger, so the
+    /// coolant temperature IS whether there is any heat to be had. The XLS's Lycoming is
+    /// AIR-cooled and takes its cabin heat from an exhaust muff - there is no coolant
+    /// temperature to show, and inventing one would be a row that can never be right.
+    ///
+    /// Both used to share a DA40_CABIN_HEAT_SOURCE definition on DISP_CT, which read 0 with
+    /// the NG's engine hot (measured: DISP_CT = 0, DISP_WT = 81, EIS needle at 59 per cent).
+    /// A row confidently reading 0 degrees is worse than no row - a pilot checking for cabin
+    /// heat reads it as a cold engine.
+    /// </summary>
+    private List<string> CabinAirDisplayFor() => IsNG
+        ? new List<string> { "DA40_CABIN_OAT", "DA40_START_COOLANT_TEMP" }
+        : new List<string> { "DA40_CABIN_OAT" };
 
     private bool HandleCabinAirSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
