@@ -996,6 +996,7 @@ public sealed class CowsDA40DisplayForm : Form
         }
 
         string toSay = summary.Length > 0 ? summary : spoken;
+        bool atStop = false;
 
         // THE CURSOR IS ANNOUNCED WHEN IT CHANGES, WITHIN ONE VIEW, AND AT NO OTHER TIME.
         //
@@ -1026,8 +1027,32 @@ public sealed class CowsDA40DisplayForm : Form
         else if (view == _lastView && cursorOn && focus.Length > 0 && focus == _lastFocus &&
                  KnobDirection(eventSuffix) is int direction)
         {
-            toSay += direction > 0 ? ", end of the page" : ", start of the page";
+            // ⚠️ AND THE SECOND PRESS AT THE EDGE MUST NOT RE-READ THE ROW. Adding the
+            // suffix fixed the silence but not the repetition: held against the stop, the
+            // window said "RWY, 119.480, end of the page" EIGHTEEN TIMES running on the
+            // PFD's nearest-airport list, and "Minimum Length: 3000FT, end of the page"
+            // over and over on the setup page. The row has not changed and the pilot has
+            // already been told where they are - so the first press carries the full
+            // context and every further press against the SAME stop says only that it is
+            // still the stop. Short, and never silent: a knob that does nothing with no
+            // answer at all reads as a window that has hung, which is the complaint the
+            // suffix was added for in the first place.
+            bool sameStop = direction == _lastEdgeDirection && focus == _lastEdgeFocus &&
+                            view == _lastEdgeView;
+
+            toSay = sameStop
+                ? (direction > 0 ? "End of the page." : "Start of the page.")
+                : toSay + (direction > 0 ? ", end of the page" : ", start of the page");
+
+            _lastEdgeDirection = direction;
+            _lastEdgeFocus = focus;
+            _lastEdgeView = view;
+            atStop = true;
         }
+
+        // Any move off the stop re-arms the full announcement, so returning to it later
+        // reads in full again rather than as a bare "End of the page."
+        if (!atStop) { _lastEdgeDirection = 0; _lastEdgeFocus = ""; _lastEdgeView = ""; }
 
         _lastCursorOn = cursorOn;
         _lastSpokenSummary = summary;
@@ -1037,7 +1062,12 @@ public sealed class CowsDA40DisplayForm : Form
 
         // The window's own text last, off the critical path: it is not what a pilot is
         // waiting on after a keystroke.
-        await _client.ScrapeNowAsync();
+        //
+        // ⚠️ SKIPPED AT A STOP, WHICH IS WHERE THE LAG WAS REPORTED. Nothing moved, so the
+        // list cannot have changed - and this await is what the NEXT keypress queues
+        // behind, which is why holding against the stop felt like it "lags very much
+        // before saying the same thing".
+        if (!atStop) await _client.ScrapeNowAsync();
     }
 
     /// <summary>
@@ -1373,6 +1403,16 @@ public sealed class CowsDA40DisplayForm : Form
     /// The label off a softkey row, e.g. "Softkey 3: Standby" gives "Standby". Blank rows
     /// read as "blank", which is a real answer and is left alone.
     /// </summary>
+    /// <summary>
+    /// The stop the last knob turn ran into - direction, focused field and view together.
+    /// All three, because "the same stop" must mean the same field in the same view hit
+    /// from the same side; a pilot who walks away and comes back deserves the full
+    /// announcement again, and one who reverses into the OTHER end is at a different stop.
+    /// </summary>
+    private int _lastEdgeDirection;
+    private string _lastEdgeFocus = "";
+    private string _lastEdgeView = "";
+
     private static string LabelOf(string row)
     {
         var m = SoftkeyRow.Match(row);

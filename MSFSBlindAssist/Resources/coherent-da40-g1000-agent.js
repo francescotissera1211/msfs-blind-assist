@@ -28,8 +28,49 @@
     }
     A.visible = visible;
 
+    // ⚠️ TEXT THE SCREEN IS NOT SHOWING MUST NOT BE READ, AND textContent SHOWS IT ALL.
+    //
+    // Every G1000 editable field keeps TWO copies of its value in the DOM - the edit-mode
+    // one and the display one - and hides whichever is not in use. Aux System Setup's
+    // Minimum Length is the case that found it:
+    //
+    //     DIV.number-input
+    //       DIV.number-input-active   "03000FT"   display:none
+    //       DIV.number-input-inactive "3000FT"    shown
+    //
+    // so the row read "Minimum Length: 03000 FT 3000 FT" - the same number twice, once in
+    // a zero-padded edit form the pilot cannot see. Same shape wherever a field can be
+    // typed into, which is most of the setup and waypoint pages.
+    //
+    // The walk REJECTS a hidden element, which skips its whole subtree - so this is also
+    // cheaper than what it replaces: one style lookup per element instead of one per text
+    // node, and nothing at all inside a hidden branch.
+    function walkVisibleText(el, push) {
+        if (!el) return;
+        var w = document.createTreeWalker(el,
+            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+                acceptNode: function (n) {
+                    if (n.nodeType !== 1) return NodeFilter.FILTER_ACCEPT;
+                    var st;
+                    try { st = window.getComputedStyle(n); }
+                    catch (e) { return NodeFilter.FILTER_SKIP; }
+                    if (st.display === "none" || st.visibility === "hidden" ||
+                        parseFloat(st.opacity) === 0) return NodeFilter.FILTER_REJECT;
+                    // Descend into it, but the element itself is not text.
+                    return NodeFilter.FILTER_SKIP;
+                }
+            }, false);
+        var n;
+        while ((n = w.nextNode())) push(n.nodeValue || "");
+    }
+
     function text(el) {
-        return el ? (el.textContent || "").replace(/\s+/g, " ").trim() : "";
+        if (!el) return "";
+        // textContent concatenates with no separator; this reproduces that exactly, minus
+        // whatever the screen is hiding.
+        var buf = "";
+        walkVisibleText(el, function (t) { buf += t; });
+        return buf.replace(/\s+/g, " ").trim();
     }
 
     // textContent CONCATENATES with no separator, so a pane full of little spans reads
@@ -38,12 +79,10 @@
     function spacedText(el) {
         if (!el) return "";
         var parts = [];
-        var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-        var n;
-        while ((n = walker.nextNode())) {
-            var t = (n.nodeValue || "").replace(/\s+/g, " ").trim();
+        walkVisibleText(el, function (raw) {
+            var t = raw.replace(/\s+/g, " ").trim();
             if (t) parts.push(t);
-        }
+        });
 
         // Join with a space BETWEEN WORDS but not inside a number. The G1000 renders a
         // clock and a scrolling readout as one span per character, so a blanket space
@@ -1195,9 +1234,22 @@
         var ident = text(scroller).replace(/_+$/, "");
         if (!ident) ident = "blank";
 
+        // ⚠️ AN UNFILLED PART IS A ROW OF UNDERSCORES, NOT AN EMPTY STRING, so testing it
+        // for truthiness keeps it. The VOR page read "I5Q, ________________, FONTANGES" -
+        // sixteen underscores spoken in the middle of a facility a pilot had just looked
+        // up, because that VOR has no city and the field is padded to its full width.
+        // The ident is trimmed just above for the same reason; the other two were not.
+        //
+        // They are DROPPED rather than read as "blank": the ident's blank is news (nothing
+        // has been typed yet), but a facility with no city is complete as it stands, and
+        // "I5Q, blank, FONTANGES" invites a pilot to go looking for something missing.
+        var filled = function (t) {
+            return /[^_\-\s:.\/]/.test(String(t || "")) ? String(t) : "";
+        };
+
         var parts = [ident];
-        var place = text(entry.querySelector(".wpt-entry-location"));
-        var name = text(entry.querySelector(".wpt-entry-name"));
+        var place = filled(text(entry.querySelector(".wpt-entry-location")));
+        var name = filled(text(entry.querySelector(".wpt-entry-name")));
         if (place) parts.push(place);
         if (name) parts.push(name);
         return parts.join(", ");
@@ -2491,7 +2543,62 @@
         var out = [];
         if (!view || !view.scrollController) return out;
         A.M.walk(view.scrollController, "", out, 0);
+        A.M.nameByRow(out);
         return out;
+    };
+
+    // ⚠️ A GROUP TITLE EVERY FIELD SHARES IS NOT A LABEL, AND THE ROW IS THROWN AWAY.
+    //
+    // The PFD's nearest-airport window is the case that found both. Its fifty fields all
+    // report the groupbox title "RWY", and their own labels are empty, so the readout was
+    // "RWY, EHAM" then "RWY, 118.105" then "RWY, EHRD" - the same meaningless word before
+    // every entry, and nothing saying which airport a frequency belonged to. Arrowing it
+    // gave "RWY, 129.405", a number with no owner.
+    //
+    // The instrument pairs them itself and we were discarding it: the control paths run
+    // 0.0.0 / 0.0.1, 0.1.0 / 0.1.1 - <list>.<row>.<field> - so an airport and its frequency
+    // are the two controls of ONE row. Ask the path, do not pattern-match the value; an
+    // ident and a frequency are only sometimes distinguishable by shape, and the next
+    // window will pair different things.
+    //
+    // Two rules, both structural:
+    //   - a group title shared by EVERY field discriminates nothing (the window is already
+    //     announced by name), so it is dropped. One that varies is kept - it is what makes
+    //     "Nearest Airport, Minimum Length" read correctly on the setup page.
+    //   - a field that is not the FIRST of its row is labelled with the first one's value,
+    //     so the frequency is announced as the airport's.
+    A.M.nameByRow = function (fields) {
+        if (!fields || !fields.length) return;
+
+        // Drop a group that is the same on every field.
+        var g0 = fields[0].group || "", uniform = true;
+        for (var i = 1; i < fields.length; i++) {
+            if ((fields[i].group || "") !== g0) { uniform = false; break; }
+        }
+        if (uniform && g0) {
+            for (var j = 0; j < fields.length; j++) fields[j].group = "";
+        }
+
+        // Label the rest of a row with the row's first value.
+        var rowOf = function (p) {
+            var t = String(p || "");
+            var k = t.lastIndexOf(".");
+            return k < 0 ? "" : t.substring(0, k);
+        };
+
+        // ⚠️ A TOP-LEVEL FIELD HAS NO ROW, AND THAT IS WHAT KEEPS THIS SAFE. Aux System
+        // Setup's fourteen controls sit flat at paths "0".."13" with no dot at all, so
+        // rowOf() gives "" and every one of them is skipped here - without that, they would
+        // read as one row and thirteen fields would be labelled with the first one's value.
+        // Row naming applies only where the instrument actually nested the controls.
+        var firstOfRow = {};
+        for (var m = 0; m < fields.length; m++) {
+            var r = rowOf(fields[m].p);
+            if (!r) continue;
+            if (!(r in firstOfRow)) { firstOfRow[r] = fields[m].value || ""; continue; }
+            // Not the first of its row, and carrying no label of its own.
+            if (!fields[m].label && firstOfRow[r]) fields[m].label = firstOfRow[r];
+        }
     };
 
     A.M.walk = function (sc, prefix, out, depth) {
@@ -3634,10 +3741,36 @@
                 kept.push(page[g]);
             }
 
+            // ⚠️ AND A HEADING WHOSE VALUES ALL WENT IS AN ANNOUNCEMENT OF NOTHING. Keeping
+            // every heading (so a surviving value never loses its parent) left "MFD Data Bar
+            // Fields:" and "COM Configuration:" standing alone on Aux System Setup, because
+            // the field walk above had already said every row inside them. A heading with no
+            // rows under it tells the pilot a box exists and then stops - worse than silence,
+            // because they will go looking for the contents.
+            //
+            // A heading survives only if a NON-heading line follows it before the next
+            // heading at the same depth or shallower. Depth is the indent, which is how this
+            // walk already expresses nesting.
+            var indentOf = function (t) { return /^ */.exec(String(t))[0].length; };
+            var isHead = function (t) { return /:$/.test(String(t).trim()); };
+
+            var pruned = [];
+            for (var h = 0; h < kept.length; h++) {
+                if (!isHead(kept[h])) { pruned.push(kept[h]); continue; }
+
+                var mine = indentOf(kept[h]), has = false;
+                for (var w = h + 1; w < kept.length; w++) {
+                    if (indentOf(kept[w]) <= mine) break;      // out of this heading's block
+                    if (!isHead(kept[w])) { has = true; break; }
+                }
+                if (has) pruned.push(kept[h]);
+            }
+            kept = pruned;
+
             // A block that came down to nothing but its own headings is not content.
             var anyValue = false;
             for (var v = 0; v < kept.length; v++) {
-                if (!/:$/.test(String(kept[v]).trim())) { anyValue = true; break; }
+                if (!isHead(kept[v])) { anyValue = true; break; }
             }
             if (!anyValue) kept = [];
 
