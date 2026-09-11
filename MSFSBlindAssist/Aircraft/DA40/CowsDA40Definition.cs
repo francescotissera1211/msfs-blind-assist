@@ -863,7 +863,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             // dimension the G1000 has no setting for - volts, amperes, RPM, hours.
             if (!TryUnitText(readout.Units, value, readout.Format, out displayText))
             {
-                displayText = $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}";
+                // TrimEnd, because a unitless quantity must not leave a trailing space for
+                // the screen reader to pause on.
+                displayText =
+                    $"{value.ToString(readout.Format)} {SpokenUnit(readout.Units)}".TrimEnd();
             }
             return true;
         }
@@ -972,6 +975,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         "celsius" => "degrees celsius",
         "rpm" => "R P M",
         "gallons per hour" => "gallons per hour",
+        // ⚠️ "number" IS A REGISTRATION, NOT A UNIT, AND IT WAS BEING READ ALOUD. An L:var
+        // must be registered Units = "number" - it holds a raw value and any other unit
+        // makes SimConnect convert from a base unit it does not have (the standby subscale
+        // read ZERO for exactly that reason) - but this fall-through then spoke the word.
+        // The panel said "ECU Battery Capacity: 149.1 number", "Block Damage: 0.0 number",
+        // "Trim Axis Input: 0.0 number", a dozen rows of it. A quantity whose unit the
+        // package never names is honest as a bare number; it is not a "number number".
+        "number" => "",
         _ => units
     };
 }
