@@ -30,6 +30,26 @@ namespace MSFSBlindAssist.Forms
             if (lb == null || lb.IsDisposed || lines == null) return;
             int n = lines.Count;
 
+            // ⚠️ THE "Loading..." PLACEHOLDER IS NOT CONTENT, AND IT WAS SURVIVING. Panels
+            // showed it as a real row ABOVE their values - Ice and Pitot, Standby
+            // Instruments, Radios, Flight Controls and Fuel Failures all read
+            // "Loading..." followed by live data in the pilot's dump of every panel. It is
+            // added by the panel refresh when the list is empty so the first populate is
+            // not silent, and it is only ever meant to exist until the first real row
+            // arrives.
+            //
+            // Treating a list that holds NOTHING BUT the placeholder as EMPTY sends it down
+            // the first-populate path, which writes the real rows and leaves nothing of it
+            // behind - and it costs nothing on every other list, which never contains that
+            // string. Defensive by design: the reconcile below already overwrites index 0
+            // and should have removed it, so something about that sequence is not what it
+            // looks like; this makes the outcome impossible to get wrong either way.
+            if (lb.Items.Count == 1 && string.Equals(lb.Items[0] as string, "Loading...",
+                    StringComparison.Ordinal) && n > 0)
+            {
+                lb.Items.Clear();
+            }
+
             // First populate.
             if (lb.Items.Count == 0)
             {

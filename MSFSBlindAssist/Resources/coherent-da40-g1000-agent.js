@@ -2835,13 +2835,31 @@
 
     /// Which character of a text field the knob is sitting on. A pilot editing an ident one
     /// character at a time has no other way to know where in the box they are.
+    /// ⚠️ THE POSITION IS NEWS ONLY WHEN IT MOVES. Spelling an ident is dozens of knob
+    /// clicks, and this said "character 1" before every one of them: "character 1, A",
+    /// "character 1, B", "character 1, C" as the pilot cycled ONE letter. Reported from the
+    /// cockpit as "clunky as hell", and the ruling is exact - "I should only say the number
+    /// of the character when moving to it first, and then when pressing up and down... just
+    /// say A, B, C".
+    ///
+    /// So the LOWER knob, which steps between characters, changes the index and earns the
+    /// number; the UPPER knob, which cycles the character in place, does not and answers
+    /// with the letter alone. Nothing here has to know which knob was turned - the index
+    /// itself is the signal, which is why this is a comparison and not a key-name test.
+    ///
+    /// Returning to a position later says its number again, because the pilot has moved.
     A.M.charSay = function () {
         var ic = A.M.input();
         if (!ic) return "";
         try {
             var t = ic.dataEntry.text, i = ic.dataEntry.highlightIndex;
             var ch = t.charAt(i);
-            return "character " + (i + 1) + ", " + (ch === "_" || ch === "" ? "blank" : ch);
+            var said = (ch === "_" || ch === "") ? "blank" : ch;
+
+            var moved = (A.M._edIdx !== i);
+            A.M._edIdx = i;
+
+            return moved ? ("character " + (i + 1) + ", " + said) : said;
         } catch (e) { return ""; }
     };
 
@@ -3394,7 +3412,9 @@
         }
 
         var f = A.M.focused();
-        if (!f || !f.active) { A.M._edKey = null; A.M._edWho = null; }
+        // Leaving edit mode forgets the position too, so re-entering a field announces
+        // where the cursor is rather than assuming the pilot remembers.
+        if (!f || !f.active) { A.M._edKey = null; A.M._edWho = null; A.M._edIdx = null; }
         if (f) {
             // The BOX first, then the field. "Nearest Airport, Minimum Length: 3000FT"
             // answers what a pilot actually wants to know, and it is what the screen says.
@@ -3414,6 +3434,9 @@
                 // it and any facility the aeroplane has just matched.
                 var key = (f.group || "") + "|" + (f.label || "");
                 var fresh = (A.M._edKey !== key);
+                // A DIFFERENT FIELD starts a new spelling, so its first character announces
+                // its position even if it happens to sit at the same index as the last one.
+                if (fresh) A.M._edIdx = null;
                 A.M._edKey = key;
 
                 var cs = A.M.charSay();
