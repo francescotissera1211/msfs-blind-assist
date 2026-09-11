@@ -80,8 +80,16 @@ public partial class CowsDA40Definition
 
         // ---------- Status ----------
 
-        AddComFreq(v, "DA40_AUDIO_COM1_ACTIVE", "COM ACTIVE FREQUENCY:1", "COM 1 Active");
-        AddComFreq(v, "DA40_AUDIO_COM2_ACTIVE", "COM ACTIVE FREQUENCY:2", "COM 2 Active");
+        // ⚠️ NO SECOND DEFINITION OF A SIMVAR THE RADIOS PANEL ALREADY OWNS. These two keys
+        // used to re-register COM ACTIVE FREQUENCY:1 and :2, which the Radios panel already
+        // carries as DA40_RADIO_COM1_ACTIVE / _COM2_ACTIVE - one Continuous on its own
+        // SIM_FRAME subscription, the other OnRequest, both asking the sim for the same
+        // name. The Radios panel then read "COM 2 Active: --, NAV 1 Active: --, NAV 2
+        // Active: --" while the Audio panel showed those very frequencies correctly.
+        //
+        // The house rule is one key per SimVar (VarNameCollisionTests exists for the batch
+        // form of this), and a display row does not need a definition of its own - it needs
+        // a KEY, and the Radios panel's keys are the ones being kept up to date.
 
         AddComFlag(v, "DA40_AUDIO_COM1_RECEIVE", "COM RECEIVE:1", "COM 1 Audio");
         AddComFlag(v, "DA40_AUDIO_COM2_RECEIVE", "COM RECEIVE:2", "COM 2 Audio");
@@ -89,21 +97,6 @@ public partial class CowsDA40Definition
         return v;
     }
 
-    private static void AddComFreq(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display)
-    {
-        v[key] = new SimVarDefinition
-        {
-            Name = simvar,
-            DisplayName = display,
-            Type = SimVarType.SimVar,
-            Units = "MHz",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
-            RenderAsReadOnlyStatus = true,
-            Format = "F3"
-        };
-    }
 
     private static void AddComFlag(Dictionary<string, SimVarDefinition> v, string key,
         string simvar, string display)
@@ -133,7 +126,7 @@ public partial class CowsDA40Definition
     private bool TryGetAudioDisplayOverride(string varKey, double value, out string displayText)
     {
         displayText = "";
-        if (varKey != "DA40_AUDIO_COM1_ACTIVE" && varKey != "DA40_AUDIO_COM2_ACTIVE") return false;
+        if (varKey != "DA40_RADIO_COM1_ACTIVE" && varKey != "DA40_RADIO_COM2_ACTIVE") return false;
 
         displayText = $"{value:0.000} MHz";
         return true;
@@ -148,8 +141,8 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> AudioDisplay = new()
     {
-        "DA40_AUDIO_COM1_ACTIVE",
-        "DA40_AUDIO_COM2_ACTIVE",
+        "DA40_RADIO_COM1_ACTIVE",
+        "DA40_RADIO_COM2_ACTIVE",
         "DA40_AUDIO_COM1_RECEIVE",
         "DA40_AUDIO_COM2_RECEIVE"
     };

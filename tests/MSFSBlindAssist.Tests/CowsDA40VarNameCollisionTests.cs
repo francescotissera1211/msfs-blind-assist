@@ -68,4 +68,5 @@ public class CowsDA40VarNameCollisionTests
                     $"{kv.Key} names itself but is neither a button nor write-only");
         }
     }
+
 }

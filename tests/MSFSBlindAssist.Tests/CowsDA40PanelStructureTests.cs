@@ -1537,10 +1537,24 @@ public class CowsDA40PanelStructureTests
     public void ComFrequenciesKeepTheirDecimals()
     {
         // Format defaults to "F0", which would render 121.500 as a bare "121".
-        foreach (var key in new[] { "DA40_AUDIO_COM1_ACTIVE", "DA40_AUDIO_COM2_ACTIVE" })
+        //
+        // ⚠️ THE AUDIO PANEL NO LONGER DEFINES THESE - it SHOWS the Radios panel's keys.
+        // It used to re-register COM ACTIVE FREQUENCY:1 and :2 under DA40_AUDIO_* while the
+        // Radios panel already carried them as DA40_RADIO_*, one Continuous on its own
+        // SIM_FRAME subscription and the other OnRequest, both asking the sim for the same
+        // name. The Radios panel then read "COM 2 Active: --" while the Audio panel showed
+        // that very frequency correctly. One key per SimVar; a display row needs a KEY, not
+        // a definition of its own.
+        var def = Ng();
+        foreach (var key in new[] { "DA40_RADIO_COM1_ACTIVE", "DA40_RADIO_COM2_ACTIVE" })
         {
-            Assert.Equal("F3", Ng().GetVariables()[key].Format);
+            // A frequency must never render as a bare integer, whichever mechanism does it.
+            Assert.True(def.TryGetDisplayOverride(key, 121.5, out string shown));
+            Assert.Contains("121.500", shown);
         }
+
+        Assert.False(def.GetVariables().ContainsKey("DA40_AUDIO_COM1_ACTIVE"),
+            "The Audio panel must not re-define a SimVar the Radios panel owns.");
     }
 
     [Theory]

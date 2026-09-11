@@ -43,8 +43,17 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH - a subscale the pilot is TURNING moves
-            // faster than the batch samples it. Same reasoning as the radio frequencies and
-            // as G_FORCE's touchdown spike; CHANGED means a still altimeter costs nothing.
+            // faster than the batch samples it. Same reasoning as G_FORCE's touchdown spike.
+            //
+            // ⚠️ "CHANGED MEANS A STILL ALTIMETER COSTS NOTHING" IS THE SAME SENTENCE THAT
+            // TURNED OUT TO BE A BUG ON THE RADIOS, and this one is DELIBERATELY LEFT ALONE.
+            // HighFrequency asks for SIM_FRAME with the CHANGED flag, so a value that never
+            // moves is never delivered and never reaches the cache - which is exactly why
+            // the Radios panel read "COM 1 Active: --" for four static frequencies. Both
+            // altimeters were tested in the cockpit and BOTH WORK, so the evidence says this
+            // path is fed; pattern-matching it into a "fix" would change something known
+            // good on a theory, which is how the last two wrong fixes happened. If a baro
+            // readout is ever seen blank on a panel, this comment is where to start.
             ExcludeFromBatch = true,
             HighFrequency = true
             // NOT excluded from the Monitor Manager any more: it announces now (debounced,

@@ -82,15 +82,26 @@ public partial class CowsDA40Definition
             // the swap announcement had nothing to read - "COM 2 does not remember".
             // The generic announcer is kept out by NoteRadioChange, not by this flag.
             IsAnnounced = true,
-            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH. A frequency the pilot is TURNING arrives
-            // once a second on the batch, which is slower than they can turn it - so the
-            // settle had to be longer than a batch period just to tell "still moving" from
-            // "stopped", and every read-back was a beat behind. ExcludeFromBatch +
-            // HighFrequency gives a per-var SIM_FRAME subscription with the CHANGED flag,
-            // exactly as G_FORCE uses for the touchdown spike the batch missed: a static
-            // radio costs nothing, and a moving one is current within a frame.
+            // ⚠️ NOT HighFrequency, AND "A STATIC RADIO COSTS NOTHING" WAS THE BUG ITSELF.
+            // HighFrequency asks for SIM_FRAME with the CHANGED flag, which sends only when
+            // the value MOVES - right for G_FORCE, whose touchdown spike the 1 Hz batch
+            // missed and which never sits still, and fatal for a frequency that sits on
+            // 127.850 for an hour. Nothing changed, so nothing was ever delivered, the cache
+            // stayed empty, and the Radios panel read "COM 1 Active: --, COM 2 Active: --,
+            // NAV 1 Active: --, NAV 2 Active: --" while the sim held all four values
+            // (measured live: 127.85, 124.85, 110.50, 110.50).
+            //
+            // ⚠️ AND A FORCE-READ CANNOT RESCUE IT. RequestVariable refuses to issue a
+            // PERIOD.ONCE against a var that owns a periodic subscription - re-issuing that
+            // data-def id REPLACES the recurring request, which is this codebase's own
+            // cancel idiom - so it defers to "the next periodic delivery", and under CHANGED
+            // there is no next delivery. Opening the panel could never fill the row.
+            //
+            // ExcludeFromBatch stays: the dedicated subscription is still wanted, now at
+            // PERIOD.SECOND with the DEFAULT flag, which delivers whether or not the value
+            // moved. Nothing is lost on the knob, because a key the pilot just pressed is
+            // read back over the Coherent socket; this path is for changes made ELSEWHERE.
             ExcludeFromBatch = true,
-            HighFrequency = true,
             Format = "F3",
             HelpText = help
         };
@@ -124,15 +135,26 @@ public partial class CowsDA40Definition
             // nothing at all. Continuous and announced; the settle timer speaks it.
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            // ⚠️ SIM_FRAME, NOT THE 1 Hz BATCH. A frequency the pilot is TURNING arrives
-            // once a second on the batch, which is slower than they can turn it - so the
-            // settle had to be longer than a batch period just to tell "still moving" from
-            // "stopped", and every read-back was a beat behind. ExcludeFromBatch +
-            // HighFrequency gives a per-var SIM_FRAME subscription with the CHANGED flag,
-            // exactly as G_FORCE uses for the touchdown spike the batch missed: a static
-            // radio costs nothing, and a moving one is current within a frame.
+            // ⚠️ NOT HighFrequency, AND "A STATIC RADIO COSTS NOTHING" WAS THE BUG ITSELF.
+            // HighFrequency asks for SIM_FRAME with the CHANGED flag, which sends only when
+            // the value MOVES - right for G_FORCE, whose touchdown spike the 1 Hz batch
+            // missed and which never sits still, and fatal for a frequency that sits on
+            // 127.850 for an hour. Nothing changed, so nothing was ever delivered, the cache
+            // stayed empty, and the Radios panel read "COM 1 Active: --, COM 2 Active: --,
+            // NAV 1 Active: --, NAV 2 Active: --" while the sim held all four values
+            // (measured live: 127.85, 124.85, 110.50, 110.50).
+            //
+            // ⚠️ AND A FORCE-READ CANNOT RESCUE IT. RequestVariable refuses to issue a
+            // PERIOD.ONCE against a var that owns a periodic subscription - re-issuing that
+            // data-def id REPLACES the recurring request, which is this codebase's own
+            // cancel idiom - so it defers to "the next periodic delivery", and under CHANGED
+            // there is no next delivery. Opening the panel could never fill the row.
+            //
+            // ExcludeFromBatch stays: the dedicated subscription is still wanted, now at
+            // PERIOD.SECOND with the DEFAULT flag, which delivers whether or not the value
+            // moved. Nothing is lost on the knob, because a key the pilot just pressed is
+            // read back over the Coherent socket; this path is for changes made ELSEWHERE.
             ExcludeFromBatch = true,
-            HighFrequency = true,
             RenderAsReadOnlyStatus = true,
             Format = "F3"
         };

@@ -57,7 +57,14 @@ public partial class CowsDA40Definition
     /// gap between two deliveries. That is what buys BOTH properties at once: no intermediate
     /// announcements, and an answer that lands about as fast as the pilot let go of the knob.
     /// </summary>
-    private const int RadioSettleMs = 250;
+    // ⚠️ BACK OVER ONE DELIVERY PERIOD, BECAUSE THE FEED IS 1 Hz AGAIN. 250 ms was correct
+    // only while these rode a SIM_FRAME subscription; that subscription used the CHANGED
+    // flag and therefore never delivered a static frequency at all, so it is gone and the
+    // readouts are on PERIOD.SECOND. A settle shorter than the delivery period expires
+    // BETWEEN deliveries and announces every intermediate value a knob sweeps through -
+    // the "it announces 700, 800" report. Just over the period means each delivery restarts
+    // it and only the resting value is spoken.
+    private const int RadioSettleMs = 1100;
 
     /// <summary>How long after MSFSBA's own set or swap to stay quiet.</summary>
     private const int RadioOwnWriteGraceMs = 2500;
