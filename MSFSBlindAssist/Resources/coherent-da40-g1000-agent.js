@@ -3941,15 +3941,37 @@
             }
         }
 
-        // ⚠️ AND THE DETAIL LEVEL, WHOSE NUMBER IS IN THE CLASS AND NOT IN THE TEXT. The
-        // element reads the bare word "Detail"; which of the levels is selected is carried
-        // as "detail-3" on its class, drawn for a sighted pilot as a filled bar. Reading the
-        // text alone would announce "Detail" and tell the pilot nothing - the level IS the
-        // reading, exactly as an EIS gauge's arc is.
-        var det = firstVisible(".map-detail");
-        if (det) {
-            var lvl = /(?:^|\s)detail-(\d+)(?:\s|$)/.exec(String(det.className || ""));
-            if (lvl) rows.push("Map detail: " + lvl[1]);
+        // ⚠️ THE DECLUTTER LEVEL, WHOSE NUMBER IS IN THE CLASS AND NOT IN THE TEXT - AND
+        // WHOSE FULL-DETAIL STATE RENDERS NOTHING AT ALL.
+        //
+        // The indicator element reads the bare word "Detail"; which level is selected is
+        // carried on its class and drawn as a filled bar. Reading the text alone announces
+        // "Detail" and tells the pilot nothing - the level IS the reading, the same way an
+        // EIS gauge's arc is.
+        //
+        // Stepped through the WHOLE cycle live with the Detail softkey and watched both the
+        // class and the softkey's own label at each stop:
+        //
+        //     indicator absent   softkey "Detail All"   full detail
+        //     detail-3           softkey "Detail-1"     one level decluttered
+        //     detail-2           softkey "Detail-2"     two levels
+        //     detail-1           softkey "Detail-3"     three levels
+        //
+        // and it wraps All -> -1 -> -2 -> -3 -> All. So the class COUNTS DOWN as the screen
+        // counts up, and the level a pilot sees is 4 minus the class number.
+        //
+        // ⚠️ A FIRST CUT ANNOUNCED THE RAW CLASS NUMBER - "Map detail: 3" where the display
+        // says "-1" - so the readout disagreed with the softkey label beside it. And at full
+        // detail nothing is drawn, so the row simply VANISHED and a pilot could not tell
+        // "everything is shown" from "the row is missing". Both states are named now.
+        var detailShown = firstVisible(".map-detail");
+        if (detailShown) {
+            var lvl = /(?:^|\s)detail-(\d+)(?:\s|$)/.exec(String(detailShown.className || ""));
+            if (lvl) rows.push("Map detail: minus " + (4 - parseInt(lvl[1], 10)));
+        } else if (range) {
+            // No indicator, but there IS a map on this page - that is full detail, which the
+            // display shows by drawing no declutter marker at all.
+            rows.push("Map detail: all");
         }
 
         // A page that tells you how to leave it. The flight plan page carries one, and it
