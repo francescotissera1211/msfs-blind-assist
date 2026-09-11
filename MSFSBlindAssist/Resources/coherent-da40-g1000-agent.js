@@ -1220,7 +1220,21 @@
 
             var boxTitle = text(box.querySelector(".groupbox-title"));
             var boxLines = A.rowsOf(box);
-            if (!boxLines.length) continue;
+
+            // ⚠️ AN EMPTY BOX IS STILL DRAWN, AND SKIPPING IT HID THREE OF THEM. The
+            // Intersection page's "Reference VOR", the NDB page's "Frequency" and the flight
+            // plan's "Selected Waypoint Weather" are boxes the display puts on screen with
+            // nothing in them yet - a sighted pilot sees the heading and knows where the
+            // value will appear, and the coverage sweep reported all three as content
+            // MSFSBA never said.
+            //
+            // Reported as the title plus ", empty", which is the same honesty as ", dimmed":
+            // the state of the box IS the reading. A box with no title at all is skipped -
+            // that is a layout wrapper, not something a pilot is looking at.
+            if (!boxLines.length) {
+                if (boxTitle) lines.push(boxTitle + ", empty");
+                continue;
+            }
 
             if (boxTitle) lines.push(boxTitle
                 + (owned && !owned[normKey(boxTitle)] ? ", dimmed" : "") + ":");
@@ -3901,6 +3915,41 @@
                 rows.push("Page content:");
                 for (var q = 0; q < kept.length; q++) rows.push("  " + kept[q]);
             }
+        }
+
+        // ⚠️ THE MAP RANGE, WHICH FIVE PAGES DREW AND NONE OF THEM SAID. The WPT pages and
+        // the flight plan catalogue each embed a small map, and its range sits in its own
+        // .map-range-display - so "15 NM" was on screen and absent from everything MSFSBA
+        // said, which is how the coverage sweep kept reporting a bare "NM" on five pages.
+        // The range is what a distance on that map MEANS; without it the map is a picture.
+        //
+        // ⚠️ AFTER the page content and checked against it, because the Navigation Map
+        // already reads its own range there ("AUTO 25 NM") - emitting it unconditionally
+        // would put the same value on that page twice, which is the duplication just spent
+        // several commits removing.
+        var range = firstVisible(".map-range-display");
+        if (range) {
+            var rangeText = spacedText(range);
+            if (rangeText) {
+                var saidAlready = false;
+                var rk = rangeText.toUpperCase().replace(/[^A-Z0-9]/g, "");
+                for (var rr = 0; rr < rows.length && !saidAlready; rr++) {
+                    if (String(rows[rr]).toUpperCase().replace(/[^A-Z0-9]/g, "").indexOf(rk) >= 0)
+                        saidAlready = true;
+                }
+                if (!saidAlready) rows.push("Map range: " + rangeText);
+            }
+        }
+
+        // ⚠️ AND THE DETAIL LEVEL, WHOSE NUMBER IS IN THE CLASS AND NOT IN THE TEXT. The
+        // element reads the bare word "Detail"; which of the levels is selected is carried
+        // as "detail-3" on its class, drawn for a sighted pilot as a filled bar. Reading the
+        // text alone would announce "Detail" and tell the pilot nothing - the level IS the
+        // reading, exactly as an EIS gauge's arc is.
+        var det = firstVisible(".map-detail");
+        if (det) {
+            var lvl = /(?:^|\s)detail-(\d+)(?:\s|$)/.exec(String(det.className || ""));
+            if (lvl) rows.push("Map detail: " + lvl[1]);
         }
 
         // A page that tells you how to leave it. The flight plan page carries one, and it
