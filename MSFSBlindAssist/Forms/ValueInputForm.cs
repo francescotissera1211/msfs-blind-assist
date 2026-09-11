@@ -81,6 +81,15 @@ public partial class ValueInputForm : Form
         public IReadOnlyList<string> ExtraValues => _extraValues;
 
         private readonly List<ExtraFieldDef> _extraDefs;
+        private readonly List<Button> _extraButtons = new();
+        private Button? mainSetButton;
+
+        /// <summary>
+        /// Which field the pilot asked to write: -1 for all of them (the "Set all" button
+        /// or Enter), 0 for the main box, 1..n for an extra. The caller applies only that
+        /// one, which is what makes the two altimeters settable independently.
+        /// </summary>
+        public int SetFieldIndex { get; private set; } = -1;
         private readonly List<TextBox> _extraBoxes = new();
         private readonly List<Label> _extraLabels = new();
         private readonly List<string> _extraValues = new();
@@ -263,18 +272,57 @@ public partial class ValueInputForm : Form
                 };
                 box.KeyDown += ValueTextBox_KeyDown;
                 box.GotFocus += (_, _) => box.SelectAll();
+
+                // ⚠️ ONE BUTTON FOR TWO FIELDS READ AS A BUTTON FOR ONE OF THEM. The shared
+                // "Set" is named after the MAIN parameter, so a two-field dialog announced
+                // "Set Main altimeter setting" - a button that in fact wrote BOTH. Reported
+                // from the cockpit as "there is only a set main button, there's no set
+                // standby button, and you can't set them individually".
+                //
+                // Each extra field now carries its own button, named for the field it
+                // writes, and the shared one is renamed below to say it does all of them.
+                // Additive: a dialog with no extras gets neither change and stays
+                // pixel-identical.
+                int mine = _extraBoxes.Count;
+                var setBtn = new Button
+                {
+                    Text = "Set",
+                    Location = new Point(185, extraY + 20),
+                    Size = new Size(60, 25),
+                    AccessibleName = $"Set {ef.Label}",
+                    TabIndex = tabIdx++
+                };
+                setBtn.Click += (_, _) => SetOneField(mine + 1);
+
                 _extraLabels.Add(lbl);
                 _extraBoxes.Add(box);
+                _extraButtons.Add(setBtn);
                 extraY += 48;
             }
             int extraOffset = _extraDefs.Count * 48;
 
+            if (_extraDefs.Count > 0)
+            {
+                mainSetButton = new Button
+                {
+                    Text = "Set",
+                    Location = new Point(185, 105 + toggleOffset - 20),
+                    Size = new Size(60, 25),
+                    AccessibleName = $"Set {parameterType}",
+                    TabIndex = tabIdx++
+                };
+                mainSetButton.Click += (_, _) => SetOneField(0);
+            }
+
             okButton = new Button
             {
-                Text = "Set",
+                Text = _extraDefs.Count > 0 ? "Set all" : "Set",
                 Location = new Point(185, 105 + toggleOffset + extraOffset),
-                Size = new Size(60, 30),
-                AccessibleName = $"Set {parameterType}",
+                Size = new Size(_extraDefs.Count > 0 ? 80 : 60, 30),
+                // Naming it after the MAIN parameter was the defect: it writes every field.
+                AccessibleName = _extraDefs.Count > 0
+                    ? "Set all fields"
+                    : $"Set {parameterType}",
                 TabIndex = tabIdx++
             };
             okButton.Click += OkButton_Click;
@@ -294,8 +342,10 @@ public partial class ValueInputForm : Form
             foreach (var btn in _toggleButtons)
                 Controls.Add(btn);
             Controls.Add(valueTextBox);
+            if (mainSetButton != null) Controls.Add(mainSetButton);
             foreach (var l in _extraLabels) Controls.Add(l);
             foreach (var b in _extraBoxes) Controls.Add(b);
+            foreach (var b in _extraButtons) Controls.Add(b);
             Controls.Add(okButton);
             Controls.Add(cancelButton);
 
@@ -407,7 +457,47 @@ public partial class ValueInputForm : Form
 
         private void OkButton_Click(object? sender, EventArgs e)
         {
+            SetFieldIndex = -1;      // every field, which is what "Set all" says it does
             SetValue();
+        }
+
+        /// <summary>
+        /// Write ONE field and nothing else. Validates only that field - the all-fields
+        /// path deliberately validates every box before sending anything, because a partial
+        /// write there would leave two altimeters differently set for a reason the pilot
+        /// never asked for; here the pilot has asked for exactly one, so the others are not
+        /// their business and must not block them.
+        /// </summary>
+        private void SetOneField(int index)
+        {
+            var box = index == 0 ? valueTextBox : _extraBoxes[index - 1];
+            var check = index == 0 ? validator : (_extraDefs[index - 1].Validator ?? validator);
+            string label = index == 0 ? parameterType : _extraDefs[index - 1].Label;
+
+            string input = box.Text.Trim();
+            if (string.IsNullOrEmpty(input))
+            {
+                announcer.AnnounceImmediate($"Please enter {label}");
+                box.Focus();
+                return;
+            }
+
+            var result = check(input);
+            if (!result.isValid)
+            {
+                announcer.AnnounceImmediate(result.message);
+                box.Focus();
+                box.SelectAll();
+                return;
+            }
+
+            SetFieldIndex = index;
+            IsValidInput = true;
+            InputValue = index == 0 ? input : InputValue;
+            _extraValues.Clear();
+            for (int i = 0; i < _extraBoxes.Count; i++) _extraValues.Add(_extraBoxes[i].Text.Trim());
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
         private void SetValue()

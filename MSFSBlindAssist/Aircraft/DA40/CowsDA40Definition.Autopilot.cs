@@ -136,16 +136,16 @@ public partial class CowsDA40Definition
         //   AP_ALT_VAR_INC/DEC   AUTOPILOT ALTITUDE LOCK VAR   5000 -> 5100 -> 5000  100 ft
         //   AP_VS_VAR_INC/DEC    AUTOPILOT VERTICAL HOLD VAR   -1000 -> -900 -> -1000  100 fpm
         //   AP_SPD_VAR_INC/DEC   AUTOPILOT AIRSPEED HOLD VAR   90 -> 91 -> 90      1 kt
-        AddApStep(v, "DA40_AP_ALT_UP", "Selected Altitude Up", "100 feet up.");
-        AddApStep(v, "DA40_AP_ALT_DN", "Selected Altitude Down", "100 feet down.");
-        AddApStep(v, "DA40_AP_VS_UP", "Selected Vertical Speed Up", "100 feet per minute up.");
-        AddApStep(v, "DA40_AP_VS_DN", "Selected Vertical Speed Down", "100 feet per minute down.");
-        AddApStep(v, "DA40_AP_IAS_UP", "Selected Airspeed Up", "One knot up.");
-        AddApStep(v, "DA40_AP_IAS_DN", "Selected Airspeed Down", "One knot down.");
-        AddApStep(v, "DA40_AP_HDG_UP", "Heading Bug Right", "One degree right.");
-        AddApStep(v, "DA40_AP_HDG_DN", "Heading Bug Left", "One degree left.");
-        AddApStep(v, "DA40_AP_CRS_UP", "Course Right", "One degree right.");
-        AddApStep(v, "DA40_AP_CRS_DN", "Course Left", "One degree left.");
+        // ⚠️ NO STEP BUTTONS HERE, BY THE PILOT'S RULING. Ten of them lived here - ALT, VS,
+        // IAS, HDG and CRS, up and down - and every one duplicated the typed field beside
+        // it: "if it's doable in an editable way, it should be done with numbers or
+        // sliders... hardware will do the step ups and downs, left and rights, while the
+        // panel should just have the edit fields." The knobs are on the pilot's hardware
+        // and on Ctrl+A / S / H / V, so a pair of buttons per value bought nothing and
+        // doubled the length of the panel a blind pilot has to walk.
+        //
+        // The VALUES are unaffected: DA40_AP_*_SET still take a number and still write the
+        // same stock events. This removes the two extra controls, not the capability.
 
         // ---------- The GFC 700's pre-flight test ----------
         //
@@ -329,27 +329,6 @@ public partial class CowsDA40Definition
         };
     }
 
-    /// <summary>
-    /// One detent of a knob. A BUTTON, because a detent is an action and not a state -
-    /// there is nothing to read back and pressing it again does not undo it, so it carries
-    /// no resting label (the same shape TO/GA uses).
-    /// </summary>
-    private static void AddApStep(Dictionary<string, SimVarDefinition> v, string key,
-        string display, string help)
-    {
-        v[key] = new SimVarDefinition
-        {
-            Name = key,
-            DisplayName = display,
-            Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.Never,
-            RenderAsButton = true,
-            SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            ExcludeFromMonitorManager = true,
-            HelpText = help
-        };
-    }
 
     /// <summary>
     /// The GFC 700's own health, which is read-only and belongs in the scan rather than
@@ -376,20 +355,10 @@ public partial class CowsDA40Definition
         "DA40_AP_VS",
         "DA40_AP_FLC",
         "DA40_AP_ALT_SET",
-        "DA40_AP_ALT_UP",
-        "DA40_AP_ALT_DN",
         "DA40_AP_VS_SET",
-        "DA40_AP_VS_UP",
-        "DA40_AP_VS_DN",
         "DA40_AP_IAS_SET",
-        "DA40_AP_IAS_UP",
-        "DA40_AP_IAS_DN",
         "DA40_AP_HDG_SET",
-        "DA40_AP_HDG_UP",
-        "DA40_AP_HDG_DN",
         "DA40_AP_CRS_SET",
-        "DA40_AP_CRS_UP",
-        "DA40_AP_CRS_DN"
     };
 
     /// <summary>
@@ -565,37 +534,9 @@ public partial class CowsDA40Definition
             // ⚠️ UNIQUE, because a knob is turned in bursts and MobiFlight coalesces two
             // byte-identical calc strings in a row - which on a knob means every second
             // detent of a sweep goes missing. The same trap the radio knobs hit.
-            case "DA40_AP_ALT_UP": return StepApValue(simConnect, announcer, "AP_ALT_VAR_INC", "DA40_AP_ALT_SET");
-            case "DA40_AP_ALT_DN": return StepApValue(simConnect, announcer, "AP_ALT_VAR_DEC", "DA40_AP_ALT_SET");
-            case "DA40_AP_VS_UP":  return StepApValue(simConnect, announcer, "AP_VS_VAR_INC", "DA40_AP_VS_SET");
-            case "DA40_AP_VS_DN":  return StepApValue(simConnect, announcer, "AP_VS_VAR_DEC", "DA40_AP_VS_SET");
-            case "DA40_AP_IAS_UP": return StepApValue(simConnect, announcer, "AP_SPD_VAR_INC", "DA40_AP_IAS_SET");
-            case "DA40_AP_IAS_DN": return StepApValue(simConnect, announcer, "AP_SPD_VAR_DEC", "DA40_AP_IAS_SET");
-            case "DA40_AP_HDG_UP": return StepApValue(simConnect, announcer, "HEADING_BUG_INC", "DA40_AP_HDG_SET");
-            case "DA40_AP_HDG_DN": return StepApValue(simConnect, announcer, "HEADING_BUG_DEC", "DA40_AP_HDG_SET");
-            case "DA40_AP_CRS_UP": return StepApValue(simConnect, announcer, "VOR1_OBI_INC", "DA40_AP_CRS_SET");
-            case "DA40_AP_CRS_DN": return StepApValue(simConnect, announcer, "VOR1_OBI_DEC", "DA40_AP_CRS_SET");
         }
 
         return false;
     }
 
-    /// <summary>
-    /// Fire one detent and let the value's own settle announcer say where it landed.
-    ///
-    /// ⚠️ IT DOES NOT ANNOUNCE HERE, DELIBERATELY, and that is the opposite of what the
-    /// typed setters do. A typed set is ONE value the pilot already knows, so saying it
-    /// back confirms it landed; a detent is one of a BURST, and announcing each would read
-    /// a sweep from 5,000 to 9,000 feet as forty separate numbers - the recital the radio
-    /// read-back exists to avoid. The settle announcer already watches these five values,
-    /// already waits for the knob to stop, and already speaks the resting number, so the
-    /// step only has to mark the write as ours and get out of the way.
-    /// </summary>
-    private bool StepApValue(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
-        string stockEvent, string valueKey)
-    {
-        MarkRadioSetByUs(valueKey);
-        simConnect.ExecuteCalculatorCodeUnique($"1 (>K:{stockEvent})");
-        return true;
-    }
 }

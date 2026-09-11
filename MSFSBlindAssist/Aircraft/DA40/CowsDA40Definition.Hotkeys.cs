@@ -114,18 +114,34 @@ public partial class CowsDA40Definition
             stbyInHg = ToInHg(stbyEntered);
         }
 
+        // ⚠️ WRITE ONLY WHAT THE PILOT ASKED FOR. The dialog has a Set button per altimeter
+        // and a "Set all"; SetFieldIndex says which was pressed (-1 all, 0 main, 1 standby).
+        // Before this it had ONE button, named "Set Main altimeter setting" and writing
+        // BOTH - reported from the cockpit as "there is only a set main button, there's no
+        // set standby button, and you can't set them individually unless you go to the
+        // panel itself".
+        bool doMain = dialog.SetFieldIndex is -1 or 0;
+        bool doStby = dialog.SetFieldIndex is -1 or 1;
+
         // ⚠️ THE TWO ALTIMETERS TAKE DIFFERENT TRANSPORTS - see this method's own summary.
         // The G1000 subscale is the stock unindexed K:KOHLSMAN_SET in millibars times
         // sixteen; the standby is a real L:var written through the calculator.
-        simConnect.ExecuteCalculatorCode(
-            $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
-        SetStandbyBaro(simConnect, stbyInHg);
+        if (doMain)
+        {
+            simConnect.ExecuteCalculatorCode(
+                $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+        }
+        if (doStby) SetStandbyBaro(simConnect, stbyInHg);
         MarkBaroSetByUs();
 
         // Say them SEPARATELY when they differ, and as one phrase when they do not. A pilot
         // who deliberately set them apart needs to hear that it took; one who set them the
-        // same does not need the same number read twice.
-        announcer.AnnounceImmediate(BaroSetPhrase(mainInHg, stbyInHg));
+        // same does not need the same number read twice. A single-altimeter set names that
+        // altimeter, because saying "both" over one write would be a lie.
+        announcer.AnnounceImmediate(
+            doMain && doStby ? BaroSetPhrase(mainInHg, stbyInHg)
+            : doMain ? $"Main altimeter set, {BaroBothUnits(mainInHg)}"
+                     : $"Standby altimeter set, {BaroBothUnits(stbyInHg)}");
         return true;
     }
 
@@ -137,10 +153,16 @@ public partial class CowsDA40Definition
     /// tell which - "Both altimeters set" over two different numbers would hide exactly the
     /// state the standby exists to reveal.
     /// </summary>
+    /// <summary>
+    /// One setting in both units, the app-wide spelling. Shared so a single-altimeter set
+    /// and a both-altimeter set can never drift into two renderings of one number.
+    /// </summary>
+    internal static string BaroBothUnits(double inHg) =>
+        $"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches";
+
     internal static string BaroSetPhrase(double mainInHg, double stbyInHg)
     {
-        static string P(double inHg) =>
-            $"{inHg * 33.8639:0} hectopascals, {inHg:0.00} inches";
+        static string P(double inHg) => BaroBothUnits(inHg);
 
         // A hundredth of an inch is the knob's own detent, so anything smaller is rounding
         // rather than a real difference.

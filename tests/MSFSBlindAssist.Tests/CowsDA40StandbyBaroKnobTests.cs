@@ -56,9 +56,14 @@ public class CowsDA40StandbyBaroKnobTests
         // pilot tabs through forever to reach the two rows that do the work. The knob feel
         // still exists where it belongs - the PFD bezel keys in the display window.
         //
-        // ⚠️ NOT A GENERAL REPEAL. The GFC 700's ten step buttons stay, because there the
-        // panel is the ONLY way to step those five values - no bezel key reaches them. The
-        // rule: a step button earns its place only where nothing else can turn that knob.
+        // ⚠️ THIS IS NOW A GENERAL REPEAL, AND THIS COMMENT USED TO SAY THE OPPOSITE. It
+        // read "the GFC 700's ten step buttons stay, because there the panel is the ONLY
+        // way to step those five values" - and the pilot has since ruled the other way, for
+        // the whole aeroplane: "any step up and step down should not even be present
+        // because hardware will do the step ups and downs, left and rights, while the panel
+        // should just have the edit fields... if it's doable in an editable way, it should
+        // be done with numbers or sliders". The GFC 700 values are reachable by typing and
+        // by Ctrl+A / S / H / V, so the ten buttons were clutter on the longest panel here.
         var def = new CowsDA40Definition(variant);
         var rows = def.GetPanelControls()["Standby Instruments"];
         foreach (string gone in new[]
@@ -71,8 +76,29 @@ public class CowsDA40StandbyBaroKnobTests
             Assert.False(def.GetVariables().ContainsKey(gone), $"{gone} is a dead definition");
         }
 
-        // The GFC 700 half, so the two rulings can never be confused for one.
-        Assert.Contains("DA40_AP_CRS_UP", def.GetPanelControls()["GFC 700"]);
+        // The GFC 700 half - now the SAME ruling, so its steppers must be gone too.
+        var ap = def.GetPanelControls()["GFC 700"];
+        foreach (string gone in new[]
+        {
+            "DA40_AP_ALT_UP", "DA40_AP_ALT_DN", "DA40_AP_VS_UP", "DA40_AP_VS_DN",
+            "DA40_AP_IAS_UP", "DA40_AP_IAS_DN", "DA40_AP_HDG_UP", "DA40_AP_HDG_DN",
+            "DA40_AP_CRS_UP", "DA40_AP_CRS_DN"
+        })
+        {
+            Assert.DoesNotContain(gone, ap);
+            Assert.False(def.GetVariables().ContainsKey(gone), $"{gone} is a dead definition");
+        }
+
+        // ...and the values themselves are still settable, which is the whole point: what
+        // went is two extra controls per value, never the ability to command it.
+        foreach (string kept in new[]
+        {
+            "DA40_AP_ALT_SET", "DA40_AP_VS_SET", "DA40_AP_IAS_SET",
+            "DA40_AP_HDG_SET", "DA40_AP_CRS_SET"
+        })
+        {
+            Assert.Contains(kept, ap);
+        }
     }
 
     [Fact]
