@@ -712,7 +712,7 @@
 
             var title = text(d.querySelector(".popout-dialog-title")) ||
                         (/nearest-airport/.test(cls) ? "Nearest Airports" : "");
-            var lines = [];
+            var lines = A.procChoiceLines(d);
 
             // THE PAGE SELECTOR. What the FMS knob opens: the six page GROUPS across the
             // bottom and the PAGES of whichever group is current. Read as its own shape
@@ -720,7 +720,13 @@
             // this window is the only way a blind pilot can see where the knob is about
             // to take them. The selector closes itself a second or so after the last
             // turn, so what it says is genuinely transient.
-            if (/mfd-pageselect/.test(cls)) {
+            // ⚠️ A STRUCTURED READ MUST WIN OUTRIGHT, NOT MERELY GO FIRST. Seeding `lines`
+            // with the procedure-dialog pairs was not enough: the generic arm below pushes
+            // into the SAME array, so Select Departure announced the three tidy lines AND
+            // then the welded run they were there to replace.
+            if (lines.length) {
+                // Already read properly by procChoiceLines - leave it alone.
+            } else if (/mfd-pageselect/.test(cls)) {
                 var tabs = d.querySelectorAll(".mfd-pageselect-tabs > *");
                 var groups = [];
                 for (var g = 0; g < tabs.length; g++) {
@@ -767,7 +773,14 @@
             // The nearest-airport list has NAMED fields, so it is read as fields rather
             // than as its own textContent - which runs together into "VCBI0200.4 NMILS".
             var items = d.querySelectorAll(".nearest-airport-item");
-            if (items.length) {
+            // ⚠️ AND AGAIN HERE, BECAUSE THIS METHOD HAS THREE SEPARATE if-CHAINS, NOT ONE.
+            // Guarding only the first (the page selector) left this one still pushing into
+            // the same `lines`, so Select Departure kept announcing the three tidy pairs AND
+            // the welded run underneath them. Whatever reads a dialog properly must stop
+            // every later arm, not just the next one.
+            if (lines.length) {
+                // Already read properly above - leave it alone.
+            } else if (items.length) {
                 for (var k = 0; k < items.length; k++) {
                     var it = items[k];
 
@@ -1308,6 +1321,52 @@
         return out;
     };
 
+    // ⚠️ THE PROCEDURE SELECTION DIALOGS HAVE NO GROUPBOX AT ALL, so the boxed reader
+    // never saw them and the generic walk welded them into one run: Select Departure read
+    // back as "DepartureARNE2ZRunway TransitionARNEM: 36L" - the three choices a pilot has
+    // just made, run together, with the runway detached from its own label. Shared by
+    // Select Departure, Select Arrival and Select Approach, so one reader serves all three,
+    // and it is called from BOTH the boxed reader and the popout-dialog reader because
+    // which one sees it depends on how that dialog happens to be built.
+    //
+    // The DOM pairs them properly and the walk was throwing it away: .slctproc-<what>-label
+    // immediately followed by .slctproc-<what>-value, three pairs of them. Take the
+    // children in order and let a label claim the value after it - no class list to keep up
+    // to date, so a fourth field on some other procedure dialog reads correctly the day it
+    // appears.
+    A.procChoiceLines = function (root) {
+        var out = [];
+        if (!root) return out;
+        var proc = root.querySelector(".slctproc-container");
+        if (!proc || !visible(proc)) return out;
+
+        // ⚠️ WHICH AIRPORT THE PROCEDURE BELONGS TO COMES FIRST, and the first cut of this
+        // reader dropped it - the coverage sweep caught "Amsterdam" on Select Departure and
+        // "Milan" on Select Arrival going unread. A departure named without its aerodrome
+        // is the one thing on the dialog a pilot cannot infer. Read through A.wptEntry so
+        // it comes out "EHAM, Amsterdam Schiphol" rather than the generic walk's
+        // "E HAMblank Amsterdam Schiphol" - that box is a per-character scroller.
+        var apt = root.querySelector(".wpt-entry");
+        if (apt && visible(apt)) {
+            var aptLine = A.wptEntry(apt);
+            if (aptLine) out.push("Airport: " + aptLine);
+        }
+
+        var pendingLabel = "";
+        for (var i = 0; i < proc.children.length; i++) {
+            var kid = proc.children[i];
+            if (!visible(kid)) continue;
+            var cls = String(kid.className || "");
+            var body = text(kid);
+            if (cls.indexOf("-label") >= 0) { pendingLabel = body; continue; }
+            if (cls.indexOf("-value") >= 0) {
+                out.push((pendingLabel ? pendingLabel + ": " : "") + (body || "blank"));
+                pendingLabel = "";
+            }
+        }
+        return out;
+    };
+
     A.rowsOf = function (box) {
         var out = [];
 
@@ -1316,6 +1375,20 @@
             var planned = A.flightPlanRows(fpln);
             if (planned.length) return planned;
         }
+
+        // ⚠️ THE PROCEDURE SELECTION DIALOGS WELD INTO ONE RUN, AND THEY ARE THE IFR
+        // WORKFLOW. Select Departure read back as
+        // "DepartureARNE2ZRunway TransitionARNEM: 36L" - the three choices a pilot has just
+        // made, run together, with the runway detached from its own label. Shared by Select
+        // Departure, Select Arrival and Select Approach, so one reader serves all three.
+        //
+        // The DOM pairs them properly and the generic walk was throwing it away: the
+        // container holds .slctproc-<what>-label immediately followed by
+        // .slctproc-<what>-value, three pairs of them. Walk the children in order and let a
+        // label claim the value that follows it - no class list to keep up to date, so a
+        // fourth field on some other procedure dialog reads correctly the day it appears.
+        var procLines = A.procChoiceLines(box);
+        if (procLines.length) return procLines;
 
         // Waypoint entry fields first: they are the typed-into controls, and the generic
         // readers weld their three parts together.
@@ -3203,9 +3276,36 @@
             var a = fp.activeLateralLeg;
             if (!(a >= 0) || a >= fp.length) return "|";
 
+            // ⚠️ A LEG CAN CARRY A FIX AND NO NAME, AND Ctrl+W THEN SAID "UNNAMED LEG".
+            // Reported from the cockpit: Direct-To VCRI, and the waypoint readout went from
+            // naming the previous waypoint to naming nothing at all. A Direct-To leg is
+            // built by the FMS rather than lifted out of a procedure, so `name` can be
+            // empty where an enroute leg's is filled in - and the SimVar is empty too on
+            // this build, so BOTH sources had nothing and the readout was honest but
+            // useless. The fix is still right there on the leg as its ICAO.
+            //
+            // The ident is the LAST whitespace-separated token of an MSFS ICAO string:
+            // "A          VCRI " gives VCRI, "V  ED  SPY  " gives SPY. Taking the token
+            // rather than a fixed slice is what makes it work across facility types, whose
+            // region and airport fields are filled in differently.
+            function identOf(lg) {
+                try {
+                    var icao = lg && lg.leg && lg.leg.fixIcao;
+                    if (!icao) return "";
+                    var parts = String(icao).trim().split(/\s+/);
+                    var last = parts[parts.length - 1] || "";
+                    // A single leading type letter on its own is not an ident.
+                    return last.length > 1 ? last : "";
+                } catch (e) { return ""; }
+            }
+
             function nameAt(n) {
                 if (!(n >= 0) || n >= fp.length) return "";
-                try { var lg = fp.getLeg(n); return (lg && lg.name) ? lg.name : ""; }
+                try {
+                    var lg = fp.getLeg(n);
+                    if (!lg) return "";
+                    return lg.name ? lg.name : identOf(lg);
+                }
                 catch (e) { return ""; }
             }
             return nameAt(a - 1) + "|" + nameAt(a);
