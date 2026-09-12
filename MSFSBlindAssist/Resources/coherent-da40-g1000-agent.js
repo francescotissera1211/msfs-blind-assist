@@ -1378,6 +1378,23 @@
                 pendingLabel = "";
             }
         }
+
+        // ⚠️ AND THE ACTION PROMPT, WHICH IS A SIBLING OF THE CONTAINER AND WAS THEREFORE
+        // DROPPED. "Load?" sits in .slctproc-load NEXT TO the label/value block, not inside
+        // it, so a reader that walked only the container's children lost the one row that
+        // says what ENT will do - the whole point of the dialog. Caught by the coverage
+        // sweep on the XLS, on both Select Departure and Select Arrival, after this reader
+        // replaced the generic walk that had been picking it up by accident.
+        //
+        // It is CLASSED hide-element until the selection is loadable, so reading it
+        // unconditionally would promise an action that is not on offer - the visibility test
+        // is what makes it honest.
+        var load = root.querySelector(".slctproc-load");
+        if (load && visible(load)) {
+            var prompt = text(load);
+            if (prompt) out.push(prompt);
+        }
+
         return out;
     };
 

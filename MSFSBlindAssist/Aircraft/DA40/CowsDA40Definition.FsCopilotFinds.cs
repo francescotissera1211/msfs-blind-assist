@@ -123,6 +123,14 @@ public partial class CowsDA40Definition
     /// </summary>
     private bool TryGetFsCopilotDisplayOverride(string varKey, double value, out string text)
     {
+        // The ECU test button RAMPS - about 0.67 while held, never exactly 1 - so the
+        // reading is whether it is down, not the ramp's current value.
+        if (varKey == "DA40_ECU_TEST_HELD")
+        {
+            text = value > 0.25 ? "Held" : "Not held";
+            return true;
+        }
+
         switch (varKey)
         {
             case "DA40_G1000_MINIMUMS":
@@ -429,9 +437,23 @@ public partial class CowsDA40Definition
         // ---------- WHAT THE PILOT IS HOLDING ----------
         AddFind(v, "DA40_TRIM_AXIS_INPUT", "INPUT_TRIM_AXIS", SimVarType.LVar,
             "Trim Axis Input", "The trim axis, as distinct from the resulting trim position.");
-        AddFind(v, "DA40_ECU_TEST_HELD", "ECU_TEST:1_IsDown", SimVarType.LVar,
+        // ⚠️ "ECU_TEST:1_IsDown" DOES NOT EXIST AND THE ROW COULD ONLY EVER SAY "No". It is
+        // FS Copilot's spelling, taken from its YAML, and grepping the whole installed
+        // package - binary files included - finds ECU_TEST, ECU_TEST1 and ECU_TEST:1 but no
+        // _IsDown of any kind. A missing L:var reads as ZERO rather than failing, which is
+        // exactly how a dead binding survives: the row rendered, said "No", and a pilot
+        // holding the button down would have watched it go on saying "No".
+        //
+        // Same family as the sixteen FS Copilot names already recorded as absent here
+        // (ATT_CAGE_IsDown among them); this one was bound where those were not.
+        //
+        // The real variable is ECU_TEST:1, which this project's own ECU file already
+        // describes: the model declares it ASOBO_GT_Push_Button_Held and RAMPS it, so it
+        // reads about 0.67 while held and never exactly 1. Hence a THRESHOLD rather than a
+        // yes/no on the raw value.
+        AddFind(v, "DA40_ECU_TEST_HELD", "ECU_TEST:1", SimVarType.LVar,
             "ECU Test Button Held", "Whether the button is being held down right now.",
-            "number", "F0", yesNo);
+            "number", "F2");
 
         // ---------- THE STOCK SWITCH MIRRORS ----------
         //

@@ -49,6 +49,27 @@ public partial class CowsDA40Definition
 
         // A genuine 0-100 percentage, so a slider is right here — unlike the trim and the
         // standby subscale, whose ranges MainForm's TrackBar cannot express.
+        //
+        // ⚠️ DO NOT DELETE THESE ON THE STRENGTH OF A PACKAGE GREP. THAT HAS NOW BEEN
+        // ALMOST-DONE TWICE. The controls ARE modelled - both variants carry
+        // Component ID="PASSENGER" holding ASOBO_PASSENGER_Lever_Cabin_Air_Template and
+        // ASOBO_PASSENGER_Lever_Cabin_Heat_Template - but they are named after the
+        // OCCUPANTS, and the air lever's node is PRESSURIZATION_Switch_Bleed on an aeroplane
+        // with no pressurization, so searching the package for "cabin", "heat", "air" or
+        // "vent" finds NOTHING. That search is what deleted the panel the first time.
+        //
+        // ⚠️ AND XMLVAR_CabinHeat / XMLVAR_CabinAir APPEAR NOWHERE IN THE PACKAGE EITHER,
+        // which is expected and is NOT evidence against them: the templates are ASOBO's, so
+        // the variables they declare live in the simulator's base library and not in
+        // cows-da40. Three attempts to confirm the exact names from here all came up
+        // inconclusive rather than negative - the base template could not be located on disk
+        // (streamed), a write-stick test cannot settle it (a nonexistent L:var accepts a
+        // write and reads back perfectly, this project's own Golden Rule), and the L:var
+        // registry is capped at 1000 names which GSX alone exhausts.
+        //
+        // So the binding is UNCONFIRMED, not disproven, and the honest action is to leave a
+        // working-looking control alone. If it is ever shown dead, the fix is to find what
+        // the Asobo template actually declares - not to delete the panel a third time.
         AddCabinLever(v, "DA40_CABIN_HEAT_SET", "XMLVAR_CabinHeat", "Cabin Heat",
             "Engine heat exchanger, so it needs a warm engine. The simulation models no cabin temperature.");
         AddCabinLever(v, "DA40_CABIN_AIR_SET", "XMLVAR_CabinAir", "Cabin Air",

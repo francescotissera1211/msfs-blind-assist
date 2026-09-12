@@ -94,10 +94,22 @@ public partial class CowsDA40Definition
         // the drop from it; never spoken on its own.
         v["DA40_XLS_RPM"] = new SimVarDefinition
         {
-            Name = "GENERAL ENG RPM:1",
+            // ⚠️ THE INDICATION, AND THE ONE PLACE THE NG'S RULE MUST NOT BE INHERITED. The NG
+            // reads PROP_RPM_SENS because DISP_PROP_RPM is quantised to 10 RPM there and
+            // FAILURES_DISP_RPM DOES NOT EXIST on that model, so its tachometer cannot fail.
+            // The XLS is the mirror image, counted in both model directories: it HAS
+            // FAILURES_DISP_RPM (7 references) and no PROP_RPM_SENS at all.
+            //
+            // Injected live: FAILURES_DISP_RPM = 1 took DISP_PROP_RPM from 1020 to ZERO while
+            // (A:GENERAL ENG RPM:1, rpm) went on reading 1013 - so this readout was showing a
+            // blind pilot a perfect RPM off a dead tachometer, the same failure class the NG
+            // went through for oil temperature.
+            //
+            // The 10 RPM quantisation is the accepted cost; a magneto drop is 50-150 RPM.
+            Name = "DISP_PROP_RPM",
             DisplayName = "RPM",
-            Type = SimVarType.SimVar,
-            Units = "rpm",
+            Type = SimVarType.LVar,
+            Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
@@ -107,17 +119,18 @@ public partial class CowsDA40Definition
 
         v["DA40_XLS_MAP"] = new SimVarDefinition
         {
-            Name = "TB_CALC_MAP",
+            // ⚠️ THE INDICATION, NOT THE PHYSICS - see this file's DISP_ note. Was
+            // TB_CALC_MAP, which is the computed manifold pressure in BAR and goes on
+            // reading correctly through a failed gauge. DISP_MAP is what the screen draws,
+            // already in inHg, so the bar conversion goes with it.
+            Name = "DISP_MAP",
             DisplayName = "Manifold Pressure",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            // The variable is BAR. It is rendered as inHg - the conversion the G1000 itself
-            // applies - in TryGetDisplayOverride, never via Scale: Scale is applied only when
-            // MainForm paints a row, and the hotkeys format straight from the cache.
-            Units = "inHg",
+            Units = "number",
             Format = "F1"
         };
 
@@ -135,23 +148,27 @@ public partial class CowsDA40Definition
 
         v["DA40_XLS_FUEL_FLOW"] = new SimVarDefinition
         {
-            Name = "TB_FUEL_FLOW_GPH",
+            // The INDICATION. DISP_FF is already gallons per hour, the same number the
+            // screen shows, and it zeroes with FAILURES_DISP_FF.
+            Name = "DISP_FF",
             DisplayName = "Fuel Flow",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Units = "gallons per hour",
+            Units = "number",
             Format = "F1"
         };
 
         v["DA40_XLS_OIL_PRESSURE"] = new SimVarDefinition
         {
-            Name = "GENERAL ENG OIL PRESSURE:1",
+            // The INDICATION. DISP_OP is already PSI - measured 50.0 against the screen's
+            // "50.0 PSI" - and it zeroes with FAILURES_DISP_OP.
+            Name = "DISP_OP",
             DisplayName = "Oil Pressure",
-            Type = SimVarType.SimVar,
-            Units = "psi",
+            Type = SimVarType.LVar,
+            Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
@@ -161,6 +178,19 @@ public partial class CowsDA40Definition
 
         v["DA40_XLS_OIL_TEMP"] = new SimVarDefinition
         {
+            // ⚠️ STILL THE PHYSICS, AND KNOWINGLY SO - THE ONLY XLS READOUT LEFT THAT IS.
+            // DISP_OT is the indication and zeroes with FAILURES_DISP_OT, so by this file's
+            // own rule it belongs here. It is NOT swapped because it is in FAHRENHEIT
+            // (measured 184.4 against the screen's "183 F") while this quantity's arc table
+            // is in CELSIUS (65 / 110 / 118), and a band is looked up from the RAW value.
+            // Changing the source without moving the arcs in the same breath would put a
+            // green needle in the red, which is worse than the gap it closes.
+            //
+            // The fix is both together: source DISP_OT and restate the arcs as 149 / 230 /
+            // 244 F. Left for a change that can be flown, since an oil-temperature arc is
+            // not something to move on arithmetic alone. DA40_XLS_FUEL_PRESSURE is the same
+            // shape - DISP_FP is psi, its arcs are bar (0.965 / 2.413, which the AFM gives as
+            // 14 and 35 psi).
             Name = "GENERAL ENG OIL TEMPERATURE:1",
             DisplayName = "Oil Temperature",
             Type = SimVarType.SimVar,
@@ -219,9 +249,30 @@ public partial class CowsDA40Definition
     {
         switch (varKey)
         {
+            // ⚠️ NO LONGER CONVERTED FROM BAR. DISP_MAP is the drawn value and is already
+            // inHg; multiplying it again read 447 inHg on a running engine.
             case "DA40_XLS_MAP":
-                displayText = $"{value * BarToInHg:F1} inHg";
+                displayText = $"{value:F1} inHg";
                 return true;
+
+            // ⚠️ THESE THREE NAME THEIR OWN UNIT BECAUSE THEIR SOURCE NO LONGER CARRIES ONE.
+            // They moved from stock SimVars to the DISP_ indications, which are L:vars and
+            // must therefore be registered Units = "number" - and the generic renderer then
+            // appended that word, so the rows read "1010 number, green". The band still comes
+            // from the RAW value, which is the same number in the same unit as before.
+            case "DA40_XLS_RPM":
+                displayText = DA40InstrumentBands.Annotate(varKey, value, $"{value:F0} R P M");
+                return true;
+
+            case "DA40_XLS_OIL_PRESSURE":
+                displayText = DA40InstrumentBands.Annotate(varKey, value, $"{value:F0} psi");
+                return true;
+
+            case "DA40_XLS_FUEL_FLOW":
+                displayText = DA40InstrumentBands.Annotate(
+                    varKey, value, $"{value:F1} gallons per hour");
+                return true;
+
 
             case "DA40_XLS_AFR":
                 displayText = $"{value:F1} to 1";

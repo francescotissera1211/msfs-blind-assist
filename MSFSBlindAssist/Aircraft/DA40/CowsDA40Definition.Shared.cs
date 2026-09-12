@@ -226,7 +226,7 @@ public partial class CowsDA40Definition
 
         // The G1000's VNAV output, polled for the Shift+D readout and never spoken on its own.
         "DA40_VNAV_TOD_DIST",
-        "DA40_VNAV_PATH_AVAIL",
+        "DA40_VNAV_TOD_LEG",
 
         // The XLS's three levers. Cached so the readout hotkeys can say where they are;
         // never spoken on their own - under hardware each would talk several times a second.

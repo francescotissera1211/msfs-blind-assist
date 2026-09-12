@@ -73,7 +73,20 @@ public partial class CowsDA40Definition
     private static void AddVnavReadouts(Dictionary<string, SimVarDefinition> v)
     {
         Add("DA40_VNAV_TOD_DIST", "WTAP_VNav_Distance_To_TOD", "Distance to Top of Descent");
-        Add("DA40_VNAV_PATH_AVAIL", "WTAP_VNav_Path_Available", "Vertical Path Available");
+        // ⚠️ WTAP_VNav_Path_Available DOES NOT EXIST, AND Shift+D COULD NEVER SAY ANYTHING
+        // ELSE. The Working Title autopilot publishes exactly TWO VNAV variables - grepped
+        // over the whole installed package, binary files included:
+        //
+        //     WTAP_VNav_Distance_To_TOD
+        //     WTAP_VNav_TOD_Leg_Index
+        //
+        // and no availability flag of any kind. A missing L:var READS AS ZERO rather than
+        // failing, so the readout answered "No vertical path computed." every single time
+        // and looked like an aeroplane that never computes one.
+        //
+        // The leg index IS the flag: it is -1 when there is no top of descent and the index
+        // of the leg carrying it otherwise (measured live: -1 with no descent planned).
+        Add("DA40_VNAV_TOD_LEG", "WTAP_VNav_TOD_Leg_Index", "Top of Descent Leg");
 
         void Add(string key, string lvar, string label)
         {
@@ -281,7 +294,10 @@ public partial class CowsDA40Definition
     /// <summary>Answers Shift+D — top of descent, from the G1000's own VNAV.</summary>
     private string ComposeTopOfDescentReadout(SimConnectManager simConnect)
     {
-        double avail = simConnect.GetCachedVariableValue("DA40_VNAV_PATH_AVAIL") ?? 0;
+        // A leg index of -1 means the navigator has no top of descent; anything from 0 up is
+        // the leg that carries it. See the definition above for why this is not a flag.
+        double leg = simConnect.GetCachedVariableValue("DA40_VNAV_TOD_LEG") ?? -1;
+        double avail = leg >= 0 ? 1 : 0;
         double tod = simConnect.GetCachedVariableValue("DA40_VNAV_TOD_DIST") ?? 0;
         return GpsWaypointSequencer.ComposeTopOfDescent(avail > 0.5, tod, DistanceText);
     }
