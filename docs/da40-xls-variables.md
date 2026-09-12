@@ -372,3 +372,108 @@ Generated from the package XML by the command in **Method**; `4` is an extractio
 
 `CB_ACN CB_ALT CB_ALT_OVER CB_APT CB_BATT_OVER CB_FAN CB_FUP CB_MAIN ELEC_ALT_ACTUAL_AMPS ELEC_BUS_ESS ELEC_ESS FAILURES_ALT_OVERVOLT FAILURES_CB_ADF FAILURES_CB_ALT_CONT FAILURES_CB_ALT_PROT FAILURES_CB_AV_BUS FAILURES_CB_BATT FAILURES_CB_FUEL_PUMP STATE_ALTERNATOR STATE_CB_ACN STATE_CB_ALT STATE_CB_APT STATE_CB_BAT STATE_CB_FAN STATE_CB_FUP STATE_CB_TAS`
 
+
+## The FS Copilot sweep — what it found and the three rules that decided it
+
+`FsCopilot_v1.2.1/Definitions/COWS_DA40XLS.yaml` is a **third-party inventory of this
+airframe**: a shared-cockpit tool has to enumerate the state that matters or two aircraft
+drift apart, so its `get:` list is a coverage test for READOUTS — none of which is a
+`<Component ID>`, which is all `CowsDA40InteractionSurfaceTests` can see.
+
+**The method, and the two traps it has to dodge.** Enumerate `L:` names from the YAML,
+subtract `GetVariables()` **read from the BUILT ASSEMBLY** (a KEY is not a NAME, and a
+BUTTON's Name is its own key — read the Name column alone and every `RESET_*` plus
+`ATT_CAGE` reads as a gap when the gyro-cage button already holds `ATT_CAGE` from inside
+its setter), then check each survivor against the installed package with a
+**binary-inclusive** scan: `OC_TEMPERATURE`, `ENG_MAG_FOUL_PWR` and `ENG_FUEL_LINE_GRAM`
+are read many times in `Logic.xml` and written **nowhere in any XML** — the WASM gauge
+writes them — and all three are live.
+
+```bash
+# the dump comes from the env-gated CowsDA40VariableDumpTests
+MSFSBA_DUMP_VARS=/tmp/d dotnet test … --filter DumpVariableSurface
+grep -oE '(get|set):\s*L:[A-Za-z0-9_/]+(:[A-Za-z0-9]+)?' COWS_DA40XLS.yaml \
+  | sed -E 's/^(get|set):\s*L://' | sort -u > yaml.txt
+cut -f3 /tmp/d/da40-XLS-vars.tsv | sort -u > bound.txt
+comm -23 yaml.txt bound.txt
+```
+
+⚠️ The name pattern must include `/` and must NOT require a leading `(` — and it still
+truncates the two names carrying a SPACE (`L:GENERAL ENG FAILED:1`,
+`L:KOHLSMAN SETTING HG:2`), which surface as bare `GENERAL` and `KOHLSMAN`. Both are
+already bound.
+
+### Rule 1 — a quantity BEHIND an indication is not bound
+
+`CHT_C:1-4`, `CHT_PROBE:1-4`, `EGT_PROBE:1-4`, `EGT_DELTA:1-4` and `OT_PROBE` are all
+listed and all deliberately absent. Each sits behind an indication this definition already
+reads (`DISP_CHT:n`, `DISP_EGT:n`, `DISP_LEAN_DELTA:n`, the oil-temperature gauge), and the
+XLS models `FAILURES_DISP_CHT` / `FAILURES_DISP_EGT` — so a probe row would show a blind
+pilot a perfect temperature off a dead gauge, defeating a failure class COWS built on
+purpose. A quantity with **no** indication is exposed from the model, because there is
+nothing to defeat. Pinned both ways by `CowsDA40XlsEngineDetailTests`.
+
+### Rule 2 — sixteen names are not in the installed package
+
+The same sixteen the NG's file lists and the NG package lacks: `AFCS_FAIL_AIL/ELE/TRIM`,
+the whole `FAILURES_SENS_*` family, `LIGHTING_PANEL_1`, `LIGHTING_GLARESHIELD_1`,
+`ATT_CAGE_IsDown`, `RESET_ECU`. A row bound to one sits at 0 for ever and reports "no
+failure" about a system nothing watches — worse than absent, because a pilot scans it and
+is reassured.
+
+### Rule 3 — ⚠️ THE XLS SPELLS BLOCK AND OIL DAMAGE WITHOUT AN INDEX
+
+`DAMAGE_BLOCK`, `DAMAGE_OIL` and `HEALTH_OIL` are **unindexed** here. The NG's
+`DAMAGE_BLOCK:1` / `DAMAGE_OIL:1` / `HEALTH_OIL:1` do not exist on this airframe at all, so
+inheriting the NG spelling reads a phantom 0 — indistinguishable from an undamaged engine.
+The full XLS set is `DAMAGE_{BLOCK,OIL,DUST,ENABLED,DISABLED,BLOCK_FAC}`,
+`DAMAGE_CYL:1-4`, `DAMAGE_CYL_FAC:1-4`, `DAMAGE_MAG_FOUL:{1-4}{L,R}`,
+`DAMAGE_MAG_FOUL_RATE:1-4`, `DAMAGE_REDBOX_{FAC,ITS,LOP,ROP}:1-4`, `HEALTH_CYL:1-4`,
+`HEALTH_OIL` — and **no** `HEALTH_BLOCK`, `HEALTH_FUEL`, `DAMAGE_FUEL` or `DAMAGE_TURBO`.
+
+The `DAMAGE_REDBOX_*` set is read and deliberately **not** shown: `ITS:n` holds its last
+value once the box closes (19.7 with the engine stopped), so a row would report a box that
+shut minutes ago. MSFSBA recomputes the box from its inputs.
+
+## The Engine Variation panel (Simulation)
+
+⚠️ **This is the set whose all-zero state makes the aeroplane silently unstartable** — the
+trap documented above. Fuel pressure is a PRODUCT of `FUEL_SPREAD_PRESSURE` and the idle
+jet is multiplied by `SPREAD_INJ_TRIM`, so a zero spread is zero fuel, structurally and for
+ever, with no CAS message and no failure flag. `SPREAD_SET` and `CYL_SPREAD_SET` are the
+latches that gate regeneration and both read 1 — "already done" — in the trapped state, so
+the panel shows them and says to judge by the numbers, not by the latch.
+
+Read-only, one row each: `FUEL_SPREAD_PRESSURE`, `SPREAD_INJ_TRIM`, `SPREAD_OP`,
+`SPREAD_OC`, `OP_SPREAD_BYPASS`, `SPREAD_ROUGH`, `MAG_SPREAD_TIMING`, `SPREAD_AIR`,
+`SPREAD_ALT`, `SPREAD_ALT_OFF`, `THROTTLE_SPREAD`, `PROP_SPREAD_LO`/`_HI` (rpm — the
+governor's own travel, 1469.86/2676.38 on the probed engine), `CYL_SPREAD_EGT:1-4`,
+`CYL_SPREAD_INJ:1-4`, `CYL_SPREAD_COOL:1-4`, `SPREAD_SET`, `CYL_SPREAD_SET`.
+
+## Priming, line by line (Priming panel)
+
+The Lycoming has no primer: the idle jet loads the induction with the pump on and the
+mixture forward. MSFSBA already read the charge sitting OUTSIDE the cylinders; what it
+never read is the **fuel system itself filling**. Thresholds are the model's own:
+
+| Reading | Primes above | Drops below |
+|---|---|---|
+| `ENG_FUEL_SYSTEM_GRAM` → `ENG_FUEL_SYSTEM_PRIMED` | 18 g (capped at 20) | 1 g |
+| `ENG_FUEL_LINE_GRAM:S` → `ENG_FUEL_LINE_PRIMED:S` (the spider) | 2.49 g | 0.2 g |
+| `ENG_FUEL_LINE_GRAM:1-4` → `ENG_FUEL_LINE_PRIMED:1-4` | 1.99 g | 0.2 g |
+
+Plus `START_MIXTURE_START`, which the cockpit start sequence sets.
+
+## Per-plug fouling power (Magnetos panel)
+
+MSFSBA already read how fouled each plug IS (`DAMAGE_MAG_FOUL:{1-4}{L,R}`);
+`ENG_MAG_FOUL_PWR:{1-4}{L,R}` is what that fouling COSTS it, and it is the multiplier the
+firing test is actually compared against (`ENG_MAG_PWR:L/R × (1 − FAILURES_MAG) × rand ×
+ENG_MAG_FOUL_PWR > ENG_MAG_PWR_REQ`). `DAMAGE_MAG_FOUL_RATE:1-4` is how fast it is
+accumulating.
+
+## The oil cooler (Power and Levers)
+
+`OC_TEMPERATURE` (°C) and `OC_THERMOSTAT` have no gauge on this aeroplane, so both are read
+from the model — the oil TEMPERATURE does have one and is read from its indication, which
+is why `OT_PROBE` stays unbound under Rule 1.

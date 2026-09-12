@@ -122,7 +122,9 @@ public partial class CowsDA40Definition
         v["DA40_XLS_EGT_SPREAD"] = new SimVarDefinition
         {
             Name = "CYL_SPREAD_EGT:1",
-            DisplayName = "EGT Spread",
+            // Named to match cylinders 2-4, which live with the rest of the engine's
+            // per-airframe variation on the Engine Variation panel.
+            DisplayName = "Cylinder 1 EGT Variation",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,

@@ -189,6 +189,13 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             // adrift. Removing the panels made every one of those unreachable.
             structure["Simulation"].Remove("FADEC and Sensors");
 
+            // ⚠️ THE ENGINE'S OWN BUILD, and the one page that can explain an aeroplane
+            // that will not start with everything set correctly: POH p.5's performance
+            // variation. An all-zero set is zero fuel pressure, structurally, with no CAS
+            // message and no failure flag - so the numbers have to be scannable.
+            structure["Simulation"].Insert(
+                structure["Simulation"].IndexOf("Engine Damage") + 1, VariationPanel);
+
             // No "Lean Assist" panel. It is an MFD PAGE, reached with the softkeys, so it
             // belongs to the G1000 display window like every other page.
         }
@@ -477,6 +484,16 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // damage model is the Austro's.
         if (IsNG) AddEngineHealth(vars);
 
+        // The XLS engine detail FS Copilot's own definition lists and this one never read:
+        // the engine's per-airframe variation, the priming charge line by line, per-plug
+        // fouling power, the oil cooler, and the damage the XLS spells without an index.
+        if (!IsNG)
+        {
+            foreach (var kv in BuildXlsVariationVariables()) vars[kv.Key] = kv.Value;
+            foreach (var kv in BuildXlsPrimingDetailVariables()) vars[kv.Key] = kv.Value;
+            foreach (var kv in BuildXlsEngineDetailVariables()) vars[kv.Key] = kv.Value;
+        }
+
         return vars;
     }
 
@@ -713,7 +730,17 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) AddRows(d, SimDamagePanel, XlsDamageDisplay());
         if (!IsNG) d[EngineStartPanel] = new List<string>(XlsStartDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
-        if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
+
+        // ⚠️ THESE APPEND AND MUST STAY LAST. Every XLS line above ASSIGNS its panel's
+        // list outright, so an AddRows placed earlier is silently overwritten.
+        if (!IsNG)
+        {
+            d[VariationPanel] = XlsVariationDisplay();
+            AddRows(d, PrimingPanel, XlsPrimingDetailDisplay());
+            AddRows(d, MagnetosPanel, XlsMagnetoDetailDisplay());
+            AddRows(d, PowerPanel, XlsOilCoolerDisplay());
+            AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
+        }
 
         return d;
     }
