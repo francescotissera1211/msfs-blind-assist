@@ -503,7 +503,13 @@ public partial class CowsDA40Definition
 
     private string DescribeLeanAssist()
     {
-        if (!_leanAssistOn) return "Off - Assist softkey on the MFD Engine page";
+        // ⚠️ NAME THE SOFTKEY BY NUMBER. Lean assist is a SOFTKEY, so by this project's own
+        // rule it does not get a panel switch - it belongs to the display window - and that
+        // makes this row the only place a blind pilot learns where it is. "the Assist
+        // softkey" left them walking twelve keys; it is number 10 on the XLS Engine page,
+        // pressed live and watched toggle L:DISP_LEAN_ASSIST 1 to 0.
+        if (!_leanAssistOn)
+            return "Off - MFD Engine page, softkey 10, Assist";
         var parts = new List<string>();
         for (int i = 0; i < DA40CylinderState.CylinderCount; i++)
         {

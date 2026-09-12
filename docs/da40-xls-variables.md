@@ -568,3 +568,31 @@ or pressure unit there would be converted from a base an L:var does not have. Oi
 temperature is declared `"number"` and rendered through `TryUnitText("fahrenheit", …)`, the
 same idiom the cylinder-head rows use, so the band comes from the raw Fahrenheit while the
 figure follows the pilot's G1000 choice.
+
+## Manual lean assist — driven end to end on the live aircraft
+
+| Step | What it is | Verified |
+|---|---|---|
+| 1 | MFD **EIS – Engine** page | page title read back as `EIS - Engine` |
+| 2 | **Softkey 10, "Assist"** | `1 (>H:AS1000_MFD_SOFTKEYS_10)` over the calculator took `L:DISP_LEAN_ASSIST` 1 → 0 |
+| 3 | Lean the mixture | `L:INPUT_MIXTURE` 58.1 → 50: `DISP_EGT:1` 1230 → 1259 with `DISP_LEAN_PEAK:1` following to 1278, `DISP_LEAN_DELTA:1` live at 3 |
+| 4 | The call | a cylinder `PeakedAtF` (10 °F) below its own peak is announced once per session; **the first call is the POH's cue** |
+| 5 | The row | Mixture and Propeller → **Lean Assist** carries all four at any time |
+| 6 | **Set Best Mixture** | the aeroplane's own keybind: Automixture off, it walks the mixture down until the four cylinders average 12.5 : 1 and stops itself; on, it snaps to 72 % |
+
+⚠️ **`DISP_LEAN_ASSIST` IS writable and holds** — measured, no XML writer touches it and
+the MFD plugin only reads it — so a panel switch would work. It is deliberately NOT added:
+a softkey belongs to the display window under this project's own rule. What changed instead
+is that the row now names the key by NUMBER ("MFD Engine page, softkey 10, Assist"), because
+that row is the only place a blind pilot learns where it is.
+
+⚠️ **`DISP_LEAN_HIGHLIGHT` and `DISP_LEAN_DELTA_BIGGEST` have NO writer anywhere** — not
+in any XML, not in the MFD plugin — so neither is bound. Reading one would give a row at 0
+for ever on the one page a pilot leans from.
+
+⚠️ **Clearing the database-acknowledge splash: use a REAL `>`.** Two attempts at
+`1 (&gt;H:AS1000_MFD_ENT_Push)` did nothing because the `>` was still HTML-escaped in the
+string that reached the RPN parser; the un-escaped form cleared it at once
+(`initAcknowledged` true, the screen collapsing to a 0×0 rect under a `hidden` parent). The
+agent's own `visible()` already rejects it correctly on both counts — there was no reader
+bug, only a malformed command, and half an hour went into looking for the former.
