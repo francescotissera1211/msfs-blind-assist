@@ -108,6 +108,13 @@ public partial class CowsDA40Definition
         // ---------- Temperatures: what the bars are drawn from ----------
 
         v["DA40_XLS_EGT_HOT"] = Temperature("DISP_LEAN_HOTEST", "Hottest EGT");
+        // ⚠️ THE EGT BARS CARRY NO ARC, so there is nothing for DA40InstrumentBands to
+        // annotate and no colour a sighted pilot reads either — the limit exists only as a
+        // sentence in the POH ("We recommend not exceeding EGTs of 1350 °F"). It goes in
+        // the help rather than becoming a band: inventing an arc the display does not draw
+        // would hand a blind pilot an instrument the aeroplane has not got.
+        v["DA40_XLS_EGT_HOT"].HelpText =
+            "The POH recommends not exceeding 1350 Fahrenheit. The bars carry no arc.";
         v["DA40_XLS_CHT_HOT"] = Temperature("DISP_CHT_HOT", "Hottest Cylinder Head");
         v["DA40_XLS_CHT_HOT_CYL"] = Capture("DISP_CHT_HOT_CYL", "Hottest Cylinder Number");
         for (int n = 1; n <= DA40CylinderState.CylinderCount; n++)
@@ -150,6 +157,48 @@ public partial class CowsDA40Definition
         }
 
         // ---------- Propeller ----------
+
+        // ---------- The regime the mixture lever is in ----------
+
+        // ⚠️ AUTOMIXTURE IS NOT A COCKPIT SWITCH AND NOT SOMETHING THE PILOT SETS HERE. The
+        // model DETECTS the simulator's own auto-mixture assistance —
+        // `(A:RECIP MIXTURE RATIO:1) * 100 == 9`, or the package's AUTOMIXTURE_FORCE — and
+        // ramps this variable 0 to 1 in fifths, dropping it to 0 in one step when the
+        // assistance goes away (Logic 1805ff). So it is a READ-ONLY row: the setting lives
+        // in the simulator's assistance options, which MSFSBA does not own.
+        //
+        // It matters because it changes the whole fuel regime, and nothing else says so:
+        //
+        //  • The mixture VALVE is bypassed. With it off the lever drives MIXTURE_VALVE and
+        //    the servo meters fuel; with it on the lever picks an air/fuel TARGET
+        //    (AUTOMIXTURE_TARGET: full forward 10 to 1, cut-off 100, a straight line
+        //    between) and the model delivers it (Logic 341-437).
+        //  • THE ENGINE CANNOT BE FLOODED. Every cylinder's outside charge is clamped at
+        //    2 g every tick (Logic 1821ff), which is under the flooded line, so the whole
+        //    hot-start problem the Priming panel exists for cannot arise. Priming is still
+        //    required — the clamp is a ceiling, not a prime.
+        //  • Set Best Mixture snaps to 72 % instead of walking to 12.5 to 1.
+        v["DA40_XLS_AUTOMIXTURE"] = new SimVarDefinition
+        {
+            Name = "AUTOMIXTURE",
+            DisplayName = "Automixture",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            RenderAsReadOnlyStatus = true,
+            // A DESCRIBED STATE, not a number - which is what earns it a call-out under
+            // this aeroplane's own rule and a Ctrl+M row to mute it with. The ramp's
+            // intermediate fifths match no description and are never spoken:
+            // NoteAutomixtureChange consumes every update and speaks only the edge.
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "On"
+            },
+            HelpText = "The simulator's own mixture assistance, detected by the aircraft. "
+                     + "On, the lever sets an air/fuel target and the engine cannot flood."
+        };
 
         v["DA40_XLS_PROP_PRIME"] = new SimVarDefinition
         {
@@ -199,6 +248,9 @@ public partial class CowsDA40Definition
     // hottest, the eight bars, the mixture itself, the states, then the propeller.
     private static readonly List<string> XlsMixtureDisplay = new()
     {
+        // First, because it frames every row under it: with automixture on the lever is
+        // setting a ratio rather than a valve, and the engine cannot be flooded.
+        "DA40_XLS_AUTOMIXTURE",
         "DA40_XLS_LEAN_ASSIST",
         "DA40_XLS_EGT_HOT",
         "DA40_XLS_CHT_HOT",
@@ -495,10 +547,47 @@ public partial class CowsDA40Definition
             case "DA40_XLS_PROP_PRIME":
                 displayText = value >= PropPrimedAt ? "Primed" : $"{value:F1} of 5, cycle the propeller";
                 return true;
+
+            case "DA40_XLS_AUTOMIXTURE":
+                displayText = DescribeAutomixture(value);
+                return true;
         }
 
         displayText = string.Empty;
         return false;
+    }
+
+    /// <summary>
+    /// ⚠️ THE VALUE RAMPS, SO THE EDGE IS WHAT IS SPOKEN, NOT THE NUMBER. The model adds
+    /// 0.2 per tick until it reaches 1 (Logic 1805ff), so the generic announcer would have
+    /// read five steps of a number that means one thing. It is a described state, not a
+    /// quantity, and the two states are the only two worth hearing.
+    /// </summary>
+    public static string DescribeAutomixture(double value)
+        => value >= 1 ? "On" : value <= 0 ? "Off" : "Engaging";
+
+    private bool? _automixtureSpoken;
+
+    /// <summary>
+    /// Speaks the settled edge. Baseline-first: the first reading is recorded and not
+    /// spoken, because a pilot loading the aeroplane into an assistance setting they chose
+    /// has not had anything change. It returns TRUE either way — the generic announcer must
+    /// never read the ramp.
+    /// </summary>
+    private bool NoteAutomixtureChange(string varKey, double value, ScreenReaderAnnouncer announcer)
+    {
+        if (varKey != "DA40_XLS_AUTOMIXTURE") return false;
+
+        bool? now = value >= 1 ? true : value <= 0 ? false : (bool?)null;
+        if (now == null) return true;                    // mid-ramp: nothing settled yet
+        if (_automixtureSpoken == now) return true;
+
+        bool first = _automixtureSpoken == null;
+        _automixtureSpoken = now;
+        if (first || Muted("DA40_XLS_AUTOMIXTURE")) return true;
+
+        announcer.Announce(now == true ? "Automixture on" : "Automixture off");
+        return true;
     }
 
     private string DescribeLeanAssist()
@@ -534,5 +623,6 @@ public partial class CowsDA40Definition
         _foulWorstSpoken = -1;
         _shockSpoken = false;
         _damageSpoken = null;
+        _automixtureSpoken = null;
     }
 }

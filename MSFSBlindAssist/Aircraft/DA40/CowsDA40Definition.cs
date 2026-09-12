@@ -265,7 +265,6 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) controls[FuelPanel] = new List<string>(XlsFuelControls);
         if (!IsNG) controls[EngineStartPanel] = new List<string>(XlsStartControls);
         if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
-        if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
 
         // The aeroplane's four resets. Buttons: actions with no state to read back, and
 
@@ -394,7 +393,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
-        foreach (var kv in BuildOptionVariables())
+        foreach (var kv in BuildOptionVariables(IsNG))
         {
             vars[kv.Key] = kv.Value;
         }
@@ -455,11 +454,6 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             }
 
             foreach (var kv in BuildXlsStartVariables())
-            {
-                vars[kv.Key] = kv.Value;
-            }
-
-            foreach (var kv in BuildXlsMixtureVariables())
             {
                 vars[kv.Key] = kv.Value;
             }

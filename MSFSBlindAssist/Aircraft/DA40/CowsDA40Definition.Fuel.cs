@@ -85,6 +85,18 @@ public partial class CowsDA40Definition
     private double _fuelAuxGal;
 
     /// <summary>
+    /// The valve position, captured as it passes. The emergency-transfer row needs it and
+    /// cannot read it for itself: the valve is a CONTROL, so it is on no display list and
+    /// its own override never runs.
+    /// </summary>
+    private double? _fuelValve;
+
+    private void NoteFuelValveChange(string varKey, double value)
+    {
+        if (varKey == "DA40_FUEL_VALVE") _fuelValve = value;
+    }
+
+    /// <summary>
     /// One tank's load, as a number the pilot types. In GALLONS because that is the unit the
     /// tank is measured in and the number the AFM quotes; the read-back converts into
     /// whatever the G1000 is set to, so a pilot working in litres hears litres back.
@@ -124,7 +136,8 @@ public partial class CowsDA40Definition
                 [1] = "Emergency",
                 [2] = "Off"
             },
-            HelpText = "Emergency feeds from the aux tank. Off is the engine fire drill. Locked until the wire is broken."
+            HelpText = "Emergency feeds from the aux tank and keeps transferring with nothing "
+                     + "to stop it. Off is the engine fire drill. Locked until the wire is broken."
         };
 
         v["DA40_FUEL_WIRE"] = new SimVarDefinition
@@ -300,8 +313,37 @@ public partial class CowsDA40Definition
         // something.
         AddReadout(v, "DA40_FUEL_FEED", "FUEL_FEED_QUANTITY:1", "Available To Engine", "gallons", "F1");
 
+        // ⚠️ IN EMERGENCY THE AEROPLANE THROWS FUEL AWAY AND NOTHING SAYS SO. The POH is
+        // blunt about it: "There is no sensor to stop the transfer of fuel. Fuel will be
+        // pushed overboard if the transfer isn't stopped." The model agrees — with the
+        // valve at Emergency the engine feeds from the aux tank AND the cooling loop pushes
+        // `FUEL_TEMP_ENG_FLOW:1` back into the main every tick, clamped `19.5 min`
+        // (NG Logic 2048ff). Past that clamp the fuel is simply gone.
+        //
+        // Compare the ELECTRIC transfer pump, which is the deliberate contrast: it moves
+        // about a gallon a minute and stops itself at a sensor near 14 gallons. This one has
+        // neither. The rate is the model's own variable rather than a figure recomputed
+        // here, so it tracks RPM exactly as the POH says it does (it is
+        // `PROP RPM / 2300 × 45 / 3600` gallons per SECOND — hence the × 60 in the row).
+        v["DA40_FUEL_XFER_EMERG"] = new SimVarDefinition
+        {
+            Name = "FUEL_TEMP_ENG_FLOW:1",
+            DisplayName = "Emergency Transfer",
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            RenderAsReadOnlyStatus = true,
+            ExcludeFromMonitorManager = true,
+            HelpText = "Aux to main while the valve is at Emergency. Nothing stops it; a full "
+                     + "main tank means the surplus is going overboard."
+        };
+
         return v;
     }
+
+    /// <summary>The main tank's capacity, which the model clamps the transfer against.</summary>
+    private const double FuelMainCapacityGal = 19.5;
 
     private static readonly List<string> FuelControls = new()
     {
@@ -334,6 +376,7 @@ public partial class CowsDA40Definition
         "DA40_FUEL_FEED",
         "DA40_FUEL_PRIMED",
         "DA40_FUEL_TRANSFER_RUNNING",
+        "DA40_FUEL_XFER_EMERG",
         "DA40_FUEL_CB_XFER"
     };
 
@@ -530,6 +573,10 @@ public partial class CowsDA40Definition
                 return true;
             }
 
+            case "DA40_FUEL_XFER_EMERG":
+                displayText = DescribeEmergencyTransfer(_fuelValve, value, _fuelMainGal);
+                return true;
+
             case "DA40_FUEL_DIFFERENCE":
             {
                 double diff = Math.Abs(_fuelMainGal - _fuelAuxGal);
@@ -541,6 +588,30 @@ public partial class CowsDA40Definition
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// What the Emergency position is doing with the fuel, in the POH's own terms.
+    ///
+    /// Pure so it can be tested: the row's three answers are "nothing is moving", "this
+    /// much a minute is moving", and the one that matters — the main tank is against its
+    /// stop, so everything the cooling loop pushes into it from here is lost. The model
+    /// clamps the transfer `19.5 min` and there is no sensor behind that clamp.
+    /// </summary>
+    /// <param name="valve">FUEL_SELECTOR: 0 Main, 1 Emergency, 2 Off. Null before it has read.</param>
+    /// <param name="ratePerSecond">FUEL_TEMP_ENG_FLOW:1, gallons per SECOND.</param>
+    /// <param name="mainGal">The main tank's actual contents.</param>
+    public static string DescribeEmergencyTransfer(double? valve, double ratePerSecond, double mainGal)
+    {
+        if (valve is null) return "Not available yet";
+        if (Math.Abs(valve.Value - 1) > 0.5) return "Not transferring";
+
+        string text = $"{ratePerSecond * 60:0.0} gallons per minute, aux to main";
+        if (mainGal >= FuelMainCapacityGal - 0.05)
+        {
+            text += ". Main tank full, the transfer is going overboard";
+        }
+        return text;
     }
 
     /// <summary>

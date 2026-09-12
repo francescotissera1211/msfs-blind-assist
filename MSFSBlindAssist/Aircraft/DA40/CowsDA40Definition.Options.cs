@@ -81,17 +81,33 @@ public partial class CowsDA40Definition
         };
     }
 
-    private static Dictionary<string, SimVarDefinition> BuildOptionVariables()
+    private static Dictionary<string, SimVarDefinition> BuildOptionVariables(bool isNg)
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
+        // ⚠️ THE POH NAMES WHAT STATE SAVING DOES *NOT* CARRY, and the list is not
+        // guessable: canopy and window positions, the parking position, the alternator
+        // masters, the ignition switch position, and the electric, alternator and engine
+        // masters. It also does not restore at all when the flight starts on the RUNWAY or
+        // in the AIR. So a pilot who shut down tidily and reloads on a runway gets the
+        // masters wherever the sim put them, not where they left them.
         AddOptionSwitch(v, "DA40_OPT_STATE_SAVING", "STATE_SAVING_ENABLED",
             "State Saving", "Off - load factory fresh", "On - restore last state",
-            "Off makes the NEXT load take factory defaults, including full batteries.");
+            "Off makes the NEXT load take factory defaults, including full batteries. "
+                + "Masters, ignition, doors and parking position are never saved.");
 
+        // The POH's own list of what inflicts damage, split by airframe: improper warmup,
+        // overheating, oil starvation, overspeeding and unfiltered dirty air on both;
+        // improper leaning, shock cooling and lead fouling on the XLS; sustained load above
+        // 92 percent and improper cooldown on the NG (the Austro is water-cooled, so it is
+        // immune to the shock cooling the Lycoming is not).
         AddOptionSwitch(v, "DA40_OPT_DAMAGE", "DAMAGE_ENABLED",
             "Engine Damage Modelling", "Off", "On",
-            "When on, mishandling the engine does lasting damage that survives a reload.");
+            isNg
+                ? "Damage survives a reload. Warmup, overheating, oil starvation, "
+                    + "overspeeding, dirty air, load above 92 percent, poor cooldown."
+                : "Damage survives a reload. Warmup, overheating, oil starvation, "
+                    + "overspeeding, dirty air, leaning, shock cooling, lead fouling.");
 
         AddOptionSwitch(v, "DA40_OPT_REALISTIC_PARK_BRAKE", "REALISTIC_PARKING_BRAKE",
             "Realistic Parking Brake", "Simplified", "Realistic",
@@ -157,6 +173,22 @@ public partial class CowsDA40Definition
         AddOptionNumber(v, "DA40_OPT_TRIM_SPEED", "INPUT_TRIM_SPEED",
             "Electric Trim Speed",
             "Scales how fast the electric trim runs. The model forces 1 if it is ever 0.");
+
+        // ⚠️ XLS ONLY, AND THE ONE OPTION THE NG'S MENU DOES NOT CARRY. The POH's two
+        // screenshots of the same menu differ by exactly this row and Priming Assist (which
+        // the Priming panel already owns as DA40_PRIME_ASSIST_OPTION), so a variant-blind
+        // options list was offering the NG a switch its aeroplane does not have.
+        //
+        // It is for pilots with no starter hardware: pulling the MIXTURE lever back engages
+        // the starter, and pushing it forward once the engine fires completes the start.
+        // ⚠️ The ignition must be at BOTH or the starter will not engage at all, which is
+        // the half that reads as a broken option.
+        if (!isNg)
+        {
+            AddOptionSwitch(v, "DA40_OPT_START_MIXTURE", "START_MIXTURE",
+                "Engage Starter with Mixture", "Off", "On",
+                "Pulling the mixture back cranks. Needs the ignition at Both.");
+        }
 
         return v;
     }

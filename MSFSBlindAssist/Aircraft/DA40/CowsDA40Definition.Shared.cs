@@ -212,6 +212,12 @@ public partial class CowsDA40Definition
 
         "DA40_FUEL_MAIN_ACTUAL",
         "DA40_FUEL_AUX_ACTUAL",
+
+        // The NG's emergency transfer rate. Batched so its row can be composed from the
+        // valve and the tank beside it; silent because it is a rate, and because it is
+        // non-zero whenever the propeller turns, valve or no valve.
+        "DA40_FUEL_XFER_EMERG",
+
         "DA40_GROSS_WEIGHT",
         "DA40_AIRSPEED",
         "DA40_TRIM_SET",
@@ -286,9 +292,16 @@ public partial class CowsDA40Definition
         // entry or a fouling warning could be announced twice, and any state the method
         // latches was advanced two steps per update.
         NoteXlsMixtureChange(varName, value, announcer);
+        // The XLS's mixture REGIME. Returns true so the generic announcer never reads the
+        // ramp; it speaks the settled edge itself. Above the silence gate because it is a
+        // state, not one of the captured numbers.
+        if (NoteAutomixtureChange(varName, value, announcer)) return true;
         // What the POH's performance tables are entered with - altitude, temperature and
         // the power being made. Every one is already batched and already passes here.
         NotePerfTableValue(varName, value);
+        // The NG fuel valve, so the emergency-transfer row can say whether anything is
+        // moving. A control is on no display list, so its own override never runs.
+        NoteFuelValveChange(varName, value);
 
         if (IsSilentCachedReadout(varName)) return true;
 

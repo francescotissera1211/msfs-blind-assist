@@ -260,13 +260,25 @@ plugin's — and is not built on.
 | The XLS plugin registers `Da40EnginePage` / `Da40ChecklistPage` / `Da40ChecklistSelectionPopup` / `Da40ChecklistCategorySelectionPopup` — the NG's are `Da40Ng…`. Its EIS strip nests MAN IN and RPM as `.eis-dial-gauge`, its Engine page is `.da40-engine-page` with double dials (Oil °F/PSI, Fuel GPH/PSI) and digit-less bar charts | live DOM dumps |
 | **Mag check at 2212 rpm**: right alone 2098 (−114), left alone 2133 (−79), differential 35 — inside the AFM's 175 / 50 | read |
 
+## The assistance layer — read from the model, because the POH only names it
+
+| Fact | Evidence |
+|---|---|
+| **`AUTOMIXTURE` is DETECTED, never set.** `(A:RECIP MIXTURE RATIO:1, ratio) 100 * 9 ==` OR `(L:AUTOMIXTURE_FORCE)` ramps it `+0.2` a tick to 1; the else-branch writes 0 in one step. So 0.2–0.8 is the ramp and means nothing — only the ends are states | Logic 1805–1819; forced live 0 → 1 and back |
+| With it set, `MIXTURE_VALVE` is bypassed entirely: the lever writes `AUTOMIXTURE_TARGET` instead (>95 % → 10, 5–95 % → `20 − (pos/100 − 0.05)/0.9 × 10`, <5 % → 100) and `AUTOMIXTURE_TARGET_FF` delivers it | Logic 341–437 |
+| **The engine cannot be flooded with it on**: every `ENG_FUEL_OUTSIDE_CYL_GRAM:n` above 2 is written back to 2, each tick. Priming is still required — the clamp is a ceiling, not a prime | Logic 1821–1849 |
+| `MIXTURE_SET_BEST` snaps to 72 % rather than walking to 12.5 to 1 | Inputs.xml 168 |
+| **`START_MIXTURE` is the "Engage Starter w/ Mixture" option** (XLS only; the NG's MFD menu has no such row). Its gate: `INPUT_MIXTURE == 0` AND `STARTER_SWITCH == 3` (BOTH) or 4 AND `START_MIXTURE == 1` AND `ENG_COMP_RPM < 500`. ⚠️ With the key anywhere but BOTH the option is a silent no-op | IN.xml 176–197; read 0 live |
+| `ASSIST_PRIME` is the "Priming Assist" option; `ASSIST_PRIME_ACTIVE` is 1 only with the option on, the pump on and under 500 rpm; `ASSIST_PRIME_PERCENT` is `(system + cylinders) / (required + 10.5) × 100`, clamped 0–150 — so 100 % is the computed requirement. ⚠️ The POH says a HOT start may fire below the green area, which is why MSFSBA derives its own priming state from the cylinders instead | Logic 4633–4652; POH p.17 |
+
 ## Still open
 
 - **Cruise** — the plan's third point; needs the aircraft flown.
 - `RPM_SENS_*` and `OP_PROP_OIL_PRIME` meaning.
-- The POH's cruise power tables (p.8–9: MAP and fuel flow for 45–75 % by altitude and rpm) are
-  not transcribed yet — a blind pilot cannot read them, and a readout keyed on pressure altitude and
-  rpm would replace the page. Scanned PDF: transcribe from the image and have a human check it.
+- ~~The POH's cruise power tables~~ **DONE** - all twelve columns are in
+  `DA40PerformanceTables.XlsCruise`, and `DA40_XLS_CRUISE_TABLE` on Power and Levers reads them
+  BACKWARDS from the live RPM and manifold pressure. The shaded recommended bands are deliberately
+  NOT transcribed: they cannot be read off the image with enough confidence to state as fact.
 - Lean assist in the cruise — the mechanics are measured on the ground (above); confirm the
   peaks and the first-to-peak call-out at cruise power.
 - The throttle map, if a panel needs to command an RPM rather than a position.

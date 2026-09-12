@@ -261,7 +261,8 @@ public partial class MainForm
                     TickStyle = TickStyle.None,
                     Size = new Size(240, 40),
                     Name = varKey,
-                    AccessibleName = varDef.DisplayName
+                    AccessibleName = varDef.DisplayName,
+                    AccessibleDescription = varDef.HelpText
                 };
                 if (currentSimVarValues.ContainsKey(varKey))
                 {
@@ -309,6 +310,7 @@ public partial class MainForm
                 controlButton.Size = new Size(240, 25);
                 controlButton.Name = varKey;
                 controlButton.AccessibleName = buttonText;
+                controlButton.AccessibleDescription = varDef.HelpText;
 
                 controlButton.Click += (s2, e2) =>
                 {
@@ -352,6 +354,7 @@ public partial class MainForm
                 readoutBox.Size = new Size(240, 25);
                 readoutBox.Name = varKey;
                 readoutBox.AccessibleName = varDef.DisplayName;
+                readoutBox.AccessibleDescription = varDef.HelpText;
 
                 string initial = "—";
                 if (currentSimVarValues.ContainsKey(varKey))
@@ -376,6 +379,7 @@ public partial class MainForm
                 statusBox.Size = new Size(240, 25);
                 statusBox.Name = varKey;
                 statusBox.AccessibleName = varDef.DisplayName;
+                statusBox.AccessibleDescription = varDef.HelpText;
 
                 // Seed initial text from cached value, falling back to numeric string
                 // and finally to "—" if no value is known yet.
@@ -438,6 +442,7 @@ public partial class MainForm
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
+                    combo.AccessibleDescription = varDef.HelpText;
 
                     // Add items
                     combo.Items.Add("CRANK");
@@ -500,6 +505,7 @@ public partial class MainForm
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
+                    combo.AccessibleDescription = varDef.HelpText;
 
                     // Add items in order (reverse if ReverseDisplayOrder is set)
                     var sortedValues = varDef.ReverseDisplayOrder
@@ -694,6 +700,7 @@ public partial class MainForm
                     combo.Size = new Size(240, 25);
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
+                    combo.AccessibleDescription = varDef.HelpText;
 
                     // Add items in order (reverse if ReverseDisplayOrder is set).
                     // Each distinct label is added ONCE: a composite-encoded field
@@ -809,6 +816,7 @@ public partial class MainForm
                 textBox.Location = new Point(0, 0);
                 textBox.Size = new Size(100, 25);
                 textBox.AccessibleName = $"{varDef.DisplayName} value";
+                textBox.AccessibleDescription = varDef.HelpText;
 
                 // If this _SET field declares a current-value source, pre-fill it
                 // from the cached value on creation AND on focus-in, then select
@@ -836,6 +844,7 @@ public partial class MainForm
                 button.Location = new Point(110, 0);
                 button.Size = new Size(60, 23);
                 button.AccessibleName = $"Set {varDef.DisplayName}";
+                button.AccessibleDescription = varDef.HelpText;
                 
                 button.Click += (s2, e2) =>
                 {
@@ -987,6 +996,7 @@ public partial class MainForm
                 button.Text = varDef.DisplayName;
                 button.Size = new Size(240, 25);
                 button.AccessibleName = varDef.DisplayName;
+                button.AccessibleDescription = varDef.HelpText;
                 
                 button.Click += (s2, e2) =>
                 {

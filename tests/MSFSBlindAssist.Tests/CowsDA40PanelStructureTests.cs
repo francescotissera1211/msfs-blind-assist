@@ -290,7 +290,12 @@ public class CowsDA40PanelStructureTests
         Assert.DoesNotContain("DA40_XLS_MIXTURE_SET", controls);
         Assert.DoesNotContain("DA40_XLS_PROP_SET", controls);
 
-        Assert.Equal("DA40_XLS_LEAN_ASSIST", display[0]);
+        // The REGIME leads, because it changes what every row under it means: with
+        // automixture on the lever is choosing an air/fuel ratio rather than driving the
+        // valve, and the engine cannot be flooded at all. The lean assist follows it -
+        // it is what a pilot actually leaning is listening for.
+        Assert.Equal("DA40_XLS_AUTOMIXTURE", display[0]);
+        Assert.Equal("DA40_XLS_LEAN_ASSIST", display[1]);
         foreach (var key in new[] { "DA40_XLS_CHT_HOT", "DA40_XLS_EGT_HOT", "DA40_XLS_EGT_1", "DA40_XLS_CHT_1",
                      "DA40_XLS_RED_BOX", "DA40_XLS_FOULING", "DA40_XLS_SHOCK_COOLING", "DA40_XLS_CYL_HEALTH",
                      "DA40_XLS_PROP_PRIME", "DA40_XLS_AFR" })
