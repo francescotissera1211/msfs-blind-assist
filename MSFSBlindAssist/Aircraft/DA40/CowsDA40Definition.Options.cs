@@ -46,6 +46,24 @@ public partial class CowsDA40Definition
         };
     }
 
+    /// <summary>A COWS option whose value is one of a named set.</summary>
+    private static void AddOptionEnum(Dictionary<string, SimVarDefinition> v, string key,
+        string lvar, string label, string help, Dictionary<double, string> states)
+    {
+        v[key] = new SimVarDefinition
+        {
+            Name = lvar,
+            DisplayName = label,
+            Type = SimVarType.LVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            Format = "F0",
+            HelpText = help,
+            ValueDescriptions = states
+        };
+    }
+
     /// <summary>A COWS option that carries a number rather than a state.</summary>
     private static void AddOptionNumber(Dictionary<string, SimVarDefinition> v, string key,
         string lvar, string label, string help)
@@ -99,11 +117,36 @@ public partial class CowsDA40Definition
             "G1000 FMA", "Shown", "Hidden",
             "The flight-mode annunciator strip along the top of the PFD.");
 
-        // 0 is off; the model tests 1, 2, 3 and 4 and nothing else. It names none of them,
-        // so neither do we - inventing four labels would be a guess presented as fact.
-        AddOptionNumber(v, "DA40_OPT_FAILURES_MODE", "FAILURES_MODE",
+        // ⚠️ THE MODES HAVE NAMES AND THE AEROPLANE'S OWN MANUAL GIVES THEM. This used to
+        // read "0 is off. The aircraft uses modes 1 to 4; it does not name them", on the
+        // reasoning that inventing labels would be a guess presented as fact. That was the
+        // right instinct and the wrong conclusion: the COWS POH names them in Section I -
+        // Off, Normal, High and Chaos - and the MFD's own menu draws the word.
+        //
+        // The mapping is the MODEL's, not the manual's ordering, read out of
+        // COWS_DA40_Failures.xml so it cannot be a guess:
+        //   1  the timer runs at 1/sec and at 3600 picks rand*134*20 near /20 - a ONE IN
+        //      TWENTY chance of a failure each hour, which is the POH's "Normal, 5 %".
+        //   2  the same timer, but at 3600 it picks rand*134 near - a failure EVERY hour.
+        //   3  the timer jumps 120 per tick while ground speed is at or above 35 kt, so it
+        //      reaches 3600 in thirty ticks: one failure per 30 seconds while moving.
+        //   4  walks FAILURES_RNG every tick with the timer pinned at 0. The POH does not
+        //      list it, so it is described and not named.
+        // ⚠️ The POH says Chaos runs "above 30 knots"; the model's own test is 35, and
+        // the model is what the aeroplane does.
+        AddOptionEnum(v, "DA40_OPT_FAILURES_MODE", "FAILURES_MODE",
             "Random Failures Mode",
-            "0 is off. The aircraft uses modes 1 to 4; it does not name them.");
+            "Normal is about one failure in twenty per hour, High one every hour, Chaos one "
+                + "every thirty seconds above 35 knots. Mode 4 is not in the manual; it "
+                + "steps through the failure list.",
+            new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "Normal",
+                [2] = "High",
+                [3] = "Chaos",
+                [4] = "Stepping"
+            });
 
         // COWS ship a "timer expired" voice alert; this is its setting. Named from their
         // own feature list rather than guessed from the variable.

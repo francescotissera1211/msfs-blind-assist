@@ -1977,30 +1977,53 @@ public class CowsDA40PanelStructureTests
         }
     }
 
-    [Theory]
-    [InlineData(DA40Variant.NG)]
-    [InlineData(DA40Variant.XLS)]
-    public void ResetIsAlwaysAvailable(DA40Variant variant)
+    /// <summary>
+    /// SIX resets, matching the MFD's own Reset Menu one for one - and ⚠️ THE MENU IS NOT
+    /// THE SAME ON BOTH AIRFRAMES, which this test used to assert it was.
+    ///
+    /// The COWS POH lists the menu per variant and the two installed packages agree
+    /// exactly: RESET_ECU and RESET_WIRE are in the NG's XML and NOT in the XLS's, while
+    /// RESET_FLOOD and RESET_PLUGS are in the XLS's and not the NG's. Giving both variants
+    /// the NG set left the XLS with two buttons that wrote L:vars the aeroplane does not
+    /// have - announcing "ECUs reset" and doing nothing - and made the two it does have
+    /// unreachable. Those two are the expensive ones: the XLS is the variant that can be
+    /// FLOODED, and the one that FOULS PLUGS, which MSFSBA reports per plug with no other
+    /// way to clear.
+    ///
+    /// The variable behind Clear Failures is RESET_FAILURES - the vendor document's
+    /// FAILURES_RESET is read by nothing, verified live by watching a raised failure stay
+    /// raised. The state-clearing three are what matter when the aeroplane will not start
+    /// at all: a saved state restored FLAT batteries at VCBI, and only "Reset: ECU" would
+    /// clear an ECU A FAIL the AFM's own procedure could not.
+    /// </summary>
+    [Fact]
+    public void ResetIsAlwaysAvailableAndCarriesEachVariantsOwnMenu()
     {
-        var def = new CowsDA40Definition(variant);
-
-        // SIX, matching the MFD's own Reset Menu one for one. The variable behind the
-        // first is RESET_FAILURES - the vendor document's FAILURES_RESET is read by
-        // nothing, which was verified live by watching a raised failure stay raised.
-        // The three added later are the ones that clear STATE rather than failures, and
-        // they are the ones that matter when the aeroplane will not start at all: a saved
-        // state restored FLAT batteries at VCBI and only "Reset: ECU" would clear an
-        // ECU A FAIL that the AFM's own clearing procedure could not.
         Assert.Equal(new[]
         {
-            "DA40_FAIL_RESET",
             "DA40_FAIL_RESET_DAMAGE",
+            "DA40_FAIL_RESET",
             "DA40_FAIL_RESET_BATT",
             "DA40_FAIL_RESET_ECU",
             "DA40_FAIL_RESET_WIRE",
             "DA40_FAIL_RESET_ALL"
-        }, def.GetPanelControls()["Reset"].ToArray());
-        Assert.Contains("Reset", def.GetPanelStructure()["Simulation"]);
+        }, Ng().GetPanelControls()["Reset"].ToArray());
+
+        Assert.Equal(new[]
+        {
+            "DA40_FAIL_RESET_DAMAGE",
+            "DA40_FAIL_RESET",
+            "DA40_FAIL_RESET_BATT",
+            "DA40_FAIL_RESET_FLOOD",
+            "DA40_FAIL_RESET_PLUGS",
+            "DA40_FAIL_RESET_ALL"
+        }, Xls().GetPanelControls()["Reset"].ToArray());
+
+        foreach (var variant in new[] { DA40Variant.NG, DA40Variant.XLS })
+        {
+            Assert.Contains("Reset",
+                new CowsDA40Definition(variant).GetPanelStructure()["Simulation"]);
+        }
     }
 
     [Fact]

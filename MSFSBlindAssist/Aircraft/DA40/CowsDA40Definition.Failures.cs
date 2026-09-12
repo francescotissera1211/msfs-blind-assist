@@ -214,11 +214,26 @@ public partial class CowsDA40Definition
         // crank, and no amount of reloading helped because the state was reloaded with it.
         // "Reset: ECU" then cleared an ECU A FAIL that the AFM's own clearing procedure -
         // run twice, correctly - could not. The names come from the MFD plugin's own menu.
+        //
+        // ⚠️ AND THE MENU IS NOT THE SAME ON BOTH AIRFRAMES. The COWS POH lists it per
+        // variant (Section I, "Reset menu"), and a scan of the two installed packages
+        // agrees exactly: RESET_ECU and RESET_WIRE appear in the NG's XML 4 and 3 times and
+        // in the XLS's NOT AT ALL, while RESET_FLOOD and RESET_PLUGS appear in the XLS's 3
+        // and 2 times and in the NG's not at all. MSFSBA gave BOTH variants the NG set, so
+        // on the XLS two buttons wrote L:vars that do not exist - a press that announces
+        // "ECUs reset" and does nothing - and the two the XLS really has were unreachable.
+        //
+        // Losing those two is the expensive half. The XLS is the variant that can be
+        // FLOODED - its own start procedure is written around not flooding it - and it is
+        // the one that FOULS PLUGS, which MSFSBA reports per plug on the Mixture panel with
+        // no way to clear. Both are the aircraft's own documented way out.
         AddResetButton(v, "DA40_FAIL_RESET", "Clear Failures");
         AddResetButton(v, "DA40_FAIL_RESET_DAMAGE", "Clear Engine Damage");
         AddResetButton(v, "DA40_FAIL_RESET_BATT", "Reset Batteries");
         AddResetButton(v, "DA40_FAIL_RESET_ECU", "Reset ECUs");
         AddResetButton(v, "DA40_FAIL_RESET_WIRE", "Reset Fuel Valve Safety Wire");
+        AddResetButton(v, "DA40_FAIL_RESET_FLOOD", "Clear Flooded Engine");
+        AddResetButton(v, "DA40_FAIL_RESET_PLUGS", "Clear Spark Plug Fouling");
         AddResetButton(v, "DA40_FAIL_RESET_ALL", "Clear Failures and Damage");
 
         return v;
@@ -459,15 +474,38 @@ public partial class CowsDA40Definition
         "DA40_FAIL_CBT_XPDR",
     };
 
-    private static readonly List<string> SimResetControls = new()
+    /// <summary>The three both airframes have, in the MFD menu's own order.</summary>
+    private static readonly List<string> SharedResetControls = new()
     {
-        "DA40_FAIL_RESET",
         "DA40_FAIL_RESET_DAMAGE",
-        "DA40_FAIL_RESET_BATT",
-        "DA40_FAIL_RESET_ECU",
-        "DA40_FAIL_RESET_WIRE",
-        "DA40_FAIL_RESET_ALL"
+        "DA40_FAIL_RESET",
+        "DA40_FAIL_RESET_BATT"
     };
+
+    /// <summary>The NG's two: the ECUs, and the fuel-valve safety wire it alone has.</summary>
+    private static readonly List<string> NgResetControls = new()
+    {
+        "DA40_FAIL_RESET_ECU",
+        "DA40_FAIL_RESET_WIRE"
+    };
+
+    /// <summary>
+    /// The XLS's two. Flooding empties the engine of fuel and cools the lines; plugs clears
+    /// the fouling. Neither exists on the NG - a diesel cannot be flooded and has no plugs.
+    /// </summary>
+    private static readonly List<string> XlsResetControls = new()
+    {
+        "DA40_FAIL_RESET_FLOOD",
+        "DA40_FAIL_RESET_PLUGS"
+    };
+
+    private static List<string> ResetControlsFor(bool isNg)
+    {
+        var l = new List<string>(SharedResetControls);
+        l.AddRange(isNg ? NgResetControls : XlsResetControls);
+        l.Add("DA40_FAIL_RESET_ALL");
+        return l;
+    }
 
     /// <summary>Every failure panel, for the wiring. NG-only panels are filtered at build.</summary>
     private Dictionary<string, List<string>> FailurePanels(bool isNg)
@@ -500,7 +538,7 @@ public partial class CowsDA40Definition
         var trips = new List<string>(BreakerTripControls);
         if (!isNg) trips.AddRange(XlsBreakerTripControls());
         d["Breaker Trips"] = trips;
-        d[SimResetPanel] = new List<string>(SimResetControls);
+        d[SimResetPanel] = ResetControlsFor(isNg);
         return d;
     }
 
@@ -541,6 +579,16 @@ public partial class CowsDA40Definition
             case "DA40_FAIL_RESET_WIRE":
                 simConnect.SetLVar("RESET_WIRE", 1);
                 announcer.AnnounceImmediate("Fuel valve safety wire restored");
+                return true;
+
+            case "DA40_FAIL_RESET_FLOOD":
+                simConnect.SetLVar("RESET_FLOOD", 1);
+                announcer.AnnounceImmediate("Engine cleared of fuel, lines cooled");
+                return true;
+
+            case "DA40_FAIL_RESET_PLUGS":
+                simConnect.SetLVar("RESET_PLUGS", 1);
+                announcer.AnnounceImmediate("Spark plug fouling cleared");
                 return true;
 
             case "DA40_FAIL_RESET_ALL":
