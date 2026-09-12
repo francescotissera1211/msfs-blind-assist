@@ -34,6 +34,15 @@ public class NativeChecklistReaderTests
                 <CheckpointDesc SubjectTT="Warmup" ExpectationTT="Clue"/>
                 <Clue Name="Idle for 2 min. Up to 50% load."/>
               </Checkpoint>
+              <Block SubjectTT="Starting tips">
+                <Checkpoint>
+                  <CheckpointDesc SubjectTT="Priming" ExpectationTT="Clue"/>
+                  <Clue Name="Use the same throttle position every time."/>
+                </Checkpoint>
+              </Block>
+              <Checkpoint>
+                <CheckpointDesc SubjectTT="After the block" ExpectationTT="Noted"/>
+              </Checkpoint>
             </Page>
             <Page SubjectTT="Before engine start">
               <Checkpoint>
@@ -111,4 +120,74 @@ public class NativeChecklistReaderTests
     {
         Assert.Null(NativeChecklistReader.Render("NO_SUCH_AEROPLANE_12345"));
     }
+    /// <summary>
+    /// ⚠️ A CHECKPOINT INSIDE A &lt;Block&gt; USED TO BE THROWN AWAY. The reader walked only the
+    /// page's DIRECT children, and both DA40 checklists put whole sections inside blocks:
+    /// measured on the installed package, the XLS has 220 checkpoints of which 105 — nearly
+    /// half — were lost, and the NG 29 of 137.
+    /// </summary>
+    [Fact]
+    public void ACheckpointInsideABlockIsRendered()
+    {
+        string text = NativeChecklistReader.RenderFile(Sample());
+
+        Assert.Contains("Use the same throttle position every time.", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>The block's own subject is a real heading and is kept.</summary>
+    [Fact]
+    public void ABlockHeadingIsKept()
+        => Assert.Contains("Starting tips", NativeChecklistReader.RenderFile(Sample()), StringComparison.Ordinal);
+
+    /// <summary>
+    /// A page can mix loose checkpoints with blocks, so the walk is over the page's
+    /// children IN ORDER and the author's sequence survives.
+    /// </summary>
+    [Fact]
+    public void APageThatMixesLooseCheckpointsWithBlocksKeepsItsOrder()
+    {
+        string text = NativeChecklistReader.RenderFile(Sample());
+
+        int warmup = text.IndexOf("Warmup", StringComparison.Ordinal);
+        int block = text.IndexOf("Starting tips", StringComparison.Ordinal);
+        int after = text.IndexOf("After the block", StringComparison.Ordinal);
+
+        Assert.True(warmup >= 0 && block > warmup && after > block,
+            $"order was warmup {warmup}, block {block}, after {after}");
+    }
+
+    /// <summary>
+    /// The XLS's checklist is a DIFFERENT document from the NG's and carries the things the
+    /// scanned POH puts in a chart: the cruise power table by altitude, the three start
+    /// procedures, and the warning that the fuel gauge has a dead zone. Every one of those
+    /// sits inside a Block, so this is the test that would have caught the lost half.
+    /// </summary>
+    [Fact]
+    public void TheRealXlsChecklistCarriesItsPowerTableAndItsStartProcedures()
+    {
+        string? text = NativeChecklistReader.Render("COWS_DA40XLS");
+        if (text is null) return;
+
+        // Inside blocks, every one of them.
+        Assert.Contains("Cold start", text, StringComparison.Ordinal);
+        Assert.Contains("Flooded/Hot start", text, StringComparison.Ordinal);
+        Assert.Contains("Cruise:65%", text, StringComparison.Ordinal);
+        Assert.Contains("Starting tips", text, StringComparison.Ordinal);
+
+        // A table row, to prove the block's contents came with its heading.
+        Assert.Contains("2400RPM", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>The NG's blocks carry its weights, its speeds and the high-altitude notes.</summary>
+    [Fact]
+    public void TheRealNgChecklistCarriesItsWeightsAndSpeeds()
+    {
+        string? text = NativeChecklistReader.Render("COWS_DA40NG");
+        if (text is null) return;
+
+        Assert.Contains("Weights", text, StringComparison.Ordinal);
+        Assert.Contains("Operating speeds", text, StringComparison.Ordinal);
+        Assert.Contains("High Altitude operations", text, StringComparison.Ordinal);
+    }
 }
+

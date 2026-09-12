@@ -123,27 +123,31 @@ public static class NativeChecklistReader
 
             var lines = new List<string>();
 
-            foreach (var checkpoint in page.Elements("Checkpoint"))
+            // ⚠️ A CHECKPOINT CAN SIT INSIDE A <Block>, AND WALKING ONLY THE PAGE'S DIRECT
+            // CHILDREN THREW AWAY NEARLY HALF THE DOCUMENT. Measured against the two files
+            // this reader was written for: the DA40-XLS has 220 checkpoints of which only
+            // 115 are direct children — the other 105 are the cruise power table (four
+            // blocks, 51 rows of manifold pressure and fuel flow by altitude), the three
+            // start procedures (cold, flooded/hot, reprime), the weights, the stall and
+            // operating speeds, the climb figures, and the whole Starting tips and Leaning
+            // sets. The NG loses 29 of 137 the same way, including its own weights, speeds
+            // and the High Altitude operations notes.
+            //
+            // Blocks are ONE LEVEL DEEP in both files and each carries its own SubjectTT,
+            // which is a real heading ("Cruise:65%, 9.5gph (Best Power)") and renders as
+            // one. The walk is over the page's children IN ORDER, so a page that mixes
+            // loose checkpoints with blocks keeps the author's sequence.
+            foreach (var element in page.Elements())
             {
-                var desc = checkpoint.Element("CheckpointDesc");
-                string subject = desc != null ? Attr(desc, "SubjectTT") : "";
-                string expect = desc != null ? Attr(desc, "ExpectationTT") : "";
-
-                // "Clue" is Asobo's word for the expectation column on a NOTE row, so a
-                // checkpoint whose expectation is literally "Clue" is a note and its
-                // subject is the heading for the text that follows.
-                bool isNote = string.Equals(expect, "Clue", StringComparison.OrdinalIgnoreCase);
-
-                if (subject.Length > 0)
+                if (element.Name == "Block")
                 {
-                    lines.Add(isNote || expect.Length == 0 ? subject : subject + " ... " + expect);
+                    string blockTitle = Attr(element, "SubjectTT");
+                    if (blockTitle.Length > 0) lines.Add(blockTitle);
+                    foreach (var inner in element.Descendants("Checkpoint")) RenderCheckpoint(inner, lines);
+                    continue;
                 }
 
-                foreach (var clue in checkpoint.Elements("Clue"))
-                {
-                    string text = Attr(clue, "Name");
-                    if (text.Length > 0) lines.Add("   " + text);
-                }
+                if (element.Name == "Checkpoint") RenderCheckpoint(element, lines);
             }
 
             if (lines.Count == 0) continue;
@@ -153,6 +157,30 @@ public static class NativeChecklistReader
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>One checkpoint: its subject, its expectation, and any clue lines under it.</summary>
+    private static void RenderCheckpoint(XElement checkpoint, List<string> lines)
+    {
+        var desc = checkpoint.Element("CheckpointDesc");
+        string subject = desc != null ? Attr(desc, "SubjectTT") : "";
+        string expect = desc != null ? Attr(desc, "ExpectationTT") : "";
+
+        // "Clue" is Asobo's word for the expectation column on a NOTE row, so a checkpoint
+        // whose expectation is literally "Clue" is a note and its subject is the heading
+        // for the text that follows.
+        bool isNote = string.Equals(expect, "Clue", StringComparison.OrdinalIgnoreCase);
+
+        if (subject.Length > 0)
+        {
+            lines.Add(isNote || expect.Length == 0 ? subject : subject + " ... " + expect);
+        }
+
+        foreach (var clue in checkpoint.Elements("Clue"))
+        {
+            string text = Attr(clue, "Name");
+            if (text.Length > 0) lines.Add("   " + text);
+        }
     }
 
     private static string Attr(XElement e, string name) => e.Attribute(name)?.Value.Trim() ?? "";

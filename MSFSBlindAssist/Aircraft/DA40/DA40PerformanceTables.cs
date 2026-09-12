@@ -24,10 +24,20 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///    before departure by setting max power and comparing the load displayed to the tables
 ///    shown below." A blind pilot had no way to make that check.
 ///
-/// ⚠️ THE SHADED "RECOMMENDED BANDS" ARE NOT TRANSCRIBED. The POH shades some cells light
-/// blue to mark the recommended band for each RPM, and those edges cannot be read off the
-/// page with enough confidence to state as fact - a wrong band is worse than no band. The
-/// numbers themselves are unambiguous and are all here.
+/// ⚠️ THE SHADED "RECOMMENDED BANDS" ARE NOT TRANSCRIBED, AND THEY DO NOT NEED TO BE. The
+/// POH shades some cells light blue to mark the recommended band for each RPM, and those
+/// edges cannot be read off the page with enough confidence to state as fact - a wrong band
+/// is worse than no band. But the aeroplane spells the same thing out in TEXT: the XLS's own
+/// native checklist ("Weights/Speeds/Power table") lists, per power setting and per 1000 ft
+/// from sea level to 17,000, the recommended RPM, manifold pressure and fuel flow - and
+/// MSFSBA reads that file, so the pilot already has it. This class answers the other
+/// question, which the checklist cannot: what the engine is making RIGHT NOW.
+///
+/// That checklist also CONFIRMS this transcription independently. Every cell the two
+/// documents share agrees exactly - 45 % / 1800 at sea level 22.7 in, 55 % / 2000 at
+/// 9,000 ft 21.1 in, 55 % / 2400 at 13,000 ft 17.6 in, 65 % / 2400 at 9,000 ft 20.7 in
+/// and 9.8 gph, 75 % / 2400 at 5,000 ft 24.1 in - which is a stronger check on a figure
+/// read off a scan than any amount of re-reading the same image.
 ///
 /// ⚠️ ALTITUDE IS PRESSURE ALTITUDE and the temperature column of the XLS tables is ISA for
 /// that altitude, not the OAT - the POH prints it only so the pilot can see how far from
