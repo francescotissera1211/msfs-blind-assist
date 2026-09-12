@@ -214,6 +214,57 @@ public class CowsDA40G1000AgentContractTests
     /// key the display does not know — a different thing entirely, and read by the window
     /// rather than spoken.
     /// </summary>
+    /// <summary>
+    /// ⚠️ A ROW IS NEVER NAMED AFTER SOMETHING THAT IS NOT ON SCREEN, OR AFTER A NUMBER.
+    ///
+    /// The PFD's Hold At dialog draws EITHER a leg distance or a leg time and keeps both in
+    /// the DOM. The hidden "4.0 NM" pair registers as the row's FIRST control, so the row
+    /// was named after the branch the page is not drawing and the readout said "4.0: 1" -
+    /// announcing a four-mile leg to a pilot holding for one minute. The same row then
+    /// offered its minute digit as a name for the seconds digits, which names nothing.
+    ///
+    /// Both guards live in A.M.nameByRow and are checked here because the failure is
+    /// invisible except on one dialog of one display.
+    /// </summary>
+    [Fact]
+    public void ARowIsNamedOnlyByAVisibleWord()
+    {
+        string agent = string.Join(" ", Agent()
+            .Split('\u000A')
+            .Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        // Not selectable: the knob cannot reach it, and here it is the hidden branch.
+        Assert.Contains("if (!f || f.able === false) return false;", agent,
+            StringComparison.Ordinal);
+        // A value with no letter in it describes the thing it sits in, it does not name it.
+        Assert.Contains("return /[A-Za-z]/.test(String(f.value || \"\"));", agent,
+            StringComparison.Ordinal);
+        // And the naming value goes through that test rather than round it.
+        Assert.Contains("canName(fields[m]) ? fields[m].value : \"\"", agent,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// ⚠️ EACH BAR CHART HAS ITS OWN DELTA-FROM-PEAK AND THE FIRST IN THE DOM IS HIDDEN.
+    ///
+    /// On the XLS Engine page the EGT chart's block is display:none outside lean assist
+    /// while the CHT chart's is on screen, so one querySelector read the dead copy and the
+    /// visible number was never spoken - the same trap that had the CAS block reading off a
+    /// hidden duplicate. Found by tools/coherent-coverage.js, not by a pilot.
+    /// </summary>
+    [Fact]
+    public void BothTemperatureChartsReportTheirOwnDeltaFromPeak()
+    {
+        string agent = string.Join(" ", Agent()
+            .Split('\u000A')
+            .Where(l => !l.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        Assert.Contains("[\".egt-bar-chart\", egtLabel], [\".cht-bar-chart\", chtLabel]", agent,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("temps.querySelector(\".bar-chart-delta-peak\")", agent,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void UnselectableIsAlwaysSpokenAsDimmed()
     {

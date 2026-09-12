@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 14;
+    A.VERSION = 16;
 
     function visible(el) {
         if (!el) return false;
@@ -1973,9 +1973,19 @@
             var chtLabel = text(temps.querySelector(".cht-bar-chart .bar-chart-label")) || "CHT °F";
             lines.push("  " + egtLabel + " - cylinder " + egt.join(", "));
             lines.push("  " + chtLabel + " - cylinder " + cht.join(", "));
-            var peak = temps.querySelector(".bar-chart-delta-peak");
-            if (peak && visible(peak)) {
-                lines.push("  " + (text(peak.querySelector(".delta-peak-label")) || "Delta peak:") + " " +
+            // ⚠️ EACH CHART HAS ITS OWN DELTA-FROM-PEAK, AND THE FIRST ONE IN THE DOM IS
+            // THE HIDDEN ONE. The EGT chart's block is display:none outside lean assist
+            // while the CHT chart's is on screen, so a single querySelector read the dead
+            // copy and the visible number was never spoken - the same trap that made the
+            // CAS block read off a hidden duplicate. Walk both, name which chart each
+            // belongs to, and emit only the ones actually showing.
+            var charts = [[".egt-bar-chart", egtLabel], [".cht-bar-chart", chtLabel]];
+            for (var ch = 0; ch < charts.length; ch++) {
+                var host = temps.querySelector(charts[ch][0]);
+                var peak = host && host.querySelector(".bar-chart-delta-peak");
+                if (!peak || !visible(peak)) continue;
+                lines.push("  " + charts[ch][1] + " " +
+                           (text(peak.querySelector(".delta-peak-label")) || "Delta peak:") + " " +
                            (text(peak.querySelector(".delta-peak-value")) || ""));
             }
             lines.push("  Lean assist: " + (A.lvar("L:DISP_LEAN_ASSIST", 0) > 0.5 ? "on" : "off"));
@@ -2695,11 +2705,32 @@
         // rowOf() gives "" and every one of them is skipped here - without that, they would
         // read as one row and thirteen fields would be labelled with the first one's value.
         // Row naming applies only where the instrument actually nested the controls.
+        // ⚠️ TWO THINGS CANNOT NAME A ROW, AND THE HOLD DIALOG HAD BOTH.
+        //
+        // Its leg row draws EITHER a distance or a time, and keeps both in the DOM: the
+        // hidden "4.0 NM" pair registers as the row's FIRST control and the visible time
+        // digits follow it. So the row was named after the alternative that is not on
+        // screen, and the readout said "4.0: 1" - announcing a four-mile leg to a pilot
+        // holding for one minute. The same row then offers its minute digit as a name for
+        // the seconds digits, which names nothing at all.
+        //
+        //   - A field that is NOT SELECTABLE is not the row's subject. The knob cannot
+        //     reach it, and here it is the branch the page is not drawing.
+        //   - A value with NO LETTER IN IT cannot be a name. "4.0" and "1" describe the
+        //     thing they sit in; only a word can say what the thing IS.
+        //
+        // A row that has neither leaves its later fields unlabelled, which reads as the
+        // bare value - imperfect, and still better than a confident wrong one.
+        var canName = function (f) {
+            if (!f || f.able === false) return false;
+            return /[A-Za-z]/.test(String(f.value || ""));
+        };
+
         var firstOfRow = {};
         for (var m = 0; m < fields.length; m++) {
             var r = rowOf(fields[m].p);
             if (!r) continue;
-            if (!(r in firstOfRow)) { firstOfRow[r] = fields[m].value || ""; continue; }
+            if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
             // Not the first of its row, and carrying no label of its own.
             if (!fields[m].label && firstOfRow[r]) fields[m].label = firstOfRow[r];
         }

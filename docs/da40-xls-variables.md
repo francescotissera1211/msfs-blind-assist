@@ -507,3 +507,36 @@ accumulating.
 `OC_TEMPERATURE` (°C) and `OC_THERMOSTAT` have no gauge on this aeroplane, so both are read
 from the model — the oil TEMPERATURE does have one and is read from its indication, which
 is why `OT_PROBE` stays unbound under Rule 1.
+
+## The XLS display walk — what `tools/coherent-coverage.js` found
+
+Swept both displays against the live XLS. **PFD: 0 page-specific unread items across 15
+real pages. MFD: 2 across 17**, and both are deliberate.
+
+Two real holes closed, both the SAME trap — *the first `querySelector` match is not always
+the one on screen* — and neither findable by reading code:
+
+- **The XLS Engine page's △ Peak.** Each bar chart has its own delta-from-peak block, and
+  the EGT chart's is `display:none` outside lean assist while the CHT chart's is on screen.
+  A single `querySelector(".bar-chart-delta-peak")` read the hidden one, so the number a
+  sighted pilot could see was never spoken. Both charts are now walked and named.
+- **A row named after something not on screen.** The PFD's Hold At dialog draws EITHER a
+  leg distance or a leg time and keeps both in the DOM; the hidden "4.0 NM" pair registers
+  as the row's FIRST control, so `A.M.nameByRow` named the visible time digits after it and
+  the readout said **"4.0: 1"** — announcing a four-mile leg to a pilot holding for one
+  minute. Two guards now: a field that is not SELECTABLE cannot name its row, and neither
+  can a value with no LETTER in it (a minute digit named the seconds digits).
+
+The two MFD survivors:
+
+| Survivor | Why it stays |
+|---|---|
+| `x100` | The RPM dial's scale legend. The strip already reads the real value ("RPM: 1020"); a legend on a dial says nothing about the aeroplane. |
+| `CHKLST - Checklist` | The nav data bar's own abbreviation for a page MSFSBA already announces as "EIS - Checklist". |
+
+⚠️ **RESIDUAL, NOT FIXED, and it wants flying before it is guessed at.** The Hold At
+dialog's leg time is three separate spinner controls — the minute and the two seconds
+digits — so it reads as three rows ("1", "Leg Time1: 0", "Leg Time1: 0") rather than one
+"Leg Time 1:00". The whole hold still reads correctly in the block below the fields
+("Hold South of Course 000° Inbound Leg Time 1:00 Turns Right"), so nothing is missing;
+what is wrong is how the three editable digits announce while the knob walks them.
