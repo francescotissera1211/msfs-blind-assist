@@ -13,9 +13,12 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// KEY is not a NAME and a BUTTON's Name is its own key (reading the Name column alone
 /// invents gaps: every RESET_*, and ATT_CAGE, which the gyro-cage button already holds
 /// from inside its setter). Every survivor was then checked against the INSTALLED package
-/// with a binary-inclusive scan, because a variable written only by the WASM gauge does
-/// not appear in any XML — OC_TEMPERATURE, ENG_MAG_FOUL_PWR and ENG_FUEL_LINE_GRAM are all
-/// read many times and written nowhere in the XML, and all three are live.
+/// with a binary-inclusive scan, and every one of them has a writer in the model's own
+/// Logic.xml — `ENG_MAG_FOUL_PWR:nX` is `sqrt(DAMAGE_MAG_FOUL:nX / 100) * 0.8`, so its
+/// resting 0 is a CLEAN PLUG and not a phantom. ⚠️ A first pass reported three of these as
+/// "written nowhere in the XML, so the WASM must write them"; that was a grep of mine
+/// that silently matched nothing, not a finding. A zero proves nothing either way — find
+/// the writer.
 ///
 /// ⚠️ FIVE NAMES THE YAML LISTS ARE DELIBERATELY NOT BOUND, and the reason is the DISP_
 /// rule: `CHT_C:n`, `CHT_PROBE:n`, `EGT_PROBE:n`, `EGT_DELTA:n` and `OT_PROBE` all sit
@@ -52,22 +55,43 @@ public partial class CowsDA40Definition
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
+        // The range beside each one is the model's OWN generation range, read off the
+        // block that rolls them (Logic 5540ff) - without it the number means nothing, and
+        // the whole point of the panel is telling a healthy engine from the trapped one.
         XlsNum(v, "DA40_XLS_VAR_INJ_TRIM", "SPREAD_INJ_TRIM", "Injector Trim",
-            "Multiplies the idle jet. Zero is the unstartable state.");
-        XlsNum(v, "DA40_XLS_VAR_OIL_PRESSURE", "SPREAD_OP", "Oil Pressure Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_OIL_COOLING", "SPREAD_OC", "Oil Cooling Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_OIL_BYPASS", "OP_SPREAD_BYPASS", "Oil Bypass Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_ROUGHNESS", "SPREAD_ROUGH", "Roughness Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_MAG_TIMING", "MAG_SPREAD_TIMING", "Magneto Timing Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_AIR", "SPREAD_AIR", "Induction Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_ALT", "SPREAD_ALT", "Alternator Variation", "");
-        XlsNum(v, "DA40_XLS_VAR_ALT_OFF", "SPREAD_ALT_OFF", "Alternator Offset", "");
-        XlsNum(v, "DA40_XLS_VAR_THROTTLE", "THROTTLE_SPREAD", "Throttle Variation", "");
+            "The mean of the four injector variations. Multiplies the idle jet.");
+        XlsNum(v, "DA40_XLS_VAR_OIL_PRESSURE", "SPREAD_OP", "Oil Pressure Variation",
+            "0.95 to 1.05.");
+        XlsNum(v, "DA40_XLS_VAR_OIL_COOLING", "SPREAD_OC", "Oil Cooling Variation",
+            "0.9 to 1.1.");
+        XlsNum(v, "DA40_XLS_VAR_OIL_BYPASS", "OP_SPREAD_BYPASS", "Oil Bypass Variation",
+            "Minus 0.1 to plus 0.1.");
+        XlsNum(v, "DA40_XLS_VAR_ROUGHNESS", "SPREAD_ROUGH", "Roughness Threshold",
+            "650 to 700. Not a multiplier.");
+        XlsNum(v, "DA40_XLS_VAR_MAG_TIMING", "MAG_SPREAD_TIMING", "Magneto Timing Variation",
+            "Minus 1.5 to plus 1.5.");
+        XlsNum(v, "DA40_XLS_VAR_THROTTLE", "THROTTLE_SPREAD", "Throttle Variation",
+            "0 to 0.04.");
 
-        // The governor's own travel, in rpm — measured 1469.86 low, 2676.38 high on the
-        // probed engine. INPUT_PROPELLER maps linearly onto this span.
+        // The governor's own travel, in rpm — rolled as 1450 to 1470 low and 2670 to 2690
+        // high; 1469.86 / 2676.38 on the probed engine. INPUT_PROPELLER maps linearly onto
+        // this span.
         XlsRpm(v, "DA40_XLS_VAR_PROP_LO", "PROP_SPREAD_LO", "Governor Low Limit");
         XlsRpm(v, "DA40_XLS_VAR_PROP_HI", "PROP_SPREAD_HI", "Governor High Limit");
+
+        // ⚠️ THESE THREE ARE NOT ENGINE VARIATION - they are the STANDBY INSTRUMENTS', and
+        // an earlier pass named them "Induction" and "Alternator" off the abbreviations
+        // alone. SPREAD_AIR scales the standby airspeed computation (Inputs 1266) and
+        // SPREAD_ALT/_OFF the standby altimeter, as (indicated + offset) * multiplier
+        // (IN.xml 561ff). They are rolled by the same block as the engine's, and the doc's
+        // unstartable-engine trap turns on the fact that THESE self-heal and the engine's
+        // do not - so they belong beside the instruments they explain.
+        XlsNum(v, "DA40_XLS_VAR_AIR", "SPREAD_AIR", "Standby Airspeed Variation",
+            "0.99 to 1.01. Why the standby airspeed differs slightly from the G1000.");
+        XlsNum(v, "DA40_XLS_VAR_ALT", "SPREAD_ALT", "Standby Altimeter Variation",
+            "0.99 to 1.01.");
+        XlsNum(v, "DA40_XLS_VAR_ALT_OFF", "SPREAD_ALT_OFF", "Standby Altimeter Offset",
+            "Minus 30 to plus 30 feet, added before the variation multiplies.");
 
         for (int c = 1; c <= 4; c++)
         {
@@ -76,12 +100,12 @@ public partial class CowsDA40Definition
             // it rather than redefined. Its DisplayName is renamed to match these three.
             if (c > 1)
                 XlsNum(v, $"DA40_XLS_EGT_SPREAD_{c}", $"CYL_SPREAD_EGT:{c}",
-                    $"Cylinder {c} EGT Variation", "");
+                    $"Cylinder {c} EGT Variation", "0.98 to 1.02.");
 
             XlsNum(v, $"DA40_XLS_INJ_SPREAD_{c}", $"CYL_SPREAD_INJ:{c}",
-                $"Cylinder {c} Injector Variation", "");
+                $"Cylinder {c} Injector Variation", "0.95 to 1.05.");
             XlsNum(v, $"DA40_XLS_COOL_SPREAD_{c}", $"CYL_SPREAD_COOL:{c}",
-                $"Cylinder {c} Cooling Variation", "");
+                $"Cylinder {c} Cooling Variation", "0.96 to 1.04.");
         }
 
         XlsBool(v, "DA40_XLS_VAR_SET", "SPREAD_SET", "Engine Variation Generated",
@@ -107,9 +131,6 @@ public partial class CowsDA40Definition
             "DA40_XLS_VAR_OIL_BYPASS",
             "DA40_XLS_VAR_ROUGHNESS",
             "DA40_XLS_VAR_MAG_TIMING",
-            "DA40_XLS_VAR_AIR",
-            "DA40_XLS_VAR_ALT",
-            "DA40_XLS_VAR_ALT_OFF",
             "DA40_XLS_VAR_THROTTLE",
             "DA40_XLS_VAR_PROP_LO",
             "DA40_XLS_VAR_PROP_HI"
@@ -230,6 +251,17 @@ public partial class CowsDA40Definition
         }
         return l;
     }
+
+    /// <summary>
+    /// The standby instruments' own variation - the two members of the set that describe
+    /// an INSTRUMENT rather than the engine, so they sit with the instruments.
+    /// </summary>
+    private static List<string> XlsStandbyVariationDisplay() => new()
+    {
+        "DA40_XLS_VAR_AIR",
+        "DA40_XLS_VAR_ALT",
+        "DA40_XLS_VAR_ALT_OFF"
+    };
 
     private static List<string> XlsOilCoolerDisplay() => new()
     {

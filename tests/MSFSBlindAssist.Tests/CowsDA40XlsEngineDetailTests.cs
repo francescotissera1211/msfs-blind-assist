@@ -165,6 +165,31 @@ public class CowsDA40XlsEngineDetailTests
     }
 
     /// <summary>
+    /// ⚠️ SPREAD_AIR AND SPREAD_ALT ARE THE STANDBY INSTRUMENTS' VARIATION, not the
+    /// engine's, and an earlier pass named them off the abbreviations alone ("Induction",
+    /// "Alternator"). SPREAD_AIR scales the standby airspeed computation and
+    /// SPREAD_ALT/_OFF the standby altimeter, so they sit with the instruments they
+    /// explain - which is also why the panel they are NOT on is called Engine Variation.
+    /// </summary>
+    [Fact]
+    public void TheInstrumentVariationSitsWithTheInstruments()
+    {
+        var xls = Xls();
+        var standby = xls.GetPanelDisplayVariables()["Standby Instruments"];
+        var variation = xls.GetPanelDisplayVariables()["Engine Variation"];
+
+        foreach (var key in new[] { "DA40_XLS_VAR_AIR", "DA40_XLS_VAR_ALT", "DA40_XLS_VAR_ALT_OFF" })
+        {
+            Assert.Contains(key, standby);
+            Assert.DoesNotContain(key, variation);
+        }
+
+        var vars = xls.GetVariables();
+        Assert.Equal("Standby Airspeed Variation", vars["DA40_XLS_VAR_AIR"].DisplayName);
+        Assert.Equal("Standby Altimeter Offset", vars["DA40_XLS_VAR_ALT_OFF"].DisplayName);
+    }
+
+    /// <summary>
     /// The oil COOLER has no gauge, so it is read from the model; the oil TEMPERATURE has
     /// one, so it is not read from OT_PROBE (pinned above).
     /// </summary>

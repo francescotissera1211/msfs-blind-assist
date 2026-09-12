@@ -385,9 +385,15 @@ subtract `GetVariables()` **read from the BUILT ASSEMBLY** (a KEY is not a NAME,
 BUTTON's Name is its own key — read the Name column alone and every `RESET_*` plus
 `ATT_CAGE` reads as a gap when the gyro-cage button already holds `ATT_CAGE` from inside
 its setter), then check each survivor against the installed package with a
-**binary-inclusive** scan: `OC_TEMPERATURE`, `ENG_MAG_FOUL_PWR` and `ENG_FUEL_LINE_GRAM`
-are read many times in `Logic.xml` and written **nowhere in any XML** — the WASM gauge
-writes them — and all three are live.
+**binary-inclusive** scan (a variable used only by a WASM gauge reads as absent from a text
+grep over `.xml`).
+
+⚠️ **A first pass of that scan reported `OC_TEMPERATURE`, `ENG_MAG_FOUL_PWR` and
+`ENG_FUEL_LINE_GRAM` as "written nowhere in any XML, so the WASM writes them". That was
+WRONG** — a grep of mine that silently matched nothing, recorded here so it is not
+re-derived. All three have writers in `Logic.xml` (6, 8 and 37 of them), and
+`ENG_MAG_FOUL_PWR:nX` is `sqrt(DAMAGE_MAG_FOUL:nX / 100) × 0.8`, so its resting **0 is a
+clean plug**, not a dead variable. A zero proves nothing either way; find the writer.
 
 ```bash
 # the dump comes from the env-gated CowsDA40VariableDumpTests
@@ -444,11 +450,35 @@ ever, with no CAS message and no failure flag. `SPREAD_SET` and `CYL_SPREAD_SET`
 latches that gate regeneration and both read 1 — "already done" — in the trapped state, so
 the panel shows them and says to judge by the numbers, not by the latch.
 
-Read-only, one row each: `FUEL_SPREAD_PRESSURE`, `SPREAD_INJ_TRIM`, `SPREAD_OP`,
-`SPREAD_OC`, `OP_SPREAD_BYPASS`, `SPREAD_ROUGH`, `MAG_SPREAD_TIMING`, `SPREAD_AIR`,
-`SPREAD_ALT`, `SPREAD_ALT_OFF`, `THROTTLE_SPREAD`, `PROP_SPREAD_LO`/`_HI` (rpm — the
-governor's own travel, 1469.86/2676.38 on the probed engine), `CYL_SPREAD_EGT:1-4`,
-`CYL_SPREAD_INJ:1-4`, `CYL_SPREAD_COOL:1-4`, `SPREAD_SET`, `CYL_SPREAD_SET`.
+Read-only, one row each, with the model's OWN generation range (Logic 5540ff) in the help
+line — without it the number means nothing, and telling a healthy engine from the trapped
+one is the whole point of the panel:
+
+| Reading | Rolled as |
+|---|---|
+| `FUEL_SPREAD_PRESSURE` | 1.45 – 1.55 |
+| `SPREAD_INJ_TRIM` | the MEAN of the four `CYL_SPREAD_INJ` |
+| `SPREAD_OP` | 0.95 – 1.05 |
+| `SPREAD_OC` | 0.9 – 1.1 |
+| `OP_SPREAD_BYPASS` | −0.1 – +0.1 |
+| `SPREAD_ROUGH` | 650 – 700 — a THRESHOLD, not a multiplier |
+| `MAG_SPREAD_TIMING` | −1.5 – +1.5 |
+| `THROTTLE_SPREAD` | 0 – 0.04 |
+| `PROP_SPREAD_LO` / `_HI` | 1450 – 1470 / 2670 – 2690 rpm (the governor's travel) |
+| `CYL_SPREAD_EGT:1-4` | 0.98 – 1.02 |
+| `CYL_SPREAD_INJ:1-4` | 0.95 – 1.05 |
+| `CYL_SPREAD_COOL:1-4` | 0.96 – 1.04 |
+| `SPREAD_SET`, `CYL_SPREAD_SET` | the two latches, 0/1 |
+
+⚠️ **`SPREAD_AIR`, `SPREAD_ALT` and `SPREAD_ALT_OFF` are NOT engine variation** and are
+deliberately on the **Standby Instruments** panel instead. A first pass read them off the
+abbreviations and called them "Induction" and "Alternator"; they are neither. `SPREAD_AIR`
+(0.99 – 1.01) scales the standby AIRSPEED computation (`Inputs.xml` 1266) and
+`SPREAD_ALT`/`_OFF` the standby ALTIMETER as `(indicated + offset) × multiplier`
+(`IN.xml` 561ff), the offset being −30 – +30 ft. They are rolled by the same block, and the
+unstartable trap turns on the fact that these self-heal while the engine's do not — so they
+belong beside the instruments they explain, which is also why the panel is named for the
+ENGINE.
 
 ## Priming, line by line (Priming panel)
 

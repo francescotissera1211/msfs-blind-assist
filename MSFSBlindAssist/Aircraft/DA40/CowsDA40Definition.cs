@@ -739,6 +739,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             AddRows(d, PrimingPanel, XlsPrimingDetailDisplay());
             AddRows(d, MagnetosPanel, XlsMagnetoDetailDisplay());
             AddRows(d, PowerPanel, XlsOilCoolerDisplay());
+            AddRows(d, StandbyPanel, XlsStandbyVariationDisplay());
             AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
         }
 
