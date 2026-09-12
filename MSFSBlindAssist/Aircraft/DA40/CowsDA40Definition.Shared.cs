@@ -206,6 +206,10 @@ public partial class CowsDA40Definition
         // DA40_G1000_BARO is deliberately NOT here any more. It was, and that is why a
         // subscale changed on external hardware said nothing at all. It is handled by the
         // settle-timer announcer instead, which speaks the value the knob came to rest on.
+        // The outside air temperature the performance tables are entered with. Batched so a
+        // row on another panel can read it; silent because it is a number.
+        "DA40_PERF_OAT",
+
         "DA40_FUEL_MAIN_ACTUAL",
         "DA40_FUEL_AUX_ACTUAL",
         "DA40_GROSS_WEIGHT",
@@ -282,6 +286,9 @@ public partial class CowsDA40Definition
         // entry or a fouling warning could be announced twice, and any state the method
         // latches was advanced two steps per update.
         NoteXlsMixtureChange(varName, value, announcer);
+        // What the POH's performance tables are entered with - altitude, temperature and
+        // the power being made. Every one is already batched and already passes here.
+        NotePerfTableValue(varName, value);
 
         if (IsSilentCachedReadout(varName)) return true;
 

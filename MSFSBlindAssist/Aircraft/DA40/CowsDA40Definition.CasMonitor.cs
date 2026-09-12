@@ -90,7 +90,7 @@ public partial class CowsDA40Definition
         ResetPrimingState();
         ResetXlsStartState();
         ResetXlsMixtureState();
-        ResetXlsMixtureState();
+        ResetPerfTableState();
         StopRadioAnnounce();
         StopPowerAnnounce();
         StopLampWatch();

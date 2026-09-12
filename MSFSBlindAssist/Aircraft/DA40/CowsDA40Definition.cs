@@ -487,6 +487,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // The XLS engine detail FS Copilot's own definition lists and this one never read:
         // the engine's per-airframe variation, the priming charge line by line, per-plug
         // fouling power, the oil cooler, and the damage the XLS spells without an index.
+        // The POH's own performance tables need the conditions they are entered with, and
+        // one row per airframe to report them on.
+        foreach (var kv in BuildPerfTableVariables(IsNG)) vars[kv.Key] = kv.Value;
+
         if (!IsNG)
         {
             foreach (var kv in BuildXlsVariationVariables()) vars[kv.Key] = kv.Value;
@@ -725,6 +729,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         // The autopilot servo forces and the TO/GA read-back are GFC 700, shared.
         AddRows(d, AutopilotPanel, FsCopilotApRows2);
+
+        // The NG's book minimum load, on the panel its own lever lives on. The POH asks
+        // for this check before every departure and a blind pilot could not make it.
+        if (IsNG) AddRows(d, PowerPanel, new List<string> { "DA40_NG_MIN_LOAD", "DA40_PERF_OAT" });
         // The XLS's own engine-damage readings. Its damage panel has no controls, so these
         // display rows are the whole panel.
         if (!IsNG) AddRows(d, SimDamagePanel, XlsDamageDisplay());
@@ -740,6 +748,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             AddRows(d, MagnetosPanel, XlsMagnetoDetailDisplay());
             AddRows(d, PowerPanel, XlsOilCoolerDisplay());
             AddRows(d, StandbyPanel, XlsStandbyVariationDisplay());
+            AddRows(d, PowerPanel, new List<string> { "DA40_XLS_CRUISE_TABLE", "DA40_PERF_OAT" });
             AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
         }
 
@@ -838,6 +847,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (TryGetXlsMixtureDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetStandbyDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetFsCopilotDisplayOverride(varKey, value, out displayText)) return true;
+        if (TryGetPerfTableDisplayOverride(varKey, out displayText)) return true;
         if (TryGetXlsPowerDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetPrimingDisplayOverride(varKey, value, out displayText)) return true;
         if (TryGetXlsFuelDisplayOverride(varKey, value, out displayText)) return true;
