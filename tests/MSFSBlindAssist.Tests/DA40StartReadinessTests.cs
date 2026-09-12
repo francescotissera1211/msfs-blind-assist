@@ -84,9 +84,11 @@ public class DA40StartReadinessTests
     [Fact]
     public void TheFuelPressureRowRendersNormallyBeforeTheMasterHasBeenRead()
     {
+        // The reading is the INDICATION's own psi now (DISP_FP), not the model's bar - so
+        // this passes 27.5, what the gauge drew at VCBI, rather than 1.616.
         var def = new CowsDA40Definition(DA40Variant.XLS);
-        Assert.True(def.TryGetDisplayOverride("DA40_XLS_FUEL_PRESSURE", 1.616, out string text));
-        Assert.Equal("23 psi, green", text);
+        Assert.True(def.TryGetDisplayOverride("DA40_XLS_FUEL_PRESSURE", 27.5, out string text));
+        Assert.Equal("28 psi, green", text);
     }
 
     [Fact]

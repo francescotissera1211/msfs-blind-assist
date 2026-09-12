@@ -124,14 +124,20 @@ public static class DA40InstrumentBands
         // Oil pressure, psi: red below 25, yellow 25-55, green 56-95, yellow 96-97, red above 97.
         // Measured 73.7 running, 0 stopped.
         ["DA40_XLS_OIL_PRESSURE"]     = new BandRange(25, 56, 95, 97),
-        // Oil temperature, read in celsius: green 149-230 F (65-110 C), yellow to 245 F (118 C),
-        // red above. No lower red - a cold engine simply reads below green.
-        ["DA40_XLS_OIL_TEMP"]         = new BandRange(null, 65, 110, 118),
+        // ⚠️ OIL TEMPERATURE, IN THE GAUGE'S OWN FAHRENHEIT, AND THESE ARE THE AEROPLANE'S
+        // NUMBERS RATHER THAN A CONVERSION. The XLS's panel.xml declares the gauge against
+        // L:DISP_OT: scale -31 to 295, red to -22, yellow to 122, green 122 to 275, yellow
+        // to 285, red above. That is 50 to 135 C. The table here used to read 65 / 110 /
+        // 118 C - the AUSTRO's arcs on a LYCOMING - so a caution was called at 111 C on an
+        // engine its own gauge keeps green to 135, and the planned arithmetic conversion of
+        // those numbers (149 / 230 / 244 F) would have kept calling it. Read the gauge.
+        ["DA40_XLS_OIL_TEMP"]         = new BandRange(-22, 122, 275, 285),
         // Fuel flow, US gal/h: green 1-20, caution above 20. Measured 10.6 at 2200 rpm.
         ["DA40_XLS_FUEL_FLOW"]        = new BandRange(null, 1, 20, null),
-        // Fuel pressure, in the model's BAR (the gauge draws psi at 14.5 per bar): red below
-        // 14 psi, green 14-35, red above 35. No yellow. Measured 1.616 bar = 23.4 psi.
-        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(0.965, 0.965, 2.413, 2.413),
+        // Fuel pressure, in the gauge's own PSI now that the source is DISP_FP: red below
+        // 14, green 14 to 35, red above. No yellow. Straight off panel.xml, which declares
+        // the gauge 0 to 40 against L:DISP_FP; measured 27.5 running.
+        ["DA40_XLS_FUEL_PRESSURE"]    = new BandRange(14, 14, 35, 35),
 
         // The XLS cylinder heads, in the gauge's own Fahrenheit: the MFD plugin draws
         // green 150-475, caution 475-500, red above (Da40MfdPlugin 'CHT °F' bars). No

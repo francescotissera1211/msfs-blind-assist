@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft.DA40;
+using MSFSBlindAssist.SimConnect;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests;
@@ -50,19 +51,31 @@ public class CowsDA40XlsIndicationTests
     }
 
     /// <summary>
-    /// ⚠️ TWO READOUTS ARE KNOWINGLY STILL ON THE PHYSICS, AND THIS RECORDS WHY RATHER THAN
-    /// PRETENDING THEY ARE DONE. Oil temperature's indication is in FAHRENHEIT while its arc
-    /// table is CELSIUS (65 / 110 / 118), and fuel pressure's indication is PSI while its
-    /// arcs are BAR (0.965 / 2.413). A band is looked up from the RAW value, so swapping the
-    /// source without moving the arcs in the same change would put a green needle in the red.
-    /// Both need a change that can be flown, not arithmetic.
+    /// ⚠️ THESE TWO WERE THE LAST XLS READOUTS ON THE PHYSICS, AND THIS TEST IS THE
+    /// INVERSION OF WHAT IT SAID. It used to pin them as knowingly-unfinished: oil
+    /// temperature's indication is FAHRENHEIT while its arc table was CELSIUS, and fuel
+    /// pressure's is PSI while its arcs were BAR, and a band is looked up from the RAW
+    /// value - so swapping the source alone would have put a green needle in the red.
+    ///
+    /// Both moved, arcs and all, from the aeroplane's OWN gauge declarations in its
+    /// panel.xml rather than by converting the old numbers. That distinction is the whole
+    /// lesson: the recorded plan was to convert oil temperature's celsius arcs to
+    /// 149 / 230 / 244 F, and the XLS's real gauge is 122 / 275 / 285 F - the old table was
+    /// the AUSTRO's arcs sitting on a LYCOMING, so a caution was being called at 111 C on
+    /// an engine whose own gauge stays green to 135 C.
     /// </summary>
     [Theory]
-    [InlineData("DA40_XLS_OIL_TEMP", "GENERAL ENG OIL TEMPERATURE:1")]
-    [InlineData("DA40_XLS_FUEL_PRESSURE", "ENG_FUEL_PRESS")]
-    public void TheTwoUnitMismatchedReadoutsAreStillOnThePhysics(string key, string expected)
+    [InlineData("DA40_XLS_OIL_TEMP", "DISP_OT")]
+    [InlineData("DA40_XLS_FUEL_PRESSURE", "DISP_FP")]
+    public void EveryXlsReadoutWithAnIndicationNowReadsIt(string key, string expected)
     {
         var vars = new CowsDA40Definition(DA40Variant.XLS).GetVariables();
         Assert.Equal(expected, vars[key].Name);
+
+        // ⚠️ AND AS AN L:VAR, IN "number". The continuous batch hands this string straight
+        // to SimConnect, so a temperature or pressure unit here would be converted from a
+        // base an L:var does not have. The unit is named by the display override instead.
+        Assert.Equal(SimVarType.LVar, vars[key].Type);
+        Assert.Equal("number", vars[key].Units);
     }
 }

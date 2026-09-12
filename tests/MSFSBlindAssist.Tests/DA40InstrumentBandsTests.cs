@@ -75,13 +75,24 @@ public class DA40InstrumentBandsTests
     public void XlsOilPressureArcs(double value, GaugeBand expected)
         => Assert.Equal(expected, Band("DA40_XLS_OIL_PRESSURE", value));
 
+    /// <summary>
+    /// ⚠️ THE OIL TEMPERATURE ARCS CHANGED UNIT AND VALUE TOGETHER, AND THIS TEST IS THE
+    /// INVERSION OF WHAT IT SAID. It used to assert the AUSTRO's celsius arcs (green
+    /// 65-110, caution to 118) against a reading taken from the stock SimVar. The XLS is a
+    /// LYCOMING and its own panel.xml declares the gauge against L:DISP_OT in FAHRENHEIT:
+    /// green 122 to 275, yellow to 285, red above, with a low yellow below 122. So the old
+    /// table called a caution at 111 C on an engine whose gauge is green to 135 C, and the
+    /// conversion once planned for it (149 / 230 / 244 F) would have kept calling it.
+    /// </summary>
     [Theory]
-    [InlineData(19, GaugeBand.LowerCaution)]   // the cold engine, measured at ambient - below green, not red
-    [InlineData(85, GaugeBand.Normal)]         // 149-230 F
-    [InlineData(115, GaugeBand.UpperCaution)]  // 231-245 F
-    [InlineData(120, GaugeBand.UpperRed)]      // above 245 F / 118 C
-    public void XlsOilTemperatureArcs(double value, GaugeBand expected)
-        => Assert.Equal(expected, Band("DA40_XLS_OIL_TEMP", value));
+    [InlineData(66, GaugeBand.LowerCaution)]   // the cold engine at ambient - below green, not red
+    [InlineData(-30, GaugeBand.LowerRed)]      // the gauge does have a bottom red, below -22 F
+    [InlineData(183, GaugeBand.Normal)]        // measured running at VCBI, 84.5 C
+    [InlineData(270, GaugeBand.Normal)]        // still green: 132 C, where the old table said red
+    [InlineData(280, GaugeBand.UpperCaution)]  // 275-285 F
+    [InlineData(290, GaugeBand.UpperRed)]      // above 285 F / 140.6 C
+    public void XlsOilTemperatureArcsAreThePanelsFahrenheitBands(double f, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_OIL_TEMP", f));
 
     [Theory]
     [InlineData(0.5, GaugeBand.LowerCaution)]
@@ -90,12 +101,17 @@ public class DA40InstrumentBandsTests
     public void XlsFuelFlowArcs(double value, GaugeBand expected)
         => Assert.Equal(expected, Band("DA40_XLS_FUEL_FLOW", value));
 
+    /// <summary>
+    /// Fuel pressure moved from the model's BAR to the gauge's own PSI with its source, so
+    /// this asserts psi where it used to assert bar. panel.xml declares the gauge 0 to 40
+    /// against L:DISP_FP: red below 14, green 14 to 35, red above, no yellow.
+    /// </summary>
     [Theory]
-    [InlineData(0.5, GaugeBand.LowerRed)]      // 7 psi - below the 14 psi minimum
-    [InlineData(1.616, GaugeBand.Normal)]      // measured: 23.4 psi
-    [InlineData(2.6, GaugeBand.UpperRed)]      // 38 psi - above the 35 psi maximum
-    public void XlsFuelPressureArcsAreInBar(double bar, GaugeBand expected)
-        => Assert.Equal(expected, Band("DA40_XLS_FUEL_PRESSURE", bar));
+    [InlineData(7, GaugeBand.LowerRed)]        // below the 14 psi minimum
+    [InlineData(27.5, GaugeBand.Normal)]       // measured running at VCBI
+    [InlineData(38, GaugeBand.UpperRed)]       // above the 35 psi maximum
+    public void XlsFuelPressureArcsAreThePanelsPsiBands(double psi, GaugeBand expected)
+        => Assert.Equal(expected, Band("DA40_XLS_FUEL_PRESSURE", psi));
 
     [Theory]
     [InlineData(410, GaugeBand.Normal)]        // measured at run-up, hottest cylinder

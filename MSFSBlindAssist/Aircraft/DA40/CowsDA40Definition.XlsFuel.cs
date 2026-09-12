@@ -121,13 +121,21 @@ public partial class CowsDA40Definition
 
         v["DA40_XLS_FUEL_PRESSURE"] = new SimVarDefinition
         {
-            Name = "ENG_FUEL_PRESS",
+            // THE INDICATION. DISP_FP is the gauge's own psi - measured 27.48 against
+            // ENG_FUEL_PRESS 1.895 bar times 14.5 - and it zeroes with FAILURES_DISP_FP,
+            // so reading the model's bar showed a perfect pressure off a dead gauge. The
+            // arcs move with it, taken from the XLS's own panel.xml rather than converted:
+            // scale 0 to 40, red below 14, green 14 to 35, red above. No yellow.
+            Name = "DISP_FP",
             DisplayName = "Fuel Pressure",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
-            Units = "psi",
+            // An L:var carries no unit; "psi" here would be handed to SimConnect on the
+            // continuous path and converted from a base it does not have. The override
+            // names the unit instead.
+            Units = "number",
             Format = "F0"
         };
 
@@ -277,10 +285,11 @@ public partial class CowsDA40Definition
 
             case "DA40_XLS_FUEL_PRESSURE":
                 // Unpowered, the model's fuel logic does not tick and this holds a frozen
-                // number (measured 19.75 after a reload - 286 psi if rendered). Say why.
+                // number (measured 19.75 bar after a reload - 286 psi if rendered). Say why.
+                // DISP_FP is drawn from the same frozen chain, so the guard still applies.
                 displayText = DA40StartReadiness.FrozenReason(_startMasterOn)
-                    // Band from the raw bar, figure in the gauge's psi - the CHT rule.
-                    ?? DA40InstrumentBands.Annotate(varKey, value, $"{value * BarToPsi:F0} psi");
+                    // Already the gauge's psi now that the source is the indication.
+                    ?? DA40InstrumentBands.Annotate(varKey, value, $"{value:F0} psi");
                 return true;
 
             case "DA40_XLS_FUEL_VAPOUR":

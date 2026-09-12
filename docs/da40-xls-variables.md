@@ -540,3 +540,31 @@ digits — so it reads as three rows ("1", "Leg Time1: 0", "Leg Time1: 0") rathe
 "Leg Time 1:00". The whole hold still reads correctly in the block below the fields
 ("Hold South of Course 000° Inbound Leg Time 1:00 Turns Right"), so nothing is missing;
 what is wrong is how the three editable digits announce while the knob walks them.
+
+## Oil temperature and fuel pressure — the last two on the physics, and the arcs with them
+
+Both read the model until now, knowingly: `DISP_OT` is FAHRENHEIT while the arc table was
+CELSIUS, and `DISP_FP` is PSI while the arcs were BAR, and a band is looked up from the RAW
+value — so swapping the source alone would have put a green needle in the red. The recorded
+plan was to convert the celsius arcs arithmetically to 149 / 230 / 244 F and fly it.
+
+⚠️ **THAT PLAN WAS WRONG, AND THE AEROPLANE SAYS SO ITSELF.** Both gauges are declared in
+the XLS's own `panel/panel.xml`, against the very L:vars in question and in their units:
+
+| Gauge | Source | Scale | Bands |
+|---|---|---|---|
+| Oil Temp | `L:DISP_OT` | −31 … 295 | red to −22, yellow to **122**, green **122–275**, yellow to 285, red above |
+| Fuel Press | `L:DISP_FP` | 0 … 40 | red to **14**, green **14–35**, red above. No yellow |
+
+122 – 275 °F is 50 – 135 °C — a Lycoming. The table being replaced said green 65 – 110 °C,
+which is the **Austro's**: MSFSBA had been calling a caution at 111 °C on an engine whose own
+gauge stays green to 135, and the arithmetic conversion would have kept calling it at 230 °F.
+**Read the aircraft's gauge definition; never convert one airframe's arcs onto another.**
+
+⚠️ **The unit goes in the OVERRIDE, not on the variable.** Both are L:vars, and the
+continuous batch hands `SimVarDefinition.Units` straight to SimConnect (`Setup.cs` — the
+per-variable OnRequest path hardcodes `"number"`, the batch path does not), so a temperature
+or pressure unit there would be converted from a base an L:var does not have. Oil
+temperature is declared `"number"` and rendered through `TryUnitText("fahrenheit", …)`, the
+same idiom the cylinder-head rows use, so the band comes from the raw Fahrenheit while the
+figure follows the pilot's G1000 choice.

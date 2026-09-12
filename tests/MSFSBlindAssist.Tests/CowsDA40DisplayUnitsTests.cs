@@ -25,7 +25,9 @@ public class CowsDA40DisplayUnitsTests
         // celsius-declared readouts must be untouched by the new case.
         var def = new CowsDA40Definition(DA40Variant.XLS);
         Assert.Equal("210 degrees celsius, green", Render(def, "DA40_XLS_CHT_HOT", 410));
-        Assert.Equal("87 degrees celsius", Render(def, "DA40_XLS_OIL_TEMP", 87).Split(',')[0]);
+        // Oil temperature now reads the INDICATION, which is Fahrenheit like the cylinder
+        // bars - so 183 F, what the gauge drew at VCBI, must come back as 84 C.
+        Assert.Equal("84 degrees celsius", Render(def, "DA40_XLS_OIL_TEMP", 183).Split(',')[0]);
     }
 
     private static CowsDA40Definition Ng() => new(DA40Variant.NG);

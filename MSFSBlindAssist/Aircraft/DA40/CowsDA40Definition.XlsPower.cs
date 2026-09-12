@@ -178,23 +178,31 @@ public partial class CowsDA40Definition
 
         v["DA40_XLS_OIL_TEMP"] = new SimVarDefinition
         {
-            // ⚠️ STILL THE PHYSICS, AND KNOWINGLY SO - THE ONLY XLS READOUT LEFT THAT IS.
-            // DISP_OT is the indication and zeroes with FAILURES_DISP_OT, so by this file's
-            // own rule it belongs here. It is NOT swapped because it is in FAHRENHEIT
-            // (measured 184.4 against the screen's "183 F") while this quantity's arc table
-            // is in CELSIUS (65 / 110 / 118), and a band is looked up from the RAW value.
-            // Changing the source without moving the arcs in the same breath would put a
-            // green needle in the red, which is worse than the gap it closes.
+            // THE INDICATION, at last, and the arcs moved with it in the same breath.
             //
-            // The fix is both together: source DISP_OT and restate the arcs as 149 / 230 /
-            // 244 F. Left for a change that can be flown, since an oil-temperature arc is
-            // not something to move on arithmetic alone. DA40_XLS_FUEL_PRESSURE is the same
-            // shape - DISP_FP is psi, its arcs are bar (0.965 / 2.413, which the AFM gives as
-            // 14 and 35 psi).
-            Name = "GENERAL ENG OIL TEMPERATURE:1",
+            // This read the PHYSICS until now, knowingly, because DISP_OT is in FAHRENHEIT
+            // while the arc table was in CELSIUS and a band is looked up from the RAW value
+            // - so swapping the source alone would have put a green needle in the red. The
+            // plan recorded here was to convert the celsius arcs arithmetically to
+            // 149 / 230 / 244 F and fly it.
+            //
+            // ⚠️ THAT PLAN WAS WRONG, AND THE AEROPLANE SAYS SO ITSELF. The gauge is
+            // declared in the XLS's own panel.xml, in the same unit as DISP_OT: scale
+            // -31 to 295, red to -22, yellow to 122, GREEN 122 to 275, yellow to 285, red
+            // above. That is 50 to 135 C - a Lycoming - and the table being replaced said
+            // green 65 to 110 C, which is the AUSTRO's. So MSFSBA has been calling a
+            // caution at 111 C on an engine whose own gauge is green to 135, and the
+            // arithmetic conversion would have kept calling it at 230 F. Read the
+            // aircraft's gauge definition; never convert one airframe's arcs onto another.
+            Name = "DISP_OT",
             DisplayName = "Oil Temperature",
-            Type = SimVarType.SimVar,
-            Units = "celsius",
+            Type = SimVarType.LVar,
+            // An L:var carries no unit, and the continuous batch passes this string
+            // STRAIGHT TO SimConnect - so a temperature unit here would have it converted
+            // from a base it does not have. The override renders it through the units
+            // layer with "fahrenheit" named explicitly, which is the same idiom the
+            // cylinder-head rows use and keeps the pilot's G1000 choice working.
+            Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
@@ -245,7 +253,9 @@ public partial class CowsDA40Definition
     /// unit and would lose its decimal. Both paths - the panel row and the hotkeys - come
     /// through here, which is why the conversion is not left to Scale.
     /// </summary>
-    private static bool TryGetXlsPowerDisplayOverride(string varKey, double value, out string displayText)
+    // NOT static: the oil-temperature case renders through Fahrenheit(), which asks the
+    // units layer what the pilot chose on the G1000.
+    private bool TryGetXlsPowerDisplayOverride(string varKey, double value, out string displayText)
     {
         switch (varKey)
         {
@@ -266,6 +276,13 @@ public partial class CowsDA40Definition
 
             case "DA40_XLS_OIL_PRESSURE":
                 displayText = DA40InstrumentBands.Annotate(varKey, value, $"{value:F0} psi");
+                return true;
+
+            case "DA40_XLS_OIL_TEMP":
+                // The BAND comes from the raw Fahrenheit, because an arc is a physical span
+                // of heat and does not move with the pilot's chosen scale; the FIGURE goes
+                // through the units layer, so a pilot on celsius hears celsius.
+                displayText = DA40InstrumentBands.Annotate(varKey, value, Fahrenheit(value));
                 return true;
 
             case "DA40_XLS_FUEL_FLOW":
