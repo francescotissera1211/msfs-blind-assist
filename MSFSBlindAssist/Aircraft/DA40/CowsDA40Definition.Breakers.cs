@@ -37,25 +37,54 @@ public partial class CowsDA40Definition
     private const string CbLightingPanel = "Lighting";
     private const string CbAirframeSystemsPanel = "Airframe Systems";
 
-    private static Dictionary<string, SimVarDefinition> BuildBreakerVariables()
+    /// <summary>
+    /// ⚠️ THE TWO AEROPLANES DO NOT SHARE ALL THIRTY-FOUR BREAKERS, AND THIS FILE USED TO SAY
+    /// "Both variants". Counted out of each model's own CircuitBreakers.xml: 28 are common,
+    /// and SIX differ each way. So the XLS panel was offering six breakers its aeroplane does
+    /// not have - ECU A, ECU B, Fuel Pump A, Fuel Pump B, Power and Fuel Transfer, every one
+    /// of them an Austro/NG item - while MISSING six it does, including the ALTERNATOR and
+    /// the FUEL PUMP, both of which the AFM's emergency procedures tell a pilot to pull.
+    ///
+    /// The six XLS names are expanded from the aeroplane's OWN AFM, section 1.5.6
+    /// "Designation of the circuit breakers on the instrument panel", shipped inside the
+    /// package - not guessed from the abbreviation:
+    ///
+    ///     CB_ACN  ANNUN.      Annunciator Panel
+    ///     CB_ALT  ALT.        Alternator
+    ///     CB_APT  AUTOPILOT   Autopilot
+    ///     CB_FAN  FAN/OAT     Fan and Outside Air Temperature
+    ///     CB_FUP  FUEL PUMP   Fuel Pump
+    ///     CB_TAS  T&amp;B         Turn and Bank Indicator
+    /// </summary>
+    private Dictionary<string, SimVarDefinition> BuildBreakerVariables()
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
         // ---------- Engine and Fuel ----------
-        AddBreaker(v, "DA40_CB_ECU_A", "CB_ECA", "ECU A");
-        AddBreaker(v, "DA40_CB_ECU_B", "CB_ECB", "ECU B");
-        AddBreaker(v, "DA40_CB_FUEL_A", "CB_FPA", "Fuel Pump A");
-        AddBreaker(v, "DA40_CB_FUEL_B", "CB_FPB", "Fuel Pump B");
+        if (IsNG)
+        {
+            AddBreaker(v, "DA40_CB_ECU_A", "CB_ECA", "ECU A");
+            AddBreaker(v, "DA40_CB_ECU_B", "CB_ECB", "ECU B");
+            AddBreaker(v, "DA40_CB_FUEL_A", "CB_FPA", "Fuel Pump A");
+            AddBreaker(v, "DA40_CB_FUEL_B", "CB_FPB", "Fuel Pump B");
+            AddBreaker(v, "DA40_CB_XFR", "CB_XFR", "Fuel Transfer");
+        }
+        else
+        {
+            // The Lycoming has ONE electric pump, so one breaker rather than the NG's pair.
+            AddBreaker(v, "DA40_CB_FUEL_PUMP", "CB_FUP", "Fuel Pump");
+        }
+
         AddBreaker(v, "DA40_CB_ENG_INST", "CB_ENG", "Engine Instruments");
         AddBreaker(v, "DA40_CB_START", "CB_STR", "Start");
-        AddBreaker(v, "DA40_CB_XFR", "CB_XFR", "Fuel Transfer");
-        AddBreakerCount(v, "DA40_CB_CBENGINEFUEL_OUT", "CB_ECA");
+        AddBreakerCount(v, "DA40_CB_CBENGINEFUEL_OUT", "CB_ENG");
 
         // ---------- Flight Instruments ----------
         AddBreaker(v, "DA40_CB_ADC", "CB_ADC", "Air Data Computer");
         AddBreaker(v, "DA40_CB_AHRS", "CB_AHR", "Attitude and Heading Reference");
         AddBreaker(v, "DA40_CB_HORIZON", "CB_HOR", "Standby Horizon");
         AddBreaker(v, "DA40_CB_PITOT", "CB_PIT", "Pitot Heat");
+        if (!IsNG) AddBreaker(v, "DA40_CB_TURN_BANK", "CB_TAS", "Turn and Bank Indicator");
         AddBreakerCount(v, "DA40_CB_CBFLIGHTINSTRUMENTS_OUT", "CB_ADC");
 
         // ---------- Avionics ----------
@@ -67,11 +96,13 @@ public partial class CowsDA40Definition
         AddBreaker(v, "DA40_CB_GPSNAV2", "CB_GP2", "GPS and NAV 2");
         AddBreaker(v, "DA40_CB_XPDR", "CB_XPR", "Transponder");
         AddBreaker(v, "DA40_CB_AUDIO", "CB_AUD", "Audio Panel");
+        if (!IsNG) AddBreaker(v, "DA40_CB_AUTOPILOT", "CB_APT", "Autopilot");
         AddBreakerCount(v, "DA40_CB_CBAVIONICS_OUT", "CB_PFD");
 
         // ---------- Bus and Power ----------
         AddBreaker(v, "DA40_CB_BATT", "CB_BAT", "Battery");
-        AddBreaker(v, "DA40_CB_PWR", "CB_PWR", "Power");
+        if (IsNG) AddBreaker(v, "DA40_CB_PWR", "CB_PWR", "Power");
+        else AddBreaker(v, "DA40_CB_ALTERNATOR", "CB_ALT", "Alternator");
         AddBreaker(v, "DA40_CB_ESS_TIE", "CB_ESS", "Essential Bus Tie");
         AddBreaker(v, "DA40_CB_MAIN_TIE", "CB_MAN", "Main Bus Tie");
         AddBreaker(v, "DA40_CB_MASTER", "CB_MTC", "Master Control");
@@ -91,6 +122,11 @@ public partial class CowsDA40Definition
         // ---------- Airframe Systems ----------
         AddBreaker(v, "DA40_CB_FLAPS", "CB_FLP", "Flaps");
         AddBreaker(v, "DA40_CB_AFCS", "CB_AFC", "Autopilot");
+        if (!IsNG)
+        {
+            AddBreaker(v, "DA40_CB_ANNUNCIATOR", "CB_ACN", "Annunciator Panel");
+            AddBreaker(v, "DA40_CB_FAN_OAT", "CB_FAN", "Fan and Outside Air Temperature");
+        }
         AddBreakerCount(v, "DA40_CB_CBAIRFRAMESYSTEMS_OUT", "CB_FLP");
 
         return v;
@@ -137,26 +173,30 @@ public partial class CowsDA40Definition
         };
     }
 
-    private static readonly List<string> CbEngineFuelControls = new()
-    {
-        "DA40_CB_ECU_A",
-        "DA40_CB_ECU_B",
-        "DA40_CB_FUEL_A",
-        "DA40_CB_FUEL_B",
-        "DA40_CB_ENG_INST",
-        "DA40_CB_START",
-        "DA40_CB_XFR"
-    };
+    /// <summary>
+    /// ⚠️ VARIANT-SPLIT, FOR THE REASON IN BuildBreakerVariables. A panel row naming a
+    /// breaker the aeroplane does not have is worse than a missing one: the pilot reaches
+    /// for it in a checklist and finds a control that cannot do anything.
+    /// </summary>
+    private List<string> CbEngineFuelControlsFor() => IsNG
+        ? new List<string>
+        {
+            "DA40_CB_ECU_A", "DA40_CB_ECU_B", "DA40_CB_FUEL_A", "DA40_CB_FUEL_B",
+            "DA40_CB_ENG_INST", "DA40_CB_START", "DA40_CB_XFR"
+        }
+        : new List<string>
+        {
+            "DA40_CB_FUEL_PUMP", "DA40_CB_ENG_INST", "DA40_CB_START"
+        };
 
     private static readonly List<string> CbEngineFuelDisplay = new() { "DA40_CB_CBENGINEFUEL_OUT" };
 
-    private static readonly List<string> CbFlightInstrumentsControls = new()
+    private List<string> CbFlightInstrumentsControlsFor()
     {
-        "DA40_CB_ADC",
-        "DA40_CB_AHRS",
-        "DA40_CB_HORIZON",
-        "DA40_CB_PITOT"
-    };
+        var l = new List<string> { "DA40_CB_ADC", "DA40_CB_AHRS", "DA40_CB_HORIZON", "DA40_CB_PITOT" };
+        if (!IsNG) l.Add("DA40_CB_TURN_BANK");
+        return l;
+    }
 
     private static readonly List<string> CbFlightInstrumentsDisplay = new() { "DA40_CB_CBFLIGHTINSTRUMENTS_OUT" };
 
@@ -172,18 +212,33 @@ public partial class CowsDA40Definition
         "DA40_CB_AUDIO"
     };
 
+    private List<string> CbAvionicsControlsFor()
+    {
+        var l = new List<string>(CbAvionicsControls);
+        if (!IsNG) l.Add("DA40_CB_AUTOPILOT");
+        return l;
+    }
+
     private static readonly List<string> CbAvionicsDisplay = new() { "DA40_CB_CBAVIONICS_OUT" };
 
     private static readonly List<string> CbBusPowerControls = new()
     {
         "DA40_CB_BATT",
-        "DA40_CB_PWR",
         "DA40_CB_ESS_TIE",
         "DA40_CB_MAIN_TIE",
         "DA40_CB_MASTER",
         "DA40_CB_AV_BUS",
         "DA40_CB_AV_FAN"
     };
+
+    private List<string> CbBusPowerControlsFor()
+    {
+        var l = new List<string>(CbBusPowerControls);
+        // The NG's "Power" breaker is not on the XLS; the XLS has the ALTERNATOR instead,
+        // which the AFM's alternator-failure drill tells the pilot to reset.
+        if (IsNG) l.Insert(1, "DA40_CB_PWR"); else l.Insert(1, "DA40_CB_ALTERNATOR");
+        return l;
+    }
 
     private static readonly List<string> CbBusPowerDisplay = new() { "DA40_CB_CBBUSPOWER_OUT" };
 
@@ -205,17 +260,29 @@ public partial class CowsDA40Definition
         "DA40_CB_AFCS"
     };
 
+    private List<string> CbAirframeSystemsControlsFor()
+    {
+        var l = new List<string>(CbAirframeSystemsControls);
+        if (!IsNG) { l.Add("DA40_CB_ANNUNCIATOR"); l.Add("DA40_CB_FAN_OAT"); }
+        return l;
+    }
+
     private static readonly List<string> CbAirframeSystemsDisplay = new() { "DA40_CB_CBAIRFRAMESYSTEMS_OUT" };
 
-    /// <summary>Every breaker, for the panel wiring and the per-panel counts.</summary>
-    private static readonly Dictionary<string, List<string>> BreakerPanels = new()
+    /// <summary>
+    /// Every breaker, for the panel wiring and the per-panel counts.
+    ///
+    /// ⚠️ A METHOD, NOT A STATIC FIELD, because four of the six groups now differ between the
+    /// variants - a static initializer cannot ask which aeroplane this is.
+    /// </summary>
+    private Dictionary<string, List<string>> BreakerPanelsFor() => new()
     {
-        [CbEngineFuelPanel] = CbEngineFuelControls,
-        [CbFlightInstrumentsPanel] = CbFlightInstrumentsControls,
-        [CbAvionicsPanel] = CbAvionicsControls,
-        [CbBusPowerPanel] = CbBusPowerControls,
+        [CbEngineFuelPanel] = CbEngineFuelControlsFor(),
+        [CbFlightInstrumentsPanel] = CbFlightInstrumentsControlsFor(),
+        [CbAvionicsPanel] = CbAvionicsControlsFor(),
+        [CbBusPowerPanel] = CbBusPowerControlsFor(),
         [CbLightingPanel] = CbLightingControls,
-        [CbAirframeSystemsPanel] = CbAirframeSystemsControls,
+        [CbAirframeSystemsPanel] = CbAirframeSystemsControlsFor(),
     };
 
     private static readonly Dictionary<string, string> BreakerCountKeys = new()
@@ -240,7 +307,7 @@ public partial class CowsDA40Definition
             return false;
         }
 
-        if (!BreakerPanels.Values.Any(list => list.Contains(varKey))) return false;
+        if (!BreakerPanelsFor().Values.Any(list => list.Contains(varKey))) return false;
 
         simConnect.SetLVar(def.Name, value >= 0.5 ? 1 : 0);
         return true;
@@ -251,7 +318,7 @@ public partial class CowsDA40Definition
         displayText = "";
         if (!BreakerCountKeys.TryGetValue(varKey, out var panel)) return false;
 
-        var keys = BreakerPanels[panel];
+        var keys = BreakerPanelsFor()[panel];
         int outCount = keys.Count(k => _breakerState.TryGetValue(k, out var s) && s >= 0.5);
 
         displayText = outCount == 0

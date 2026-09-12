@@ -244,7 +244,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             controls[kv.Key] = kv.Value;
         }
 
-        foreach (var kv in BreakerPanels)
+        foreach (var kv in BreakerPanelsFor())
         {
             controls[kv.Key] = new List<string>(kv.Value);
         }
