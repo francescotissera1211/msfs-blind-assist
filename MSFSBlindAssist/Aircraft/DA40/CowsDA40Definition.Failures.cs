@@ -473,16 +473,33 @@ public partial class CowsDA40Definition
     private Dictionary<string, List<string>> FailurePanels(bool isNg)
     {
         var d = new Dictionary<string, List<string>>();
-        if (isNg) d[SimEnginePanel] = new List<string>(SimEngineControls);
+
+        // ⚠️ THE XLS GETS ITS OWN THREE, NOT NONE. These used to be NG-only outright, so the
+        // XLS had no engine, fuel or damage failures at all - see CowsDA40Definition.XlsFailures.
+        // Only the FADEC panel is genuinely NG-only; a Lycoming has no ECU.
+        d[SimEnginePanel] = isNg
+            ? new List<string>(SimEngineControls)
+            : XlsEngineFailureControls();
         if (isNg) d[SimFadecPanel] = new List<string>(SimFadecControls);
-        if (isNg) d[SimFuelPanel] = new List<string>(SimFuelControls);
+        d[SimFuelPanel] = isNg
+            ? new List<string>(SimFuelControls)
+            : XlsFuelFailureControls();
         d[SimElecPanel] = new List<string>(SimElecControls);
         d[SimIndicationPanel] = new List<string>(SimIndicationControls);
         d[SimSystemsPanel] = new List<string>(SimSystemsControls);
         d[SimLightsPanel] = new List<string>(SimLightsControls);
         d[SimBrakesPanel] = new List<string>(SimBrakesControls);
-        if (isNg) d[SimDamagePanel] = new List<string>(SimDamageControls);
-        d["Breaker Trips"] = new List<string>(BreakerTripControls);
+        // ⚠️ THE XLS HAS NO SETTABLE DAMAGE CONTROL AT ALL - its damage is an accumulator,
+        // not a switch - so the panel is display-only and its entry here must still EXIST
+        // and be empty, or MainForm's panel build early-returns and the panel renders
+        // nothing. The readings themselves are XlsDamageDisplay(), added as display rows.
+        d[SimDamagePanel] = isNg
+            ? new List<string>(SimDamageControls)
+            : new List<string>();
+
+        var trips = new List<string>(BreakerTripControls);
+        if (!isNg) trips.AddRange(XlsBreakerTripControls());
+        d["Breaker Trips"] = trips;
         d[SimResetPanel] = new List<string>(SimResetControls);
         return d;
     }

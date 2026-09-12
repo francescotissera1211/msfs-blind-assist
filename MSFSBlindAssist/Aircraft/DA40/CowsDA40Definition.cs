@@ -182,10 +182,12 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             structure["Instrument Panel"].Insert(2, "Magnetos");
             structure["Center Console"].Insert(3, "Priming");
 
+            // ⚠️ ONLY THE FADEC PANEL GOES. The other three used to be removed with it and
+            // that was wrong: a Lycoming has no ECU, but it HAS engine failures, fuel
+            // failures and engine damage - more of them than the Austro, including
+            // per-cylinder and per-PLUG magneto failures and three levers that can each come
+            // adrift. Removing the panels made every one of those unreachable.
             structure["Simulation"].Remove("FADEC and Sensors");
-            structure["Simulation"].Remove("Engine Failures");
-            structure["Simulation"].Remove("Fuel Failures");
-            structure["Simulation"].Remove("Engine Damage");
 
             // No "Lean Assist" panel. It is an MFD PAGE, reached with the softkeys, so it
             // belongs to the G1000 display window like every other page.
@@ -348,6 +350,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         foreach (var kv in BuildAudioVariables())
         {
             vars[kv.Key] = kv.Value;
+        }
+
+        if (!IsNG)
+        {
+            foreach (var kv in BuildXlsFailureVariables()) vars[kv.Key] = kv.Value;
         }
 
         foreach (var kv in BuildBreakerVariables())
@@ -701,6 +708,9 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         // The autopilot servo forces and the TO/GA read-back are GFC 700, shared.
         AddRows(d, AutopilotPanel, FsCopilotApRows2);
+        // The XLS's own engine-damage readings. Its damage panel has no controls, so these
+        // display rows are the whole panel.
+        if (!IsNG) AddRows(d, SimDamagePanel, XlsDamageDisplay());
         if (!IsNG) d[EngineStartPanel] = new List<string>(XlsStartDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);
         if (!IsNG) d[MixturePanel] = new List<string>(XlsMixtureDisplay);

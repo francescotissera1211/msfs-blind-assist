@@ -2004,12 +2004,19 @@ public class CowsDA40PanelStructureTests
     }
 
     [Fact]
-    public void TheXlsDropsTheNgOnlyFailurePanels()
+    public void TheXlsDropsOnlyTheFadecFailurePanel()
     {
+        // ⚠️ RULING CHANGED, AND THIS TEST IS THE INVERSION OF WHAT IT SAID. It used to
+        // assert the XLS had no Engine Damage panel either, which was true only because
+        // nobody had built one: the XLS has its OWN per-cylinder failures, fuel failures
+        // and damage accumulators, all measured on the airframe, so all three panels stay
+        // and only FADEC and Sensors goes - the XLS has no FADEC to fail.
         var xls = Xls().GetPanelStructure()["Simulation"];
 
         Assert.DoesNotContain("FADEC and Sensors", xls);
-        Assert.DoesNotContain("Engine Damage", xls);
+        Assert.Contains("Engine Failures", xls);
+        Assert.Contains("Fuel Failures", xls);
+        Assert.Contains("Engine Damage", xls);
         Assert.Contains("Light Failures", xls);
         Assert.Contains("Reset", xls);
     }
