@@ -5,6 +5,9 @@
 //
 //   dotnet run --project tools/TrafficModelAudit -c Debug -p:Platform=x64 [-- --all] [-- --package aig]
 //
+// --root <folder> audits another packages folder (one holding Community, Official...) instead of the
+// installed simulator's; --parts, --nodes and --profile show how one model was assembled and measured.
+//
 // One line per model that needs a look (--all prints every model), then a summary per package:
 //   OK          measured, within tolerance of the published length and span
 //   VARIANT     measured, but not the published size: winglets, a stretch, a mis-declared type, a rotor
@@ -21,7 +24,7 @@ bool all = args.Contains("--all");
 string? only = args.SkipWhile(a => a != "--package").Skip(1).FirstOrDefault();
 const double LengthTolerance = 0.03, SpanTolerance = 0.05;
 
-string? root = AircraftCfgCatalog.FindInstalledPackagesPath();
+string? root = args.SkipWhile(a => a != "--root").Skip(1).FirstOrDefault() ?? AircraftCfgCatalog.FindInstalledPackagesPath();
 if (root == null) { Console.WriteLine("No MSFS packages folder found (UserCfg.opt)."); return 1; }
 Console.WriteLine($"Packages: {root}");
 var clock = System.Diagnostics.Stopwatch.StartNew();

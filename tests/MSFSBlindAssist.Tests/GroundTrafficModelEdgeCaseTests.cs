@@ -2,7 +2,7 @@
 // shared buffers, the helper geometry and lights an add-on hangs on its airframe, which level of detail is
 // fit to measure, an MSFS 2024 MODULAR aircraft assembled from attachments that live in several packages,
 // model templates and merges, an FSX-era .MDL, a package installed while the app runs, and the own
-// aircraft's outline held against the size its flight model reports. Every file here is synthetic.
+// aircraft's outline held against its type's size. Every file here is synthetic.
 
 using System.Globalization;
 using System.Text;
@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Tests;
 internal static class TestModel
 {
     /// <summary>What a box is drawn with: an ordinary material, the simulator's invisible one, or as an environment occluder.</summary>
-    public enum Material { Visible, Invisible, Occluder }
+    public enum Material { Visible, Invisible, Occluder, InvisibleSwitchedOff }
 
     /// <summary>A flat box: x from XShift - HalfWidth to XShift + HalfWidth, z from ZMin to ZMax.</summary>
     public sealed record Box(double HalfWidth, double ZMin, double ZMax, double XShift = 0, Material Material = Material.Visible);
@@ -23,16 +23,21 @@ internal static class TestModel
     /// <summary>How a node's boxes share buffers: each its own, or one vertex and one index accessor the way MSFS packs materials.</summary>
     public enum Packing { Separate, StartIndex, BaseVertex }
 
+    /// <param name="UniqueId">Its <c>ASOBO_unique_id</c>, when it has one.</param>
+    /// <param name="Scene">The scene a root node belongs to (0 is the default scene).</param>
     public sealed record Node(string Name, Box[]? Boxes = null, double[]? Translation = null, int[]? Children = null,
-        bool Skinned = false, string? AnimatedBy = null, Packing Packing = Packing.Separate);
+        bool Skinned = false, string? AnimatedBy = null, Packing Packing = Packing.Separate, string? UniqueId = null, int Scene = 0);
 
     public static readonly Box Fuselage = new(2, -22, 18);
     public static readonly Box Wing = new(17, -4, 2);
 
-    public static string Write(string dir, string name, params Node[] nodes) => Write(dir, name, null, nodes);
+    public static string Write(string dir, string name, params Node[] nodes) => Write(dir, name, null, null, nodes);
+
+    public static string Write(string dir, string name, long? declaredBytes, params Node[] nodes) => Write(dir, name, declaredBytes, null, nodes);
 
     /// <param name="declaredBytes">What the file says its geometry weighs, when not what it does.</param>
-    public static string Write(string dir, string name, long? declaredBytes, params Node[] nodes)
+    /// <param name="sceneTargets">Per scene, the unique id of the node it hangs on (null: none).</param>
+    public static string Write(string dir, string name, long? declaredBytes, string?[]? sceneTargets, params Node[] nodes)
     {
         Directory.CreateDirectory(dir);
         var bin = new List<byte>();
@@ -104,6 +109,7 @@ internal static class TestModel
             if (node.Translation is { } t) json.Append(Inv($",\"translation\":[{t[0]},{t[1]},{t[2]}]"));
             if (node.Children is { Length: > 0 } kids) json.Append(",\"children\":[" + string.Join(",", kids) + "]");
             if (node.Skinned) json.Append(",\"skin\":0");
+            if (node.UniqueId != null) json.Append(Inv($",\"extensions\":{{\"ASOBO_unique_id\":{{\"id\":\"{node.UniqueId}\"}}}}"));
             json.Append('}');
             nodeJson.Add(json.ToString());
             if (node.AnimatedBy != null)
@@ -111,9 +117,17 @@ internal static class TestModel
         }
 
         var children = nodes.SelectMany(n => n.Children ?? Array.Empty<int>()).ToHashSet();
-        string roots = string.Join(",", Enumerable.Range(0, nodes.Length).Where(i => !children.Contains(i)));
-        string gltf = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[" + roots + "]}],\"nodes\":[" + string.Join(",", nodeJson)
-            + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}}]"
+        int sceneCount = Math.Max(sceneTargets?.Length ?? 1, nodes.Max(n => n.Scene) + 1);
+        var scenes = new List<string>();
+        for (int s = 0; s < sceneCount; s++)
+        {
+            string roots = string.Join(",", Enumerable.Range(0, nodes.Length).Where(i => !children.Contains(i) && nodes[i].Scene == s));
+            string target = sceneTargets != null && s < sceneTargets.Length && sceneTargets[s] != null
+                ? Inv($",\"extensions\":{{\"ASOBO_unique_id\":{{\"id\":\"{sceneTargets[s]}\"}}}}") : "";
+            scenes.Add("{\"nodes\":[" + roots + "]" + target + "}");
+        }
+        string gltf = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[" + string.Join(",", scenes) + "],\"nodes\":[" + string.Join(",", nodeJson)
+            + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}},{\"name\":\"Shown\",\"extensions\":{\"ASOBO_material_invisible\":{\"enabled\":false}}}]"
             + ",\"meshes\":[" + string.Join(",", meshes) + "],\"accessors\":[" + string.Join(",", accessors)
             + "],\"bufferViews\":[" + string.Join(",", views)
             + "],\"buffers\":[{\"uri\":\"" + name + ".bin\",\"byteLength\":" + (declaredBytes ?? bin.Count).ToString(CultureInfo.InvariantCulture) + "}]"
@@ -259,6 +273,15 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
             Body(name, new TestModel.Box(30, 10, 30, Material: (TestModel.Material)material))))!;
         Assert.Equal(17.0, outline.HalfSpanM, 2);
         Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    [Fact]
+    public void An_invisible_material_that_is_switched_off_is_seen()
+    {
+        // "ASOBO_material_invisible": { "enabled": false } is an ordinary material.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "seen", Body("fuselage", Fuselage),
+            Body("wing", new TestModel.Box(17, -4, 2, Material: TestModel.Material.InvisibleSwitchedOff))))!;
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
     }
 
     [Fact]
@@ -409,6 +432,78 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         })!;
         Assert.Equal(17.0, unreadableParent.HalfSpanM, 2);
         Assert.Equal(18.0, unreadableParent.NoseM, 2);
+    }
+
+    // ── A scene that names the node it hangs on ──────────────────────────────────────────────────────
+
+    // The wings, with the two nodes a wingtip device hangs on: 16 m out each side, 6 m behind the origin.
+    private string WingsWithTipNodes(string name, string leftName = "Skel_Wing_Left_Wingtip", string? leftId = null)
+        => TestModel.Write(_dir, name, Body("wing", new TestModel.Box(16, -8, 0)),
+            new TestModel.Node(leftName, Translation: new[] { 16.0, 0.0, -6.0 }, UniqueId: leftId),
+            new TestModel.Node("Skel_Wing_Right_Wingtip", Translation: new[] { -16.0, 0.0, -6.0 }));
+
+    // A tip device 2 m wide: drawn about its own origin, outboard of it.
+    private static TestModel.Node Tip(string name, int scene, bool left)
+        => new(name, new[] { new TestModel.Box(1, -1.5, 1.5, XShift: left ? 1 : -1) }, Scene: scene);
+
+    private AircraftOutline? WithTips(string wings, string tips)
+        => GroundTrafficModelReader.Measure(new GroundTrafficModelReader.ModelPart[]
+        {
+            new(new[] { TestModel.Write(_dir, "tipfuselage", Body("fuselage", Fuselage)) }),
+            new(new[] { wings }, Parent: 0), new(new[] { tips }, Parent: 0),
+        });
+
+    [Fact]
+    public void A_scene_tagged_with_a_node_of_another_part_hangs_on_that_node()
+    {
+        // The Fenix's sharklets: an untagged default scene, then one scene per wingtip.
+        string tips = TestModel.Write(_dir, "sharklets", null, new[] { null, "Skel_Wing_Left_Wingtip", "Skel_Wing_Right_Wingtip" },
+            new TestModel.Node("Skel_SL_Box"), Tip("SL_L", 1, left: true), Tip("SL_R", 2, left: false));
+        var outline = WithTips(WingsWithTipNodes("wings-a"), tips)!;
+        Assert.Equal(18.0, outline.HalfSpanM, 2);
+        // The tips sit where the wing's tip nodes are, 6 m behind the origin: not at the origin.
+        int widest = Enumerable.Range(0, outline.HalfWidths.Count).First(i => outline.HalfWidths[i] > 17.9f);
+        Assert.Equal(-7.5, -outline.TailM + widest * AircraftOutline.StationM, 0);
+    }
+
+    [Fact]
+    public void A_default_scene_that_is_tagged_hangs_on_its_node_too()
+    {
+        // The Fenix's wing fences: both scenes are tagged, the default one included.
+        string tips = TestModel.Write(_dir, "fences", null, new[] { "Skel_Wing_Left_Wingtip", "Skel_Wing_Right_Wingtip" },
+            Tip("WF_L", 0, left: true), Tip("WF_R", 1, left: false));
+        Assert.Equal(18.0, WithTips(WingsWithTipNodes("wings-b"), tips)!.HalfSpanM, 2);
+    }
+
+    [Fact]
+    public void The_node_is_found_by_its_unique_id_when_that_is_not_its_name()
+    {
+        string tips = TestModel.Write(_dir, "fences-id", null, new[] { "x0_Tip_Left", "Skel_Wing_Right_Wingtip" },
+            Tip("WF_L", 0, left: true), Tip("WF_R", 1, left: false));
+        Assert.Equal(18.0, WithTips(WingsWithTipNodes("wings-c", leftName: "Tip_Left", leftId: "x0_Tip_Left"), tips)!.HalfSpanM, 2);
+    }
+
+    [Fact]
+    public void A_scene_whose_node_is_nowhere_is_left_out_and_an_untagged_extra_scene_always_is()
+    {
+        string wings = WingsWithTipNodes("wings-d");
+        string lost = TestModel.Write(_dir, "lost", null, new[] { null, "No_Such_Node", "Skel_Wing_Right_Wingtip" },
+            new TestModel.Node("Skel_SL_Box"), Tip("SL_L", 1, left: true), Tip("SL_R", 2, left: false));
+        // One tip only: the outline is the narrower of its two sides, so the wing's own 16 m.
+        Assert.Equal(16.0, WithTips(wings, lost)!.HalfSpanM, 2);
+        string untagged = TestModel.Write(_dir, "untagged", null, new string?[] { null, null, null },
+            new TestModel.Node("Skel_SL_Box"), Tip("SL_L", 1, left: true), Tip("SL_R", 2, left: false));
+        Assert.Equal(16.0, WithTips(wings, untagged)!.HalfSpanM, 2);
+    }
+
+    [Fact]
+    public void A_model_on_its_own_whose_default_scene_is_tagged_is_measured_where_it_is()
+    {
+        // Nothing to hang on: an ordinary model that happens to carry an id.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "alone", null, new[] { "Some_Id" },
+            Body("fuselage", Fuselage), Body("wing", Wing)))!;
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        Assert.Equal(18.0, outline.NoseM, 2);
     }
 
     [Fact]
@@ -691,40 +786,31 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         return h.Monitor.OwnHullForHarness();
     }
 
-    [Fact]
-    public void The_own_aircraft_s_measured_outline_is_widened_to_the_wing_span_its_flight_model_reports()
+    [Theory]
+    [InlineData(16.3)]     // narrower than the flight model's figure
+    [InlineData(18.5)]     // wider than it
+    public void The_own_aircraft_s_outline_is_the_one_measured_not_the_span_its_flight_model_reports(double wingHalfWidth)
     {
-        // The Fenix A320: its wing measures 32.6 m without the tip devices the measurement could not place;
-        // its flight model reports 117.5 ft, 35.81 m.
-        const string title = "Own A320 Sharklets";
-        using var catalog = OwnCatalog(title, wingHalfWidth: 16.3);
+        // A flight model's wing span is a number its author typed: the PMDG 777's says 62.7 m for a wing
+        // that is, and measures, 64.7 m. Within the guard's tolerance the measurement stands as it is.
+        string title = FormattableString.Invariant($"Own A320 {wingHalfWidth}");
+        using var catalog = OwnCatalog(title, wingHalfWidth);
         var h = new GroundTrafficHarness();
         h.UseRealSizes(models: catalog);
         h.Monitor.OwnAircraftProvider = () => (title, "A320", 117.5);
 
         var hull = OwnHullOnceMeasured(h, catalog, title);
         Assert.Equal(AircraftHullSource.Model, hull.Source);
-        Assert.Equal(117.5 * 0.3048 / 2.0, hull.HalfSpanM, 2);
+        Assert.Equal(wingHalfWidth, hull.HalfSpanM, 2);
         Assert.Equal(18.0, hull.NoseM, 2);              // the measured nose and tail, not 0.46 of a length
         Assert.Equal(22.0, hull.TailM, 2);
-    }
-
-    [Fact]
-    public void A_measured_span_wider_than_the_reported_one_is_kept()
-    {
-        const string title = "Own A320 Wide";
-        using var catalog = OwnCatalog(title, wingHalfWidth: 18.5);
-        var h = new GroundTrafficHarness();
-        h.UseRealSizes(models: catalog);
-        h.Monitor.OwnAircraftProvider = () => (title, "A320", 117.5);
-        Assert.Equal(18.5, OwnHullOnceMeasured(h, catalog, title).HalfSpanM, 2);
     }
 
     [Fact]
     public void An_own_outline_far_from_the_aircraft_s_size_is_not_believed()
     {
         // A wing that measures 14 m on an aircraft whose flight model says 35.81 m was not assembled:
-        // the type's published size is used, never a widened fragment.
+        // the type's published size is used, never a fragment.
         const string title = "Own A320 Broken";
         using var catalog = OwnCatalog(title, wingHalfWidth: 7);
         var h = new GroundTrafficHarness();

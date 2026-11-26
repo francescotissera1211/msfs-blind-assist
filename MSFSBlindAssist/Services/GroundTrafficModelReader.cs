@@ -39,26 +39,6 @@ public sealed class AircraftOutline
         Polygon = BuildPolygon(tailM, noseM, halfWidths);
     }
 
-    /// <summary>
-    /// This outline with its wingtips moved out to <paramref name="halfSpanM"/>, when that is wider: the
-    /// stations in the outer half of the span are stretched, the tip all the way and the mid-span not at
-    /// all, so the fuselage and the tail keep their measure. For a pilot's own aircraft whose tip devices
-    /// the measurement could not place (the Fenix's fences and sharklets), against the wing span its own
-    /// flight model reports.
-    /// </summary>
-    public AircraftOutline WidenedTo(double halfSpanM)
-    {
-        double max = HalfSpanM;
-        if (!(halfSpanM > max) || max <= 0.0) return this;
-        var wider = new float[HalfWidths.Count];
-        for (int i = 0; i < wider.Length; i++)
-        {
-            double w = HalfWidths[i], outer = (w - 0.5 * max) / (0.5 * max);
-            wider[i] = (float)(outer > 0.0 ? w + outer * (halfSpanM - max) : w);
-        }
-        return new AircraftOutline(TailM, NoseM, wider);
-    }
-
     private static List<(double X, double Z)> BuildPolygon(double tailM, double noseM, IReadOnlyList<float> w)
     {
         // The right-hand side from the tail tip to the nose tip, then thinned.
@@ -214,6 +194,9 @@ public static partial class GroundTrafficModelReader
             var meshes = new List<Part>();
             var roots = new double[parts.Count][];
             var nodes = new Dictionary<string, double[]>?[parts.Count];
+            // Every node placed so far, by name and by unique id, whatever part it came in: where a scene
+            // that names a node of another part goes (the Fenix's wingtip devices name the wing's tip).
+            var placed = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < parts.Count; i++)
             {
                 var part = parts[i];
@@ -225,7 +208,9 @@ public static partial class GroundTrafficModelReader
                         && known.TryGetValue(name, out var at)) root = at;
                 }
                 roots[i] = root;
-                nodes[i] = Load(part.Lods, root, meshes);
+                nodes[i] = Load(part.Lods, root, placed, meshes);
+                if (nodes[i] is { } own)
+                    foreach (var (id, world) in own) placed.TryAdd(id, world);
             }
             if (meshes.Count == 0) { why = "no geometry could be read"; return null; }
             return Silhouette(meshes, out why);
@@ -237,8 +222,9 @@ public static partial class GroundTrafficModelReader
     // DetailedLods levels are fit to measure (the PMDG 777's sixth has no tail cone): among them one with
     // no skinned mesh and not oversized first, then not oversized, then the rest in order; the coarse
     // levels only when no detailed one can be read. Returns the world transform of every node of the
-    // level used, by name (where the parts attached to it go).
-    private static Dictionary<string, double[]>? Load(IReadOnlyList<string> lods, double[] root, List<Part> meshes)
+    // level used, by name and by unique id (where the parts attached to it go).
+    private static Dictionary<string, double[]>? Load(IReadOnlyList<string> lods, double[] root,
+        IReadOnlyDictionary<string, double[]> placed, List<Part> meshes)
     {
         // An FSX-era model (IVAO's 737-200, -400 and -500) is one binary file, not glTF.
         foreach (string lod in lods)
@@ -277,7 +263,7 @@ public static partial class GroundTrafficModelReader
                 try
                 {
                     var gltf = new Gltf(c.Doc.RootElement, Path.GetDirectoryName(c.Path) ?? "");
-                    var found = gltf.WorldParts(NotAirframe(), GearAnimation(), root, out var nodeWorlds);
+                    var found = gltf.WorldParts(NotAirframe(), GearAnimation(), root, placed, out var nodeWorlds);
                     if (found.Count == 0) { nodesOnly ??= nodeWorlds; continue; }
                     meshes.AddRange(found);
                     return nodeWorlds;
@@ -563,9 +549,20 @@ public static partial class GroundTrafficModelReader
             _unseenMaterial = new bool[materials.Length];
             for (int i = 0; i < materials.Length; i++)
                 _unseenMaterial[i] = materials[i].TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object
-                    && (ext.TryGetProperty("ASOBO_material_invisible", out _) || ext.TryGetProperty("ASOBO_material_environment_occluder", out _));
+                    && (Enabled(ext, "ASOBO_material_invisible") || Enabled(ext, "ASOBO_material_environment_occluder"));
             ReadFirstKeys();
         }
+
+        // A material extension that is there and not switched off ("enabled": false).
+        private static bool Enabled(JsonElement extensions, string name)
+            => extensions.TryGetProperty(name, out var e)
+               && !(e.ValueKind == JsonValueKind.Object && e.TryGetProperty("enabled", out var on) && on.ValueKind == JsonValueKind.False);
+
+        // A node's or a scene's ASOBO_unique_id, "" when it has none.
+        private static string UniqueId(JsonElement element)
+            => element.TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object
+               && ext.TryGetProperty("ASOBO_unique_id", out var uid) && uid.ValueKind == JsonValueKind.Object
+               && uid.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() ?? "" : "";
 
         private JsonElement[] Items(string name)
             => _root.TryGetProperty(name, out var a) && a.ValueKind == JsonValueKind.Array ? a.EnumerateArray().ToArray() : Array.Empty<JsonElement>();
@@ -695,8 +692,14 @@ public static partial class GroundTrafficModelReader
             return r;
         }
 
-        /// <summary>Every airframe mesh primitive in model space.</summary>
-        public List<Part> WorldParts(Regex notAirframe, Regex gearAnimation, double[] root, out Dictionary<string, double[]> nodeWorlds)
+        /// <summary>
+        /// Every airframe mesh primitive in model space. A scene tagged with a node's unique id hangs on
+        /// that node, found in this file or among <paramref name="placed"/>, the nodes of the parts read
+        /// before it; the default scene otherwise sits at <paramref name="root"/>, and any other scene whose
+        /// node is nowhere, or that names none, is left out.
+        /// </summary>
+        public List<Part> WorldParts(Regex notAirframe, Regex gearAnimation, double[] root,
+            IReadOnlyDictionary<string, double[]> placed, out Dictionary<string, double[]> nodeWorlds)
         {
             var parts = new List<Part>();
             nodeWorlds = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
@@ -719,25 +722,46 @@ public static partial class GroundTrafficModelReader
 
             var visited = new bool[_nodes.Length];
             var stack = new Stack<(int Node, double[] Parent)>();
-            foreach (int r in roots) stack.Push((r, root));
-            while (stack.Count > 0)
+            // The default scene is itself hung on another part's node when it is tagged with one (both
+            // scenes of the Fenix's wing fences are: left tip, right tip).
+            string defaultTarget = (uint)scene < (uint)scenes.Length ? UniqueId(scenes[scene]) : "";
+            double[] defaultRoot = defaultTarget.Length > 0 && placed.TryGetValue(defaultTarget, out var hung) ? hung : root;
+            foreach (int r in roots) stack.Push((r, defaultRoot));
+            var worlds = nodeWorlds;
+            void Drain()
             {
-                var (index, parent) = stack.Pop();
-                if ((uint)index >= (uint)_nodes.Length || visited[index]) continue;
-                visited[index] = true;
-                var node = _nodes[index];
-                string name = node.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "";
-                double[] world = Multiply(parent, Local(index));
-                if (name.Length > 0) nodeWorlds.TryAdd(name, world);
-                if (gear.Contains(index) || notAirframe.IsMatch(name)) continue;
-                if (node.TryGetProperty("mesh", out var meshEl) && (uint)meshEl.GetInt32() < (uint)_meshes.Length)
+                while (stack.Count > 0)
                 {
-                    int before = parts.Count;
-                    AddMesh(parts, _meshes[meshEl.GetInt32()], node.TryGetProperty("skin", out _) ? root : world);
-                    if (NodeTrace is { } trace) Trace(trace, name, parts, before);
+                    var (index, parent) = stack.Pop();
+                    if ((uint)index >= (uint)_nodes.Length || visited[index]) continue;
+                    visited[index] = true;
+                    var node = _nodes[index];
+                    string name = node.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "";
+                    double[] world = Multiply(parent, Local(index));
+                    if (name.Length > 0) worlds.TryAdd(name, world);
+                    if (UniqueId(node) is { Length: > 0 } uid) worlds.TryAdd(uid, world);
+                    if (gear.Contains(index) || notAirframe.IsMatch(name)) continue;
+                    if (node.TryGetProperty("mesh", out var meshEl) && (uint)meshEl.GetInt32() < (uint)_meshes.Length)
+                    {
+                        int before = parts.Count;
+                        AddMesh(parts, _meshes[meshEl.GetInt32()], node.TryGetProperty("skin", out _) ? root : world);
+                        if (NodeTrace is { } trace) Trace(trace, name, parts, before);
+                    }
+                    if (node.TryGetProperty("children", out var children))
+                        foreach (var child in children.EnumerateArray()) stack.Push((child.GetInt32(), world));
                 }
-                if (node.TryGetProperty("children", out var children))
-                    foreach (var child in children.EnumerateArray()) stack.Push((child.GetInt32(), world));
+            }
+            Drain();
+
+            // A further scene tagged with a node's unique id hangs on that node: MSFS 2024's way of fitting
+            // one part to a node of another (the Fenix's fences and sharklets on the wing's tip node).
+            for (int s = 0; s < scenes.Length; s++)
+            {
+                if (s == scene || UniqueId(scenes[s]) is not { Length: > 0 } target
+                    || !scenes[s].TryGetProperty("nodes", out var attached)) continue;
+                if (!worlds.TryGetValue(target, out var at) && !placed.TryGetValue(target, out at)) continue;
+                foreach (var r in attached.EnumerateArray()) stack.Push((r.GetInt32(), at));
+                Drain();
             }
             return parts;
         }
