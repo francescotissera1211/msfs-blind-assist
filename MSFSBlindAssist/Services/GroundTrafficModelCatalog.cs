@@ -445,19 +445,25 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         string attached = Path.Combine(model.AircraftDir, "attached_objects.cfg");
         if (!File.Exists(attached)) return parts;
         int attachedFrom = 0;
+        bool wholeAirframe = false;
         try
         {
             string? packageRoot = PackageRootOf(model.AircraftDir);
             if (packageRoot == null) return parts;
             // presets/<maker>/<preset>/config → the aircraft's own folder, four levels up: its common model.
             string aircraftRoot = Path.GetFullPath(Path.Combine(model.AircraftDir, "..", "..", "..", ".."));
-            int parent = AddGroups(parts, GroupsOf(Vfs(Path.Combine(aircraftRoot, "common", "model"))), -1, null);
+            // The preset may name its model (model = "GE"): then common/model.GE is the airframe itself, whole,
+            // and what is attached to it may carry no geometry at all (the TFDi MD-11's one attachment is its
+            // navigation graph). Unnamed, common/model is the shared helper the airframe is attached to.
+            string named = Vfs(Path.Combine(aircraftRoot, "common", "model." + model.ModelSuffix));
+            wholeAirframe = model.ModelSuffix.Length > 0 && Directory.Exists(named);
+            int parent = AddGroups(parts, GroupsOf(wholeAirframe ? named : Vfs(Path.Combine(aircraftRoot, "common", "model"))), -1, null);
             attachedFrom = parts.Count;
             AddAttachments(parts, attached, packageRoot, parent, depth: 0);
         }
         catch (Exception) { /* unreadable: whatever was gathered */ }
-        // The common model alone is a helper with no airframe: with nothing attached there is nothing to measure.
-        return parts.Count > attachedFrom ? parts : new List<GroundTrafficModelReader.ModelPart>();
+        // The shared common model alone is a helper with no airframe: with nothing attached there is nothing to measure.
+        return parts.Count > attachedFrom || (wholeAirframe && parts.Count > 0) ? parts : new List<GroundTrafficModelReader.ModelPart>();
     }
 
     // Adds a model's groups as parts sharing one parent and attach node (what is merged into a model

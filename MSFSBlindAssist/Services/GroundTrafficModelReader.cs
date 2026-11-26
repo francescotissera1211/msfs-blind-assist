@@ -98,7 +98,12 @@ public sealed class AircraftOutline
 /// lateral. <c>reference_datum_position</c> moves the flight model's datum, never the origin.</item>
 /// <item>A SKINNED mesh (a flexing wing) stores its vertices in model space already: its node's own
 /// transform is not applied, as glTF itself says. The first level of detail with no skinned mesh is
-/// preferred, since several models' skinned wings are stored unswept.</item>
+/// preferred, since several models' skinned wings are stored unswept. Placing a skinned mesh by its
+/// skeleton instead (joint times inverse bind matrix, which in these exports equals the node's own
+/// transform) was tried on 2026-11-26 and is WRONG for most: it put the BlueBird 757's fin at the nose and
+/// lengthened the PMDG 777-200 by 3.7 m, where model space measures both to the published size. The one
+/// model it would help is the PMDG 737, whose elevators are stored round their own origin: its outline
+/// ends at the tail cone, 1.43 m short of the tailplane's tips (38.04 m for a 737-800 of 39.47).</item>
 /// <item>A node that an animation moves but that declares no transform of its own takes the animation's
 /// first key (flaps and props retracted or at rest); a node that does declare one keeps it.</item>
 /// <item>Landing gear never shapes an aircraft's outline from above, and its rest pose is the least
@@ -109,7 +114,8 @@ public sealed class AircraftOutline
 /// wheel chocks) is not airframe: <see cref="NotAirframe"/> names it. It is drawn with ordinary materials
 /// and shown or hidden by the simulator, so only its name tells it apart.</item>
 /// <item>What is drawn with the simulator's INVISIBLE material (<c>ASOBO_material_invisible</c>) or as an
-/// environment occluder is never seen, so it is never airframe: the 31 m sphere the PMDG 777 hangs on
+/// environment occluder is never seen, and what is drawn see-through as a decal or with no colour at all is
+/// light or a picture on the surface (<c>NotSolid</c>), so neither is ever airframe: the 31 m sphere the PMDG 777 hangs on
 /// each light so the lamp is not culled, the 35 m boxes on the iniBuilds A350's wings, the Fenix's 200 m
 /// triangles and the box round its fuselage, collision shapes, FSLTL's gear helpers. Over the 1,021
 /// models installed on 2026-11-26 this one rule does what names once tried to ("LOD friend", "cast
@@ -548,9 +554,30 @@ public static partial class GroundTrafficModelReader
             var materials = Items("materials");
             _unseenMaterial = new bool[materials.Length];
             for (int i = 0; i < materials.Length; i++)
-                _unseenMaterial[i] = materials[i].TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object
-                    && (Enabled(ext, "ASOBO_material_invisible") || Enabled(ext, "ASOBO_material_environment_occluder"));
+            {
+                bool extended = materials[i].TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object;
+                _unseenMaterial[i] = (extended && (Enabled(ext, "ASOBO_material_invisible") || Enabled(ext, "ASOBO_material_environment_occluder")))
+                                     || NotSolid(materials[i], extended ? ext : default);
+            }
             ReadFirstKeys();
+        }
+
+        // A see-through material that is a DECAL (a picture laid on the surface under it), or that has no
+        // colour at all (alpha 0 and no texture to give it one), is not something an aircraft can be hit
+        // on: rivets and stencils lie on the airframe, and what such a material draws beyond it is light.
+        // The TFDi MD-11 draws each landing light's beam (a 20 m cone ahead of the wing) with a material of
+        // alpha 0, and each wingtip light's glow (12 m across) and its logo lights as decals: it measured
+        // 67.5 m by 63.1 where the aircraft is 61.6 by 51.7. A see-through material that IS drawn stays: a
+        // helicopter's rotor disc is one, and is the widest thing it has.
+        private static bool NotSolid(JsonElement material, JsonElement extensions)
+        {
+            if (!(material.TryGetProperty("alphaMode", out var alpha) && alpha.ValueKind == JsonValueKind.String
+                  && string.Equals(alpha.GetString(), "BLEND", StringComparison.Ordinal))) return false;
+            if (extensions.ValueKind == JsonValueKind.Object && Enabled(extensions, "ASOBO_material_geometry_decal")) return true;
+            return material.TryGetProperty("pbrMetallicRoughness", out var pbr) && pbr.ValueKind == JsonValueKind.Object
+                   && !pbr.TryGetProperty("baseColorTexture", out _)
+                   && pbr.TryGetProperty("baseColorFactor", out var colour) && colour.ValueKind == JsonValueKind.Array
+                   && colour.GetArrayLength() == 4 && colour[3].TryGetDouble(out double a) && a <= 0.0;
         }
 
         // A material extension that is there and not switched off ("enabled": false).

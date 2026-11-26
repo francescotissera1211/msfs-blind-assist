@@ -65,7 +65,9 @@ foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnore
     string label = row.Parts.Count > 1
         ? $"{Path.GetFileName(Path.GetDirectoryName(row.Dir))} ({row.Parts.Count} parts)"
         : $"{Path.GetFileName(row.Dir)}/{(row.Suffix.Length > 0 ? "model." + row.Suffix : "model")}";
-    string declared = icaoByTitle.TryGetValue(row.Titles[0].ToLowerInvariant(), out var d) ? d : "";
+    // The type the model's own package declares; with --root the installed packages' map knows nothing of it.
+    string declared = index.TryGetValue(row.Titles[0], out var declaring) && declaring.Icao.Length > 0 ? declaring.Icao
+        : icaoByTitle.TryGetValue(row.Titles[0].ToLowerInvariant(), out var d) ? d : "";
     var published = GroundTrafficAircraftSizes.Lookup(declared);
     var big = new List<string>();
     if (args.Contains("--nodes"))
@@ -120,7 +122,7 @@ var wrong = new SortedDictionary<string, (string Example, int Count)>(StringComp
 foreach (var (title, model) in index)
 {
     if (only != null && model.AircraftDir.IndexOf(only, StringComparison.OrdinalIgnoreCase) < 0) continue;
-    string declared = icaoByTitle.TryGetValue(title.ToLowerInvariant(), out var d) ? d : "";
+    string declared = model.Icao.Length > 0 ? model.Icao : icaoByTitle.TryGetValue(title.ToLowerInvariant(), out var d) ? d : "";
     if (GroundTrafficAircraftSizes.Lookup(declared) is not { } want) { undeclared++; continue; }
     string got = GroundTrafficAircraftSizes.ResolveIcao(null, null, title);
     if (got.Length == 0) { unresolved++; Note($"{declared} -> (none)", title); continue; }

@@ -15,7 +15,8 @@ namespace MSFSBlindAssist.Tests;
 internal static class TestModel
 {
     /// <summary>What a box is drawn with: an ordinary material, the simulator's invisible one, or as an environment occluder.</summary>
-    public enum Material { Visible, Invisible, Occluder, InvisibleSwitchedOff }
+    /// <remarks>Decal, Transparent and Glass are see-through (alphaMode BLEND): a picture on the surface, a material of alpha 0, and one that is drawn (glass, a rotor disc).</remarks>
+    public enum Material { Visible, Invisible, Occluder, InvisibleSwitchedOff, Decal, Transparent, Glass }
 
     /// <summary>A flat box: x from XShift - HalfWidth to XShift + HalfWidth, z from ZMin to ZMax.</summary>
     public sealed record Box(double HalfWidth, double ZMin, double ZMax, double XShift = 0, Material Material = Material.Visible);
@@ -127,7 +128,10 @@ internal static class TestModel
             scenes.Add("{\"nodes\":[" + roots + "]" + target + "}");
         }
         string gltf = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[" + string.Join(",", scenes) + "],\"nodes\":[" + string.Join(",", nodeJson)
-            + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}},{\"name\":\"Shown\",\"extensions\":{\"ASOBO_material_invisible\":{\"enabled\":false}}}]"
+            + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}},{\"name\":\"Shown\",\"extensions\":{\"ASOBO_material_invisible\":{\"enabled\":false}}}"
+            + ",{\"name\":\"Decal\",\"alphaMode\":\"BLEND\",\"extensions\":{\"ASOBO_material_geometry_decal\":{}}}"
+            + ",{\"name\":\"Nothing\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,1.0,1.0,0.0]}}"
+            + ",{\"name\":\"Glass\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,1.0,1.0,0.3]},\"extensions\":{\"ASOBO_material_shadow_options\":{\"noCastShadow\":true}}}]"
             + ",\"meshes\":[" + string.Join(",", meshes) + "],\"accessors\":[" + string.Join(",", accessors)
             + "],\"bufferViews\":[" + string.Join(",", views)
             + "],\"buffers\":[{\"uri\":\"" + name + ".bin\",\"byteLength\":" + (declaredBytes ?? bin.Count).ToString(CultureInfo.InvariantCulture) + "}]"
@@ -273,6 +277,26 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
             Body(name, new TestModel.Box(30, 10, 30, Material: (TestModel.Material)material))))!;
         Assert.Equal(17.0, outline.HalfSpanM, 2);
         Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    [Theory]
+    [InlineData("l_ldg_light_src", TestModel.Material.Transparent)]     // the TFDi MD-11's landing-light beam: alpha 0
+    [InlineData("nav_r_fwd", TestModel.Material.Decal)]                 // and its wingtip lights' glow, 12 m across
+    public void What_is_drawn_see_through_as_a_decal_or_with_no_colour_at_all_is_not_airframe(string name, object material)
+    {
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "light", Body("fuselage", Fuselage), Body("wing", Wing),
+            Body(name, new TestModel.Box(30, 10, 30, Material: (TestModel.Material)material))))!;
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    [Fact]
+    public void A_see_through_material_that_is_drawn_is_airframe()
+    {
+        // A helicopter's rotor disc: see-through, casting no shadow, and the widest thing it has.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "rotor", Body("fuselage", new TestModel.Box(1, -6, 4)),
+            Body("rotor_disc", new TestModel.Box(5, -5, 5, Material: TestModel.Material.Glass))))!;
+        Assert.Equal(5.0, outline.HalfSpanM, 2);
     }
 
     [Fact]
@@ -646,6 +670,27 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         Assert.Equal(30.0, outline.TailM, 2);         // the merged tail, at the common model's origin
         int widest = Enumerable.Range(0, outline.HalfWidths.Count).First(i => outline.HalfWidths[i] > 16.9f);
         Assert.Equal(-9.0, -outline.TailM + widest * AircraftOutline.StationM, 0);
+    }
+
+    [Fact]
+    public void A_preset_that_names_its_model_is_measured_from_the_common_model_of_that_name()
+    {
+        // The TFDi MD-11: presets/<maker>/<preset>/config/aircraft.cfg says model = "GE", the whole airframe is
+        // common/model.GE, and the one thing attached carries no geometry at all (its navigation graph).
+        string config = Airplanes("md11", "MD-11", "presets", "maker", "MD-11 GE", "config");
+        WriteText(Path.Combine(config, "aircraft.cfg"), "[FLTSIM.0]\ntitle = \"MD-11 GE\"\nmodel = \"GE\"\n");
+        WriteText(Path.Combine(config, "attached_objects.cfg"),
+            "[SIM_ATTACHMENT.0]\nattachment_root = \"SimObjects/Airplanes/MD-11/attachments/maker/PAX_GE_Graph\"\nalias = \"PAX_GE_Graph\"\n");
+        WriteText(Path.Combine(Airplanes("md11", "MD-11", "attachments", "maker", "PAX_GE_Graph"), "attachment.cfg"), "[Tags]\ntag.0 = \"pax\"\n");
+        string model = Airplanes("md11", "MD-11", "common", "model.GE");
+        WriteText(Path.Combine(model, "model.cfg"), "[models]\nexterior=MD11_EXT.xml\n");
+        WriteText(Path.Combine(model, "MD11_EXT.xml"), "<ModelInfo><LODS><LOD ModelFile=\"MD11_LOD0.gltf\"/></LODS></ModelInfo>");
+        TestModel.Write(model, "MD11_LOD0", Body("fuselage", new TestModel.Box(3, -33, 28)), Body("wing", new TestModel.Box(26, -8, 2)));
+
+        var index = GroundTrafficModelCatalog.BuildIndex(_dir);
+        var outline = GroundTrafficModelReader.Measure(GroundTrafficModelCatalog.Parts(index["MD-11 GE"]), out _)!;
+        Assert.Equal(26.0, outline.HalfSpanM, 2);
+        Assert.Equal(61.0, outline.LengthM, 2);
     }
 
     [Fact]
