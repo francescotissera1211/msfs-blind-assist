@@ -172,6 +172,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     // when it moves tail-first (OwnDirection).
     private readonly List<PositionFix> _ownHistory = new();
     private DateTime _ownFixUtc;
+    // The own aircraft last moved tail-first (OwnDirection): held while it is stopped.
+    private bool _ownReversed;
 
     // The own aircraft's outline, and what it was resolved from (OwnHull).
     private AircraftHull _ownHull = AircraftHull.Default;
@@ -986,7 +988,24 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         var cur = new PositionFix(_ownLat, _ownLon, _ownFixUtc);
         const double min = GroundTrafficLogic.OwnReversingMinMoveM;
-        return GroundTrafficLogic.EffectiveDirection(_ownHeadingTrue, _ownGS, GroundTrafficLogic.TrackAnchor(_ownHistory, cur, min), cur, min);
+        var anchor = GroundTrafficLogic.TrackAnchor(_ownHistory, cur, min);
+        double direction = GroundTrafficLogic.EffectiveDirection(_ownHeadingTrue, _ownGS, anchor, cur, min);
+        // Stopped, the aircraft keeps the direction it last moved in: a pushback that has stopped is still
+        // a pushback, and what is behind the tail is still what is in its way. Read as nose-first the
+        // moment it stopped, the 777 it had just been told to stop for was "clear" (OMDB, 2026-11-26).
+        bool moving = anchor != null && _ownGS >= GroundTrafficLogic.ReversingMinGsKts;
+        if (moving)
+        {
+            bool reversed = direction != _ownHeadingTrue;
+            if (reversed != _ownReversed)
+            {
+                _ownReversed = reversed;
+                // The way the pilot is going has changed: a "Stop" given for the other way is over, unanswered.
+                foreach (var ac in _tracked.Values) ac.StopSpokenUtc = null;
+            }
+            return direction;
+        }
+        return _ownReversed ? RelativeDirection.Normalize360(_ownHeadingTrue + 180.0) : _ownHeadingTrue;
     }
 
     // Caller holds _lock.
@@ -1404,7 +1423,8 @@ public sealed class GroundTrafficMonitor : IDisposable
                 }));
         }
 
-        EvaluateQueuePosition(ctx, queueCandidates, haveRoute, ownRouteM, ownGS, candidates);
+        // Pushed back, the pilot is not in a line: nothing is read or said about a queue.
+        if (!reversing) EvaluateQueuePosition(ctx, queueCandidates, haveRoute, ownRouteM, ownGS, candidates);
     }
 
     /// <summary>

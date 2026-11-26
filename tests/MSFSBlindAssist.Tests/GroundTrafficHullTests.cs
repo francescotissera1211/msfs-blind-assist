@@ -759,6 +759,58 @@ public class GroundTrafficClearTests
     }
 
     [Fact]
+    public void Stopped_after_a_pushback_the_aircraft_behind_is_not_clear_until_it_has_gone()
+    {
+        // OMDB, 2026-11-26, live: "Stop, 777 very close, behind, 125 feet", the pushback stopped 35 m short,
+        // and six seconds later "Clear of 777" with the 777 still there. Stopped, the aircraft was read as
+        // facing forward again, and what was behind it was no longer "in the way".
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), 1000, departure: true) };
+        h.UseRealSizes("B77W", 212.6);
+        var behind = Ac(1, -150, 0, 0, "Delta", "DAL1", headingDeg: 0);
+        behind.AircraftType = "A320";
+        h.Sim.Traffic.Add(behind);
+        double east = 0, north = 0, ownKts = -3;
+        int stopSecond = -1, clearSecond = -1;
+        for (int s = 0; s < 200; s++)
+        {
+            if (stopSecond < 0 && h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) { stopSecond = s; ownKts = 0; }
+            east += ownKts * Kt;
+            if (s > 150) { north += 12 * Kt; behind.Latitude = north * M; behind.GroundSpeedKnots = 12; }   // it taxies on at last
+            h.Sim.Position = Own(east, Math.Abs(ownKts));
+            h.Tick();
+            if (clearSecond < 0 && h.Said.All.Any(m => m.StartsWith("Clear of", StringComparison.Ordinal))) clearSecond = s;
+        }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(stopSecond > 0, said);
+        Assert.True(clearSecond > 150, $"clear at {clearSecond}: {said}");
+        Assert.True(h.Said.All.Count(m => m.StartsWith("Stop", StringComparison.Ordinal)) == 1, said);
+        // And nothing about a queue while the aircraft is pushed back or stands where the push left it.
+        Assert.True(!h.Said.All.Any(m => m.Contains("queue", StringComparison.Ordinal)), said);
+    }
+
+    [Fact]
+    public void Taxiing_out_after_the_pushback_the_aircraft_left_behind_is_not_announced_clear()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.UseRealSizes("B77W", 212.6);
+        var behind = Ac(1, -150, 0, 0, "Delta", "DAL1", headingDeg: 0);
+        behind.AircraftType = "A320";
+        h.Sim.Traffic.Add(behind);
+        double east = 0, ownKts = -3;
+        for (int s = 0; s < 150; s++)
+        {
+            if (ownKts < 0 && h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) ownKts = 0;
+            if (s > 100) ownKts = 10;                                   // the tug is gone: taxi out, away from it
+            east += ownKts * Kt;
+            h.Sim.Position = Own(east, Math.Abs(ownKts));
+            h.Tick();
+        }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(h.Said.All.Any(m => m.StartsWith("Stop, Delta A320 very close, behind", StringComparison.Ordinal)), said);
+        Assert.True(!h.Said.All.Any(m => m.StartsWith("Clear of", StringComparison.Ordinal)), said);
+    }
+
+    [Fact]
     public void The_aircraft_ahead_in_a_line_is_answered_by_ahead_is_moving_alone()
     {
         var h = new GroundTrafficHarness { Context = RouteContext(East(2000), 2000, departure: true) };
