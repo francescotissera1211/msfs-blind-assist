@@ -311,6 +311,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     // The pilot's line has stood at the runway hold on this route: it is the departure queue from then
     // on (GroundTrafficLogic.ReadQueue's inDepartureQueue).
     private bool _departureQueue;
+    // The destination the queue state above was read for (GroundTrafficRouteContext.DestinationName).
+    private string? _queueDestination;
     private GroundTrafficLogic.QueueReading? _queueReadingForSummary;
 
     // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
@@ -1546,6 +1548,24 @@ public sealed class GroundTrafficMonitor : IDisposable
                 }));
         }
 
+        // ── "Clear of …" for an aircraft that is no longer there to be judged ──
+        // Every "Stop" is answered ([TRF-14]), also when the aircraft it was said for has left what is
+        // evaluated above: removed by the traffic injector (not seen for FRESH_MS), airborne, at runway
+        // speed, or beyond the tracking range. Until 2026-11-27 its "Stop" stayed unanswered until the
+        // record was pruned, and a pilot stopped for an aircraft that then vanished heard nothing more.
+        if (views.Count < _tracked.Count)
+        {
+            var evaluated = new HashSet<uint>();
+            foreach (var v in views) evaluated.Add(v.Ac.ObjectId);
+            foreach (var gone in _tracked.Values)
+            {
+                if (gone.StopSpokenUtc is not { } stopUtc || evaluated.Contains(gone.ObjectId)
+                    || (now - stopUtc).TotalSeconds < GroundTrafficLogic.ClearMinSecondsAfterStop) continue;
+                candidates.Add(new TrafficCallout(TrafficCalloutKind.Clear, GroundTrafficLogic.TrackRangeFt, $"Clear of {gone.Name}.",
+                    () => { gone.StopSpokenUtc = null; gone.LastAlertTime = now; }));
+            }
+        }
+
         EvaluateWatched(views, alarmed, useMetres, candidates);
 
         // Pushed back, the pilot is not in a line: nothing is read or said about a queue.
@@ -1768,7 +1788,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     private void EvaluateQueuePosition(GroundTrafficRouteContext? ctx, List<GroundTrafficLogic.QueueCandidate> queueCandidates,
         bool haveRoute, double ownRouteM, double ownGS, List<TrafficCallout> candidates)
     {
-        if (ctx is not { IsQueueRoute: true }) { ResetQueue(); return; }
+        if (ctx is not { IsQueueRoute: true }) { ResetQueue(); _queueDestination = null; return; }
+        // Another destination is another line: what was read and latched for the first runway (the
+        // departure queue most of all) says nothing about the second. A pilot re-routed from the hold of
+        // one runway heard "Number 4 in the departure queue" 1.5 km short of the other.
+        if (!string.Equals(_queueDestination, ctx.DestinationName, StringComparison.Ordinal))
+        {
+            if (_queueDestination != null) ResetQueue();
+            _queueDestination = ctx.DestinationName;
+        }
         if (!haveRoute || ownGS > QueueMovementPolicy.OwnQueueGsKts)
         {
             // Off the route (including lined up: no route ahead) or moving: the last reading no

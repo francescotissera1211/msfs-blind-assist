@@ -26,6 +26,22 @@ public class GroundTrafficAircraftSizesTests
     [InlineData("TT:ATCCOM.ATC_NAME AIRBUS.0.text", "A320", "FSLTL_FAIB_A20N_Aircalin", "A20N")]
     [InlineData("", "", "FSLTL_FSPXAI_MD11F_Aerojet_Cargo_Fictional", "MD11")]
     [InlineData("", "", "FSLTL_CRJX_ZZZZ", "CRJX")]
+    // The aircraft MSFSBA supports, by the title alone (another pilot's, seen as traffic; 2026-11-27).
+    [InlineData("", "", "777F", "B77L")]                                    // PMDG: it read as a 777-300ER, 10 m longer
+    [InlineData("", "", "777-200LR", "B77L")]
+    [InlineData("", "", "777-200ER GE", "B772")]
+    [InlineData("", "", "777-300ER", "B77W")]
+    [InlineData("", "", "737-800 PAX BW HD", "B738")]
+    [InlineData("", "", "737-600 PAX SC", "B736")]
+    [InlineData("", "", "BlueBird 757-200 PW N/W", "B752")]
+    [InlineData("", "", "iFly 737-MAX8 (178Seats)", "B38M")]
+    [InlineData("", "", "iFly 737-MAX8200", "B38M")]
+    [InlineData("", "", "TFDi Design MD-11F GE", "MD11")]
+    [InlineData("", "", "FenixA320 CFM SL", "A320")]
+    [InlineData("", "", "FlyByWire A380X (A380-842)", "A388")]
+    [InlineData("", "", "Airbus A330-900neo Headwind Simulations", "A339")]
+    [InlineData("", "", "A350-900 (Default Cabin)", "A359")]
+    [InlineData("", "", "A350-1000 (Default Cabin)", "A35K")]
     [InlineData("ATCCOM.ATC_NAME AIRBUS.0.text", "ATCCOM.AC_MODEL A320.0.text", "Asobo PassiveAircraft A320 CEO", "A320")]
     [InlineData("A20N", "A320 NEO CFML", "A20N@SN", "A20N")]                                 // IVAO
     [InlineData("", "", "B738AAL2", "B738")]
@@ -462,6 +478,40 @@ public class MeasuredOutlineGuardTests
         Assert.False(GroundTrafficAircraftSizes.Agrees(Outline(40.0, 30.0, 17.9f), a320));    // far too long
     }
 
+    [Theory]
+    // A model drawn LARGER than the published size stands: it is what the pilot would see, and the safe side.
+    [InlineData("LJ45", 21.51, 17.97, true)]      // every JBAI Learjet 45: 22% over size, as its own bounding box says
+    [InlineData("C130", 34.75, 40.43, true)]      // the stretched Hercules
+    [InlineData("C130", 29.79, 40.41, true)]      // and the short one, under the same designator
+    [InlineData("EC35", 12.49, 10.74, true)]      // an EC135 with its rotor disc
+    [InlineData("MI8", 24.21, 21.43, true)]
+    [InlineData("CH47", 31.17, 19.22, true)]
+    [InlineData("EC75", 18.40, 15.58, true)]      // the H175 (the row held the EC155's 12.11 by 12.60 m)
+    [InlineData("BE12", 28.46, 26.96, true)]      // the Beriev flying boat (the row held a light twin's)
+    // Smaller than published by more than 15%, or half as large again: not believed.
+    [InlineData("B222", 12.13, 9.44, false)]      // IVAO's, its two blades stopped fore and aft
+    [InlineData("B407", 25.37, 21.28, false)]     // IVAO's, drawn at twice its size
+    public void A_measurement_larger_than_the_published_size_stands_and_a_smaller_one_does_not(string icao, double length, double span, bool believed)
+    {
+        var size = GroundTrafficAircraftSizes.Resolve(icao, "", "", 0.0);
+        Assert.Equal(AircraftSizeSource.Table, size.Source);
+        Assert.Equal(believed, GroundTrafficAircraftSizes.Agrees(Outline(length * 0.55, length * 0.45, (float)(span / 2.0)), size));
+    }
+
+    [Fact]
+    public void A_helicopter_s_published_length_is_with_its_rotor_turning()
+    {
+        // The disc reaches past the nose and the tail: about 1.2 rotor diameters end to end for a single
+        // main rotor. Listed by fuselage length (until 2026-11-27) every one of these was shorter than its rotor.
+        foreach (string icao in new[] { "A109", "AS50", "AS32", "AS65", "B06", "B407", "B214", "B222", "EC35", "EC45", "EC25", "EC75",
+                     "H160", "H60", "H53", "H64", "R22", "R44", "MD52", "MI8", "UH1", "S64", "G2CA" })
+        {
+            var (length, rotor) = GroundTrafficAircraftSizes.Lookup(icao)!.Value;
+            Assert.True(length >= 1.10 * rotor && length <= 1.30 * rotor, $"{icao}: {length} m long, rotor {rotor} m");
+        }
+        Assert.Equal(30.14, GroundTrafficAircraftSizes.Lookup("CH47")!.Value.LengthM, 2);      // two rotors in line
+    }
+
     [Fact]
     public void An_unknown_type_has_nothing_to_hold_a_measurement_against()
         => Assert.True(GroundTrafficAircraftSizes.Agrees(Outline(5.0, 3.0, 6.0f), GroundTrafficAircraftSizes.Default));
@@ -648,6 +698,30 @@ public class GroundTrafficLiveQueueTests
     }
 
     [Fact]
+    public void A_new_destination_is_another_line_the_departure_queue_of_the_first_is_forgotten()
+    {
+        // Number 6 at the hold of one runway, then re-routed to another 2 km further on: the same five
+        // aircraft are still ahead on the new route, but they are no departure queue of that runway.
+        var (h, _) = Queue();
+        h.Sim.Position = Own(330, 0);
+        h.Tick(10);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Number 6 in the departure queue", StringComparison.Ordinal));
+        h.Said.All.Clear();
+
+        h.Context = new GroundTrafficRouteContext
+        {
+            Runways = Array.Empty<Navigation.TaxiGraph.RunwayCenterline>(), AirportIcao = "TEST", State = TaxiGuidanceState.Taxiing,
+            IsRunwayDestination = true, IsQueueRoute = true, AllowsQueuePrompt = true,
+            RouteAhead = East(3000), RouteEndMetres = 3000, DestinationName = "Runway 30L",
+        };
+        h.Tick(10);
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(h.Said.All.Any(m => m.StartsWith("Number 6 in the queue", StringComparison.Ordinal)), said);
+        Assert.True(!h.Said.All.Any(m => m.Contains("departure queue", StringComparison.Ordinal)), said);
+        Assert.DoesNotContain("departure queue", h.Monitor.GetNearestTrafficSummary());
+    }
+
+    [Fact]
     public void While_the_line_moves_up_the_pilot_s_number_does_not_fall()
     {
         var (h, line) = Queue();
@@ -727,6 +801,32 @@ public class GroundTrafficClearTests
         int clear = h.Said.All.FindIndex(m => m == "Clear of Delta A320.");
         Assert.True(stop >= 0 && clear > stop, said);
         Assert.True(h.Said.All.Count(m => m.StartsWith("Clear of", StringComparison.Ordinal)) == 1, said);
+    }
+
+    [Fact]
+    public void A_stop_for_an_aircraft_that_then_vanishes_is_answered_too()
+    {
+        // A traffic injector removes an aircraft it has finished with, and one that lines up is soon at
+        // runway speed: neither is evaluated any more, and its "Stop" used to stay unanswered for good.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        var ahead = Ac(1, 400, 0, 0, "Delta", "DAL1");
+        h.Sim.Traffic.Add(ahead);
+        double east = 0, ownKts = 15;
+        int stopSecond = -1;
+        for (int s = 0; s < 120; s++)
+        {
+            if (stopSecond < 0 && h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) { stopSecond = s; ownKts = 0; }
+            if (stopSecond >= 0 && s == stopSecond + 10) h.Sim.Traffic.Remove(ahead);     // it is taken away
+            east += ownKts * Kt;
+            h.Sim.Position = Own(east, ownKts);
+            h.Tick();
+        }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(stopSecond > 0, said);
+        Assert.True(h.Said.All.Count(m => m == "Clear of Delta A320.") == 1, said);
+        // While it stood there, stopped and dead ahead, it was not clear.
+        Assert.True(h.Said.All.IndexOf("Clear of Delta A320.") > h.Said.All.FindLastIndex(m => m.StartsWith("Stop", StringComparison.Ordinal)), said);
     }
 
     [Fact]

@@ -45,8 +45,10 @@ public static class GroundTrafficAircraftSizes
     public const double MinPlausibleWingspanM = 4.0, MaxPlausibleWingspanM = 90.0;
 
     // ICAO type designator → (overall length, wing span) in metres, from the manufacturers' published
-    // dimensions. Winglet and sharklet variants take the wider span. Helicopters: fuselage length and
-    // rotor diameter. Folding wingtips (777X) are listed folded, as they are on the ground.
+    // dimensions. Winglet and sharklet variants take the wider span, and a designator that covers a
+    // stretch takes the longer airframe (C130: the -30). Helicopters: the overall length with the rotors
+    // turning and the rotor diameter, since the disc reaches past the nose and the tail. Folding wingtips
+    // (777X) are listed folded, as they are on the ground.
     private static readonly Dictionary<string, (double Length, double Span)> Table = new(StringComparer.OrdinalIgnoreCase)
     {
         // Airbus
@@ -76,7 +78,7 @@ public static class GroundTrafficAircraftSizes
         ["MD11"] = (61.62, 51.97), ["DC10"] = (55.35, 50.39), ["MD81"] = (45.06, 32.87), ["MD82"] = (45.06, 32.87),
         ["MD83"] = (45.06, 32.87), ["MD87"] = (39.75, 32.87), ["MD88"] = (45.06, 32.87), ["MD8X"] = (45.06, 32.87),
         ["MD90"] = (46.51, 32.87), ["DC91"] = (31.82, 27.25), ["DC93"] = (36.36, 28.47), ["DC3"] = (19.66, 28.96),
-        ["DC6"] = (32.18, 35.81), ["L101"] = (54.17, 47.35), ["C130"] = (29.79, 40.41), ["C5"] = (75.31, 67.89),
+        ["DC6"] = (32.18, 35.81), ["L101"] = (54.17, 47.35), ["C130"] = (34.37, 40.41), ["C5"] = (75.31, 67.89),
         ["CONI"] = (35.41, 38.47),
         // Antonov, Ilyushin, Tupolev, Sukhoi, Comac
         ["A124"] = (68.96, 73.30), ["A225"] = (84.00, 88.40), ["AN12"] = (33.10, 38.00), ["AN22"] = (57.90, 64.40),
@@ -121,7 +123,7 @@ public static class GroundTrafficAircraftSizes
         ["PC24"] = (16.85, 17.00), ["SF50"] = (9.42, 11.79),
         // Turboprops and piston twins
         ["B190"] = (17.63, 17.67), ["B350"] = (14.22, 17.65), ["BE20"] = (13.36, 16.61), ["BE9L"] = (10.82, 15.32),
-        ["BE99"] = (13.58, 13.98), ["BE10"] = (12.17, 13.98), ["BE12"] = (10.82, 13.98), ["BE58"] = (9.09, 11.53),
+        ["BE99"] = (13.58, 13.98), ["BE10"] = (12.17, 13.98), ["BE12"] = (30.11, 29.84), ["BE58"] = (9.09, 11.53),
         ["BE60"] = (10.31, 11.96), ["C208"] = (12.67, 15.87), ["C402"] = (11.09, 13.45), ["C404"] = (12.04, 14.12),
         ["C408"] = (16.71, 22.02), ["C414"] = (11.09, 13.45), ["C421"] = (11.09, 12.53), ["C441"] = (11.89, 15.04),
         ["F406"] = (11.89, 15.08), ["PC12"] = (14.40, 16.28), ["PC6"] = (10.90, 15.87), ["TBM7"] = (10.65, 12.68),
@@ -150,14 +152,17 @@ public static class GroundTrafficAircraftSizes
         ["TEX2"] = (10.16, 10.19), ["M339"] = (10.97, 11.22), ["PC21"] = (11.23, 9.11), ["FOUGA"] = (10.06, 12.15),
         ["SR71"] = (32.74, 16.94), ["U2"] = (19.20, 31.39), ["B1"] = (44.50, 41.80), ["B2"] = (21.00, 52.40),
         ["VULC"] = (30.45, 33.83), ["BUC"] = (19.33, 13.41), ["E2"] = (17.60, 24.56), ["CONC"] = (61.66, 25.60),
-        // Helicopters (fuselage length, rotor diameter)
-        ["A109"] = (11.45, 11.00), ["AS50"] = (10.93, 10.69), ["AS32"] = (16.79, 16.20), ["AS65"] = (11.63, 11.94),
-        ["B06"] = (9.50, 10.16), ["B407"] = (10.57, 10.67), ["B214"] = (14.63, 15.24), ["B222"] = (12.85, 12.80),
-        ["EC35"] = (10.20, 10.20), ["EC45"] = (10.19, 11.00), ["EC25"] = (16.79, 16.20), ["EC75"] = (12.11, 12.60),
-        ["H160"] = (13.96, 13.40), ["H60"] = (15.26, 16.36), ["H53"] = (22.35, 24.08), ["H64"] = (14.68, 14.63),
-        ["CH47"] = (15.54, 18.29), ["R22"] = (6.30, 7.67), ["R44"] = (9.07, 10.06), ["MD52"] = (7.77, 8.33),
-        ["MI8"] = (18.17, 21.29), ["UH1"] = (12.77, 14.63), ["S64"] = (21.41, 21.95), ["V22"] = (17.48, 25.78),
-        ["G2CA"] = (6.31, 7.20),
+        // Helicopters (overall length with the rotors turning, rotor diameter). Until 2026-11-27 these were
+        // FUSELAGE lengths, 2 to 15 m short of the aircraft as it stands with its rotor turning (the CH-47's
+        // two discs span 30 m, its fuselage 15.5), and EC75 held the EC155's figures. The Bell 214 has no
+        // published overall length: it is given the Bell 205's, whose airframe it is.
+        ["A109"] = (13.04, 11.00), ["AS50"] = (12.94, 10.69), ["AS32"] = (19.50, 16.20), ["AS65"] = (13.73, 11.94),
+        ["B06"] = (11.91, 10.16), ["B407"] = (12.70, 10.67), ["B214"] = (17.40, 15.24), ["B222"] = (15.32, 12.80),
+        ["EC35"] = (12.16, 10.20), ["EC45"] = (13.03, 11.00), ["EC25"] = (19.50, 16.20), ["EC75"] = (18.06, 14.80),
+        ["H160"] = (15.67, 13.40), ["H60"] = (19.76, 16.36), ["H53"] = (26.97, 24.08), ["H64"] = (17.73, 14.63),
+        ["CH47"] = (30.14, 18.29), ["R22"] = (8.76, 7.67), ["R44"] = (11.66, 10.06), ["MD52"] = (9.78, 8.33),
+        ["MI8"] = (25.35, 21.29), ["UH1"] = (17.40, 14.63), ["S64"] = (26.97, 21.95), ["V22"] = (17.48, 25.78),
+        ["G2CA"] = (8.05, 7.20),
     };
 
     // A model TITLE or ATC model that names the aircraft in words rather than by designator, in the
@@ -186,7 +191,7 @@ public static class GroundTrafficAircraftSizes
         (@"747[\s-]?100", "B741"), (@"747[\s-]?200", "B742"), (@"747[\s-]?300", "B743"), (@"\b747", "B744"),
         (@"757[\s-]?300", "B753"), (@"\b757|\bC-32", "B752"),
         (@"767[\s-]?200", "B762"), (@"767[\s-]?400", "B764"), (@"\b767", "B763"),
-        (@"777[\s-]?200\s?(LR|F)\b", "B77L"), (@"777[\s-]?200", "B772"), (@"777[\s-]?300\s?ER", "B77W"),
+        (@"777[\s-]?200\s?(LR|F)\b|777[\s-]?F\b|777\s?FREIGHTER", "B77L"), (@"777[\s-]?200", "B772"), (@"777[\s-]?300\s?ER", "B77W"),
         (@"777[\s-]?300", "B773"), (@"777[\s-]?8", "B778"), (@"777[\s-]?9", "B779"), (@"\b777|TRIPLE\s?7", "B77W"),
         (@"787[\s-]?8", "B788"), (@"787[\s-]?10", "B78X"), (@"\b787|DREAMLINER", "B789"),
         // McDonnell Douglas, Douglas, Lockheed
@@ -338,21 +343,29 @@ public static class GroundTrafficAircraftSizes
         return size.Source == AircraftSizeSource.Table && spanOk ? size with { WingspanM = simWingspanM } : size;
     }
 
-    /// <summary>A measured outline further than this from its type's published length or span is not believed.</summary>
+    /// <summary>A measured outline SMALLER than its type's published length or span by more than this share is not believed.</summary>
     public const double MaxMeasuredDeviation = 0.15;
+
+    /// <summary>A measured outline LARGER than its type's published length or span by more than this share is not believed either.</summary>
+    public const double MaxMeasuredExcess = 0.50;
 
     /// <summary>
     /// Does a measured outline fit the aircraft it is for? When the type is known (<paramref name="size"/>
-    /// from the table), its length and span must be within <see cref="MaxMeasuredDeviation"/> of the
-    /// published ones: a model whose parts could not all be placed (the Fenix's wings, 2026-11-26) measures
-    /// as something else, and the published size is then the safer answer. An unknown type has nothing to
-    /// hold the measurement against, so it stands.
+    /// from the table) it must not be more than <see cref="MaxMeasuredDeviation"/> SMALLER than the published
+    /// length or span: a model whose parts could not all be placed (the Fenix's wings, 2026-11-26) measures
+    /// short or narrow, and the published size is then the safe answer. LARGER it stands, up to
+    /// <see cref="MaxMeasuredExcess"/>: that is the model as the simulator draws it (a stretched variant under
+    /// its family's designator, a helicopter drawn with a longer boom, every JBAI Learjet 45, drawn 22% over
+    /// size), and a smaller hull in its place would speak every gap to it too large. Until 2026-11-27 the
+    /// test was 15% either way, and 45 of the 63 measured models it threw away were larger than published.
+    /// An unknown type has nothing to hold the measurement against, so it stands.
     /// </summary>
     public static bool Agrees(AircraftOutline outline, AircraftSize size)
     {
         if (size.Source != AircraftSizeSource.Table) return true;
-        return Math.Abs(outline.LengthM - size.LengthM) <= MaxMeasuredDeviation * size.LengthM
-               && Math.Abs(outline.HalfSpanM * 2.0 - size.WingspanM) <= MaxMeasuredDeviation * size.WingspanM;
+        double length = outline.LengthM / size.LengthM, span = outline.HalfSpanM * 2.0 / size.WingspanM;
+        return length >= 1.0 - MaxMeasuredDeviation && span >= 1.0 - MaxMeasuredDeviation
+               && length <= 1.0 + MaxMeasuredExcess && span <= 1.0 + MaxMeasuredExcess;
     }
 
     // Upper-cased, without AIG's "$$:" marker or the sim's localisation key.

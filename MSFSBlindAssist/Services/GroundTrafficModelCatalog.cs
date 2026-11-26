@@ -11,14 +11,17 @@ namespace MSFSBlindAssist.Services;
 /// <list type="bullet">
 /// <item>the index is read from the installed packages' own <c>aircraft.cfg</c> files, and read again
 /// (at most every <see cref="ReindexMinutes"/>) when the simulator reports a title it does not hold, so a
-/// package installed or updated while the app runs is picked up;</item>
+/// package installed or updated while the app runs is picked up: every title is then settled afresh, and
+/// a model file that has changed is measured again;</item>
 /// <item>a model is measured the first time one of its titles is seen (<see cref="GroundTrafficModelReader"/>)
 /// and the result kept on disk under the model file's path, size and date, so a livery added to a
 /// known model costs nothing and a changed model file is measured again by itself.</item>
 /// </list>
 /// <see cref="TryGet"/> never blocks: it answers from memory and queues the rest for one background
-/// thread. A model that cannot be read (a streamed or encrypted package, a title no package declares)
-/// answers null for good, and the monitor falls back to the type's published size.
+/// thread. A model that cannot be measured (a streamed or encrypted package, a title no package declares)
+/// answers null for the session, and the monitor falls back to the type's published size. Only a model
+/// whose files were READ and hold nothing to measure is remembered as such between runs: one that could
+/// not be read (a file in use) is tried again next time.
 /// </summary>
 public sealed partial class GroundTrafficModelCatalog : IDisposable
 {
@@ -30,9 +33,10 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     /// what <see cref="GroundTrafficModelReader"/> or <see cref="Parts"/> makes of a model. The cache is
     /// keyed by the model file alone, so without it a model measured before the change keeps its old
     /// outline for ever. 2: skinned parts placed by their skeleton, rotor discs, parts on merged attach
-    /// nodes, see-through light and decals left out (2026-11-26).
+    /// nodes, see-through light and decals left out (2026-11-26). 3: the stations are laid out from the
+    /// vertices a model draws, and unmeasured models are no longer kept (2026-11-27).
     /// </summary>
-    public const int CacheVersion = 2;
+    public const int CacheVersion = 3;
 
     private const string CacheFileName = "outlines.json";
     private const int MaxScanDepth = 6;
@@ -58,6 +62,8 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     private readonly BlockingCollection<string> _queue = new();
     // model file key → outline (null = unmeasurable). Worker thread only.
     private Dictionary<string, AircraftOutline?> _byFile = new(StringComparer.OrdinalIgnoreCase);
+    // Keys whose model could not be READ this session: answered null until the app restarts, never saved.
+    private readonly HashSet<string> _notKept = new(StringComparer.OrdinalIgnoreCase);
     // Written by the worker thread only, each published whole: the traffic monitor reads them from its own.
     private volatile Dictionary<string, ModelRef>? _index;
     private volatile Dictionary<string, string> _airlines = new(StringComparer.OrdinalIgnoreCase);
@@ -177,11 +183,20 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             if (index == null || stamp != _indexStamp)
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
+                bool again = index != null;
                 index = root != null ? BuildIndex(root) : new Dictionary<string, ModelRef>(StringComparer.OrdinalIgnoreCase);
                 _airlines = AirlineNames(index.Values);
                 _index = index;
                 _indexStamp = stamp;
                 _indexVersion++;
+                // The packages have changed since the last read: every title is settled again from the new
+                // index, where a model file that was replaced has another key and is measured afresh. Kept,
+                // a title measured earlier in the session went on answering with the old file's outline.
+                if (again)
+                {
+                    _byTitle.Clear();
+                    _unknownUntil.Clear();
+                }
                 _log.Info($"ev=model-index titles={index.Count} airlines={_airlines.Count} ms={clock.ElapsedMilliseconds}");
             }
             _indexedUtc = now;
@@ -204,9 +219,12 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         string key = PartsKey(parts);
         if (!_byFile.TryGetValue(key, out var outline))
         {
-            outline = GroundTrafficModelReader.Measure(parts, out string why);
+            outline = GroundTrafficModelReader.Measure(parts, out string why, out bool readFailed);
             _byFile[key] = outline;
-            _cacheDirty = true;
+            // A file that could not be read (in use, no access) says nothing about the model: tried again
+            // next session. Saved, one passing failure sized that model from the table for good.
+            if (outline == null && readFailed) _notKept.Add(key);
+            else _cacheDirty = true;
             string file = Path.GetFileName(parts[^1].Lods[0]);
             _log.Info(outline == null
                 ? $"ev=model title=\"{title}\" result=unreadable why=\"{why}\" parts={parts.Count} file=\"{file}\""
@@ -281,7 +299,74 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             }
         }
         VfsRoots = roots;
+        InheritDeclaredTypes(index);
         return index;
+    }
+
+    // An MSFS 2024 preset's own aircraft.cfg holds its title and seldom its type: that is declared once for
+    // the aircraft, in its common config (the TFDi MD-11, the FlyByWire A380) or in the configs of the
+    // attachments its airframe is made of (PMDG: each fuselage part). A preset that declares none takes
+    // the common one, else the ONE designator every attachment config of that aircraft agrees on.
+    private static void InheritDeclaredTypes(Dictionary<string, ModelRef> index)
+    {
+        var byAircraft = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string title in index.Where(e => e.Value.Icao.Length == 0).Select(e => e.Key).ToList())
+        {
+            var model = index[title];
+            string dir = model.AircraftDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            // presets/<maker>/<preset>/config: the aircraft's own folder is four levels up.
+            if (!string.Equals(Path.GetFileName(dir), "config", StringComparison.OrdinalIgnoreCase)) continue;
+            string? presets = Path.GetDirectoryName(Path.GetDirectoryName(Path.GetDirectoryName(dir)));
+            if (presets == null || !string.Equals(Path.GetFileName(presets), "presets", StringComparison.OrdinalIgnoreCase)) continue;
+            string? aircraftRoot = Path.GetDirectoryName(presets);
+            if (aircraftRoot == null) continue;
+            if (!byAircraft.TryGetValue(aircraftRoot, out string? icao))
+                byAircraft[aircraftRoot] = icao = DeclaredTypeOf(aircraftRoot);
+            if (icao.Length > 0) index[title] = model with { Icao = icao };
+        }
+    }
+
+    private static string DeclaredTypeOf(string aircraftRoot)
+    {
+        try
+        {
+            string common = Designator(Path.Combine(aircraftRoot, "common", "config", "aircraft.cfg"));
+            if (common.Length > 0) return common;
+            string attachments = Path.Combine(aircraftRoot, "attachments");
+            if (!Directory.Exists(attachments)) return "";
+            var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string cfg in AircraftCfgs(attachments, 0))
+                if (Designator(cfg) is { Length: > 0 } icao) found.Add(icao);
+            return found.Count == 1 ? found.First() : "";
+        }
+        catch (Exception) { return ""; }
+    }
+
+    // The icao_type_designator an aircraft.cfg declares in [GENERAL], upper case; "" for none or no file.
+    private static string Designator(string cfgPath)
+    {
+        try
+        {
+            if (!File.Exists(cfgPath)) return "";
+            string section = "";
+            foreach (string raw in File.ReadLines(cfgPath))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line[0] == ';' || line.StartsWith("//", StringComparison.Ordinal)) continue;
+                if (line[0] == '[')
+                {
+                    int end = line.IndexOf(']');
+                    section = end > 0 ? line[1..end].Trim().ToUpperInvariant() : "";
+                    continue;
+                }
+                int eq = line.IndexOf('=');
+                if (eq <= 0 || section != "GENERAL") continue;
+                if (line[..eq].Trim().Equals("icao_type_designator", StringComparison.OrdinalIgnoreCase))
+                    return Unquote(line[(eq + 1)..]).ToUpperInvariant();
+            }
+        }
+        catch (Exception) { /* unreadable: no type */ }
+        return "";
     }
 
     /// <summary>
@@ -715,9 +800,12 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         {
             var file = new CacheFile { Version = CacheVersion };
             foreach (var (key, outline) in _byFile)
+            {
+                if (_notKept.Contains(key)) continue;
                 file.Models.Add(outline == null
                     ? new CacheEntry { Key = key }
                     : new CacheEntry { Key = key, Measured = true, TailM = outline.TailM, NoseM = outline.NoseM, HalfWidths = outline.HalfWidths.ToArray() });
+            }
             string path = Path.Combine(_cacheDir, CacheFileName), tmp = path + ".tmp";
             Directory.CreateDirectory(_cacheDir);
             File.WriteAllText(tmp, JsonSerializer.Serialize(file));

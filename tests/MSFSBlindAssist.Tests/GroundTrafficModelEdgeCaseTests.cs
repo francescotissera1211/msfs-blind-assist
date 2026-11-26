@@ -633,6 +633,29 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     }
 
     [Fact]
+    public void A_chain_of_names_read_later_settles_instead_of_keeping_a_first_wrong_place()
+    {
+        // The tips hang on the wings' tip nodes, the wings on a node of a ROOT model, and each is read
+        // BEFORE the part that holds its node. The first assembly leaves the wings at the origin; a second
+        // one alone would hang the tips on the tip nodes as they stood then, 10 m ahead of the wings.
+        string tips = TestModel.Write(_dir, "chain-tips", null, new[] { null, "Skel_Wing_Left_Wingtip", "Skel_Wing_Right_Wingtip" },
+            new TestModel.Node("Skel_SL_Box"), Tip("SL_L", 1, left: true), Tip("SL_R", 2, left: false));
+        string root = TestModel.Write(_dir, "chain-root", new TestModel.Node("WING_ROOT", Translation: new[] { 0.0, 0.0, -10.0 }));
+        var outline = GroundTrafficModelReader.Measure(new GroundTrafficModelReader.ModelPart[]
+        {
+            new(new[] { TestModel.Write(_dir, "chain-fuselage", Body("fuselage", Fuselage)) }),
+            new(new[] { tips }, Parent: 0),
+            new(new[] { WingsWithTipNodes("chain-wings") }, Parent: 0, AttachNode: "WING_ROOT"),
+            new(new[] { root }, Parent: 0),
+        })!;
+
+        Assert.Equal(18.0, outline.HalfSpanM, 2);
+        // The tips are where the wings' tip nodes ended up: 16 m behind the origin, not 6.
+        int widest = Enumerable.Range(0, outline.HalfWidths.Count).First(i => outline.HalfWidths[i] > 17.9f);
+        Assert.Equal(-17.5, -outline.TailM + widest * AircraftOutline.StationM, 0);
+    }
+
+    [Fact]
     public void A_scene_tagged_with_a_node_of_another_part_hangs_on_that_node()
     {
         // The Fenix's sharklets: an untagged default scene, then one scene per wingtip.
@@ -715,6 +738,65 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         Assert.Null(GroundTrafficModelReader.Measure(path));
         File.WriteAllBytes(path, new byte[8]);
         Assert.Null(GroundTrafficModelReader.Measure(path));
+    }
+
+    [Fact]
+    public void A_legacy_model_of_nested_chunks_without_end_is_given_up_not_followed_down()
+    {
+        // Fifty thousand MDLD chunks, each holding the next: followed all the way down they overflowed the
+        // stack, which no handler catches, and the app was gone.
+        const int depth = 50_000;
+        var file = new List<byte>(Encoding.ASCII.GetBytes("RIFF"));
+        int total = 12 + depth * 8;
+        file.AddRange(BitConverter.GetBytes(total - 8));
+        file.AddRange(Encoding.ASCII.GetBytes("MDLX"));
+        for (int k = 0; k < depth; k++)
+        {
+            file.AddRange(Encoding.ASCII.GetBytes("MDLD"));
+            file.AddRange(BitConverter.GetBytes(total - (12 + k * 8) - 8));
+        }
+        string path = Path.Combine(_dir, "nested.mdl");
+        File.WriteAllBytes(path, file.ToArray());
+        Assert.Null(GroundTrafficModelReader.Measure(path));
+    }
+
+    // ── What a file is allowed to make the reader do ─────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(false)]     // a path of ".." steps
+    [InlineData(true)]      // an absolute path
+    public void A_buffer_is_read_only_from_the_model_s_own_folder(bool absolute)
+    {
+        // The uri is text from the file: it named any file on the disk, to be read whole into memory.
+        string elsewhere = Path.Combine(_dir, "elsewhere"), home = Path.Combine(_dir, "home");
+        string real = TestModel.Write(elsewhere, "m", Body("fuselage", Fuselage), Body("wing", Wing));
+        Assert.NotNull(GroundTrafficModelReader.Measure(real));
+
+        Directory.CreateDirectory(home);
+        string uri = absolute ? Path.Combine(elsewhere, "m.bin").Replace("\\", "/") : "../elsewhere/m.bin";
+        string borrowed = Path.Combine(home, "m.gltf");
+        File.WriteAllText(borrowed, File.ReadAllText(real).Replace("\"uri\":\"m.bin\"", "\"uri\":\"" + uri + "\""));
+        Assert.Null(GroundTrafficModelReader.Measure(borrowed));
+    }
+
+    [Fact]
+    public void Vertices_a_part_does_not_draw_do_not_shape_or_spoil_the_outline()
+    {
+        // The primitives of one mesh share their vertices: the slice of one that was left out (an
+        // invisible helper 600 m away, a vertex that is not a number) is still in the array.
+        double[] xz =
+        {
+            -17, -4, 17, -4, 17, 2, -17, 2,          // the wing
+            -2, -22, 2, -22, 2, 18, -2, 18,          // the fuselage
+            0, 600, double.NaN, 0,                   // never drawn
+        };
+        int[] drawn = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7 };
+        var outline = GroundTrafficModelReader.Silhouette(new[] { new GroundTrafficModelReader.Part(xz, drawn) })!;
+        Assert.Equal(40.0, outline.LengthM, 1);
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        // An index that is no vertex at all is left out, never read as vertex 0.
+        int[] wild = { 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, int.MinValue, 1, 6 };
+        Assert.Equal(17.0, GroundTrafficModelReader.Silhouette(new[] { new GroundTrafficModelReader.Part(xz, wild) })!.HalfSpanM, 2);
     }
 
     // ── Installed packages ───────────────────────────────────────────────────────────────────────────
@@ -828,6 +910,26 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     }
 
     [Fact]
+    public void A_preset_takes_the_type_its_aircraft_declares_in_its_common_config_or_its_attachments()
+    {
+        InstallModularJet();
+        Assert.Equal("", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
+
+        // Declared in the configs of the parts the airframe is made of (PMDG), when they all say the same.
+        string fuselage = Path.Combine(Airplanes("jet", "Jet", "attachments", "maker", "Part_Fuselage", "config"), "aircraft.cfg");
+        string tail = Path.Combine(Airplanes("jet", "Jet", "attachments", "maker", "Part_Tail", "config"), "aircraft.cfg");
+        WriteText(fuselage, "[GENERAL]\nicao_type_designator=\"B739\"\n");
+        Assert.Equal("B739", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
+        WriteText(tail, "[GENERAL]\nicao_type_designator = B737\n");
+        Assert.Equal("", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);       // they disagree: none
+
+        // Declared once for the aircraft, in its common config (the TFDi MD-11, the FlyByWire A380): that one.
+        WriteText(Path.Combine(Airplanes("jet", "Jet", "common", "config"), "aircraft.cfg"),
+            "[GENERAL]\n;icao_type_designator = A359\nicao_type_designator = \"b738\" ; the type\n");
+        Assert.Equal("B738", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
+    }
+
+    [Fact]
     public void A_preset_that_names_its_model_is_measured_from_the_common_model_of_that_name()
     {
         // The TFDi MD-11: presets/<maker>/<preset>/config/aircraft.cfg says model = "GE", the whole airframe is
@@ -921,6 +1023,57 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         Assert.Null(catalog.TryGet(title));             // queued again
         Assert.True(SpinWait.SpinUntil(() => catalog.TryGet(title) != null, 10_000));
         Assert.Equal(17.0, catalog.TryGet(title)!.HalfSpanM, 2);
+    }
+
+    [Fact]
+    public void A_model_that_could_not_be_read_is_tried_again_next_time_not_remembered_as_unmeasurable()
+    {
+        // Its geometry is in use by another program the first time it is seen (a virus scan, a sync
+        // client). Kept, that one passing failure sized the model from the table in every later session.
+        string dir = Airplanes("locked", "AIG_Locked");
+        WriteText(Path.Combine(dir, "aircraft.cfg"), "[FLTSIM.0]\ntitle=Locked\nmodel=\n");
+        WriteText(Path.Combine(dir, "model", "model.cfg"), "[models]\nnormal=m.gltf\n");
+        TestModel.Write(Path.Combine(dir, "model"), "m", Body("fuselage", Fuselage), Body("wing", Wing));
+        string cache = Path.Combine(_dir, "cache-locked");
+
+        using (new FileStream(Path.Combine(dir, "model", "m.bin"), FileMode.Open, FileAccess.Read, FileShare.None))
+        using (var first = new GroundTrafficModelCatalog(cache, () => _dir))
+        {
+            first.TryGet("Locked");
+            Assert.True(SpinWait.SpinUntil(() => first.IsSettled("Locked"), 10_000));
+            Assert.Null(first.TryGet("Locked"));
+        }
+
+        using var second = new GroundTrafficModelCatalog(cache, () => _dir);
+        second.TryGet("Locked");
+        Assert.True(SpinWait.SpinUntil(() => second.TryGet("Locked") != null, 10_000));
+        Assert.Equal(17.0, second.TryGet("Locked")!.HalfSpanM, 2);
+    }
+
+    [Fact]
+    public void A_package_updated_while_the_app_runs_has_its_model_measured_again()
+    {
+        string dir = Airplanes("updated", "AIG_Updated");
+        WriteText(Path.Combine(dir, "aircraft.cfg"), "[FLTSIM.0]\ntitle=Updated\nmodel=\n");
+        WriteText(Path.Combine(dir, "model", "model.cfg"), "[models]\nnormal=m.gltf\n");
+        TestModel.Write(Path.Combine(dir, "model"), "m", Body("fuselage", Fuselage), Body("wing", Wing));
+        var now = new DateTime(2026, 11, 27, 12, 0, 0, DateTimeKind.Utc);
+        using var catalog = new GroundTrafficModelCatalog(null, () => _dir, () => now);
+
+        catalog.TryGet("Updated");
+        Assert.True(SpinWait.SpinUntil(() => catalog.TryGet("Updated") != null, 10_000));
+        Assert.Equal(17.0, catalog.TryGet("Updated")!.HalfSpanM, 2);
+
+        // The update: a wider model under the same title, and a livery folder beside it (what moves the
+        // packages' stamp). The index is read again when a title nobody knows is next asked for.
+        TestModel.Write(Path.Combine(dir, "model"), "m", Body("fuselage", Fuselage), Body("wing", new TestModel.Box(20, -4, 2)), Body("fin", new TestModel.Box(0.5, -22, -18)));
+        string added = Airplanes("updated", "AIG_Updated_New");
+        WriteText(Path.Combine(added, "aircraft.cfg"), "[FLTSIM.0]\ntitle=Newcomer\nmodel=\n");
+        now = now.AddMinutes(GroundTrafficModelCatalog.ReindexMinutes + 1);
+        catalog.TryGet("Newcomer");
+        Assert.True(SpinWait.SpinUntil(() => catalog.IsSettled("Newcomer"), 10_000));
+
+        Assert.True(SpinWait.SpinUntil(() => catalog.TryGet("Updated") is { } outline && Math.Abs(outline.HalfSpanM - 20.0) < 0.01, 10_000));
     }
 
     [Fact]

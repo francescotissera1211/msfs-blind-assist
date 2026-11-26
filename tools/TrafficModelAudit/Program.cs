@@ -20,6 +20,10 @@
 //               other (and where along the body), geometry apart from the body, a rotor standing still.
 //               READ THESE: such a part usually sits inside the outline, where length and span cannot
 //               show it (the PMDG 737's tail unit sat in its wing, its wing skin along its fuselage)
+//   NOT USED    appended to a measured model's line when the APP would not use the measurement: it sizes the
+//               aircraft by the type its TITLE names (else the declared one), and an outline more than 15%
+//               smaller than that type's published size, or half as large again, is not believed
+//               (GroundTrafficAircraftSizes.Agrees). Always printed; the hull is then the published size
 // --nodes lists the mesh nodes that reach beyond AUDIT_WIDE, AUDIT_AHEAD or AUDIT_BEHIND metres (at most
 // AUDIT_LINES of them, 25 unless set); --profile prints every AUDIT_EVERY-th station's half-width (8).
 // and how the title-only type resolver did on every installed title (what the app falls back on); then
@@ -75,7 +79,7 @@ string Package(string path)
 
 var summary = new SortedDictionary<string, int[]>(StringComparer.OrdinalIgnoreCase);
 int[] Count(string package) => summary.TryGetValue(package, out var c) ? c : summary[package] = new int[5];
-int measuredTitles = 0;
+int measuredTitles = 0, notUsed = 0, notUsedTitles = 0;
 clock.Restart();
 foreach (var (key, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
 {
@@ -123,17 +127,24 @@ foreach (var (key, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgno
             .Select(i => $"{-outline.TailM + i * AircraftOutline.StationM:0}:{outline.HalfWidths[i]:0.0}")));
     double length = outline.LengthM, span = outline.HalfSpanM * 2.0;
     string measured = $"L {length:0.00} span {span:0.00} nose {outline.NoseM:0.0} tail {outline.TailM:0.0} corners {outline.Polygon.Count}";
+    // Would the app use this measurement? It names the type from the title first, as a sweep delivers it.
+    string appType = GroundTrafficAircraftSizes.ResolveIcao(null, null, row.Titles[0]);
+    if (appType.Length == 0) appType = declared;
+    var appSize = GroundTrafficAircraftSizes.Resolve(appType, null, null, 0.0);
+    bool used = GroundTrafficAircraftSizes.Agrees(outline, appSize);
+    string verdict = used ? "" : $" | NOT USED: the app sizes it as {appSize.Icao} {appSize.LengthM:0.00} x {appSize.WingspanM:0.00}";
+    if (!used) { notUsed++; notUsedTitles += row.Titles.Count; }
     if (published is not { } p)
     {
         Count(package)[2]++;
-        Console.WriteLine($"NO-TYPE    {package} {label} type='{declared}' {measured} titles={row.Titles.Count}");
+        Console.WriteLine($"NO-TYPE    {package} {label} type='{declared}' {measured} titles={row.Titles.Count}{verdict}");
         continue;
     }
     double dl = (length - p.LengthM) / p.LengthM, dw = (span - p.WingspanM) / p.WingspanM;
     bool ok = Math.Abs(dl) <= LengthTolerance && Math.Abs(dw) <= SpanTolerance;
     Count(package)[ok ? 0 : 1]++;
-    if (!ok || all)
-        Console.WriteLine($"{(ok ? "OK        " : "VARIANT   ")} {package} {label} {declared}: {measured} | published L {p.LengthM:0.00} span {p.WingspanM:0.00} | dL {dl:+0%;-0%} dSpan {dw:+0%;-0%} titles={row.Titles.Count}");
+    if (!ok || all || !used)
+        Console.WriteLine($"{(ok ? "OK        " : "VARIANT   ")} {package} {label} {declared}: {measured} | published L {p.LengthM:0.00} span {p.WingspanM:0.00} | dL {dl:+0%;-0%} dSpan {dw:+0%;-0%} titles={row.Titles.Count}{verdict}");
 }
 foreach (string title in noFile) Count(Package(index[title].AircraftDir))[4]++;
 foreach (var g in noFile.GroupBy(t => index[t].AircraftDir, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase))
@@ -141,6 +152,7 @@ foreach (var g in noFile.GroupBy(t => index[t].AircraftDir, StringComparer.Ordin
 Console.WriteLine();
 Console.WriteLine($"Measured {models.Count} model files ({measuredTitles} titles) in {clock.ElapsedMilliseconds} ms");
 Console.WriteLine($"Models with something left out or placed by a fallback (NOTES lines): {noted}");
+Console.WriteLine($"Measured outlines the app does NOT use (NOT USED on their lines): {notUsed} models, {notUsedTitles} titles");
 Console.WriteLine("package: OK / VARIANT / NO-TYPE / UNREADABLE models, NO-FILE titles");
 foreach (var (package, c) in summary) Console.WriteLine($"  {package}: {c[0]} / {c[1]} / {c[2]} / {c[3]}, {c[4]}");
 

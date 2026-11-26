@@ -218,7 +218,54 @@ public static partial class GroundTrafficModelReader
     public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts) => Measure(parts, out _);
 
     /// <summary>As <see cref="Measure(IReadOnlyList{ModelPart})"/>, saying in <paramref name="why"/> why a model could not be measured (the audit and the log).</summary>
-    public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts, out string why)
+    public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts, out string why) => Measure(parts, out why, out _);
+
+    /// <summary>The most times a model is assembled: once, then again while a name looked up in the pass before has moved.</summary>
+    public const int MaxAssemblyPasses = 4;
+
+    // A file could not be READ while this thread measured (in use, no access, no memory), as against a file
+    // that was read and holds nothing to measure.
+    [ThreadStatic] private static bool _readFailed;
+
+    private static void Failed(Exception ex)
+    {
+        if (ex is IOException or UnauthorizedAccessException or OutOfMemoryException) _readFailed = true;
+    }
+
+    /// <summary>
+    /// As <see cref="Measure(IReadOnlyList{ModelPart}, out string)"/>; <paramref name="readFailed"/> says that
+    /// a file could not be READ (in use, no access): the answer may be different next time, so a caller
+    /// that keeps answers must not keep this one.
+    /// </summary>
+    public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts, out string why, out bool readFailed)
+    {
+        why = "";
+        _readFailed = false;
+        try { return MeasureParts(parts, out why); }
+        finally { readFailed = _readFailed; }
+    }
+
+    // What a pass looked up in the positions the pass BEFORE it gave every node, and which names it used.
+    private sealed class Earlier
+    {
+        public readonly Dictionary<string, double[]> Worlds;
+        public readonly HashSet<string> Used = new(StringComparer.OrdinalIgnoreCase);
+        public Earlier(Dictionary<string, double[]> worlds) => Worlds = worlds;
+        public bool TryGet(string name, out double[] world)
+        {
+            if (!Worlds.TryGetValue(name, out world!)) return false;
+            Used.Add(name);
+            return true;
+        }
+    }
+
+    private static bool Same(double[] a, double[] b)
+    {
+        for (int i = 0; i < a.Length && i < b.Length; i++) if (Math.Abs(a[i] - b[i]) > 1e-4) return false;
+        return a.Length == b.Length;
+    }
+
+    private static AircraftOutline? MeasureParts(IReadOnlyList<ModelPart> parts, out string why)
     {
         why = "";
         try
@@ -228,13 +275,15 @@ public static partial class GroundTrafficModelReader
             // that names a node of another part goes (the Fenix's wingtip devices name the wing's tip).
             var placed = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
             // A node may be named before the part that holds it has been read (the PMDG 737's fuselage
-            // hangs a scene on a node of the ROOT.gltf that follows it). The model is then assembled a
-            // second time, with every node the first time placed to look such a name up in.
-            Dictionary<string, double[]>? later = null;
+            // hangs a scene on a node of the ROOT.gltf that follows it). The model is then assembled
+            // again, with every node the pass before placed to look such a name up in; and again while a
+            // name looked up that way has MOVED since (the part that holds it was itself waiting for a
+            // later one), so a chain of such names settles instead of keeping a first, wrong place.
+            Earlier? later = null;
             var listener = Notes;
             try
             {
-                for (int pass = 0; pass < 2; pass++)
+                for (int pass = 0; pass < MaxAssemblyPasses; pass++)
                 {
                     meshes.Clear();
                     placed.Clear();
@@ -242,11 +291,14 @@ public static partial class GroundTrafficModelReader
                     var said = new List<string>();
                     Notes = listener == null ? null : said.Add;
                     Assemble(parts, meshes, placed, later, missing);
-                    if (pass == 0 && missing.Any(placed.ContainsKey))
+                    string? moved = later?.Used.FirstOrDefault(n => placed.TryGetValue(n, out var now) && !Same(now, later.Worlds[n]));
+                    bool again = pass == 0 ? missing.Any(placed.ContainsKey) : moved != null;
+                    if (again && pass + 1 < MaxAssemblyPasses)
                     {
-                        later = new Dictionary<string, double[]>(placed, StringComparer.OrdinalIgnoreCase);
+                        later = new Earlier(new Dictionary<string, double[]>(placed, StringComparer.OrdinalIgnoreCase));
                         continue;
                     }
+                    if (again) said.Add($"node '{moved}' was still moving after {MaxAssemblyPasses} assemblies: what hangs on it may be misplaced");
                     foreach (string note in said) listener?.Invoke(note);
                     break;
                 }
@@ -255,12 +307,12 @@ public static partial class GroundTrafficModelReader
             if (meshes.Count == 0) { why = "no geometry could be read"; return null; }
             return Silhouette(meshes, out why);
         }
-        catch (Exception ex) { why = ex.Message; return null; }
+        catch (Exception ex) { Failed(ex); why = ex.Message; return null; }
     }
 
     // Reads every part in order, each at its parent's attach node. A name found nowhere goes into `missing`.
     private static void Assemble(IReadOnlyList<ModelPart> parts, List<Part> meshes, Dictionary<string, double[]> placed,
-        IReadOnlyDictionary<string, double[]>? later, HashSet<string> missing)
+        Earlier? later, HashSet<string> missing)
     {
         var roots = new double[parts.Count][];
         var nodes = new Dictionary<string, double[]>?[parts.Count];
@@ -281,7 +333,7 @@ public static partial class GroundTrafficModelReader
                 {
                     if (nodes[part.Parent] is { } known && known.TryGetValue(name, out var at)) root = at;
                     else if (placed.TryGetValue(name, out var elsewhere)) root = elsewhere;
-                    else if (later != null && later.TryGetValue(name, out var afterwards)) root = afterwards;
+                    else if (later != null && later.TryGet(name, out var afterwards)) root = afterwards;
                     else
                     {
                         missing.Add(name);
@@ -305,7 +357,7 @@ public static partial class GroundTrafficModelReader
     // levels only when no detailed one can be read. Returns the world transform of every node of the
     // level used, by name and by unique id (where the parts attached to it go).
     private static Dictionary<string, double[]>? Load(IReadOnlyList<string> lods, double[] root,
-        IReadOnlyDictionary<string, double[]> placed, IReadOnlyDictionary<string, double[]>? later, HashSet<string> missing,
+        IReadOnlyDictionary<string, double[]> placed, Earlier? later, HashSet<string> missing,
         List<Part> meshes)
     {
         // An FSX-era model (IVAO's 737-200, -400 and -500) is one binary file, not glTF.
@@ -325,7 +377,7 @@ public static partial class GroundTrafficModelReader
             {
                 JsonDocument doc;
                 try { doc = JsonDocument.Parse(WithoutBom(File.ReadAllBytes(lods[i]))); }
-                catch (Exception) { continue; }
+                catch (Exception ex) { Failed(ex); continue; }
                 var r = doc.RootElement;
                 bool skinned = r.TryGetProperty("skins", out var skins)
                                && skins.ValueKind == JsonValueKind.Array && skins.GetArrayLength() > 0;
@@ -365,7 +417,7 @@ public static partial class GroundTrafficModelReader
                         foreach (string note in said) listener?.Invoke(note);
                         return nodeWorlds;
                     }
-                    catch (Exception) { /* this level cannot be read: the next */ }
+                    catch (Exception ex) { Failed(ex); /* this level cannot be read: the next */ }
                 }
                 if (nodesOnlyMissing != null) missing.UnionWith(nodesOnlyMissing);
                 if (nodesOnlyNotes != null) foreach (string note in nodesOnlyNotes) listener?.Invoke(note);
@@ -375,6 +427,9 @@ public static partial class GroundTrafficModelReader
         }
         finally { foreach (var c in candidates) c.Doc.Dispose(); }
     }
+
+    /// <summary>Chunks of a legacy model nested deeper than this are not read.</summary>
+    public const int MaxLegacyChunkDepth = 16;
 
     /// <summary>A legacy model larger than this (bytes) is not read.</summary>
     public const long MaxLegacyModelBytes = 64L * 1024 * 1024;
@@ -405,6 +460,9 @@ public static partial class GroundTrafficModelReader
             int bestLevel = int.MinValue;
             void Walk(int from, int to, int depth)
             {
+                // A model nests its chunks four deep. Unbounded, a file of nested headers overflowed the
+                // stack, which nothing can catch.
+                if (depth > MaxLegacyChunkDepth) return;
                 for (int at = from; at + 8 <= to;)
                 {
                     string id = System.Text.Encoding.ASCII.GetString(b, at, 4);
@@ -461,7 +519,7 @@ public static partial class GroundTrafficModelReader
             }
             parts.Add(new Part(xz, triangles.Count > 0 ? triangles.ToArray() : null));
         }
-        catch (Exception) { parts.Clear(); }
+        catch (Exception ex) { Failed(ex); parts.Clear(); }
         return parts;
     }
 
@@ -476,15 +534,24 @@ public static partial class GroundTrafficModelReader
     internal static AircraftOutline? Silhouette(IReadOnlyList<Part> parts, out string why)
     {
         why = "";
+        // Over the vertices each part DRAWS: the primitives of one mesh share their vertices, and the
+        // slice of one that was left out (an invisible helper hundreds of metres across) is still in the array.
         double zMin = double.MaxValue, zMax = double.MinValue;
+        bool finite = true;
+        void Take(double[] xz, int vertex)
+        {
+            double x = xz[vertex * 2], z = xz[vertex * 2 + 1];
+            if (!double.IsFinite(x) || !double.IsFinite(z)) { finite = false; return; }
+            if (z < zMin) zMin = z;
+            if (z > zMax) zMax = z;
+        }
         foreach (var part in parts)
-            for (int i = 1; i < part.Xz.Length; i += 2)
-            {
-                double z = part.Xz[i];
-                if (!double.IsFinite(z) || !double.IsFinite(part.Xz[i - 1])) { why = "a position is not a number"; return null; }
-                if (z < zMin) zMin = z;
-                if (z > zMax) zMax = z;
-            }
+        {
+            int vertices = part.Xz.Length / 2;
+            if (part.Triangles is { } drawn) { foreach (int v in drawn) if ((uint)v < (uint)vertices) Take(part.Xz, v); }
+            else for (int v = 0; v < vertices; v++) Take(part.Xz, v);
+        }
+        if (!finite) { why = "a position is not a number"; return null; }
         if (zMin > zMax || zMax - zMin > 4.0 * MaxLengthM)
         {
             why = FormattableString.Invariant($"geometry spans {zMax - zMin:0} m along the fuselage");
@@ -498,10 +565,11 @@ public static partial class GroundTrafficModelReader
             var xz = part.Xz;
             if (part.Triangles is { } tri)
             {
+                uint vertices = (uint)(xz.Length / 2);
                 for (int t = 0; t + 2 < tri.Length; t += 3)
                 {
                     int a = tri[t], b = tri[t + 1], c = tri[t + 2];
-                    if ((uint)a * 2 + 1 >= (uint)xz.Length || (uint)b * 2 + 1 >= (uint)xz.Length || (uint)c * 2 + 1 >= (uint)xz.Length) continue;
+                    if ((uint)a >= vertices || (uint)b >= vertices || (uint)c >= vertices) continue;
                     cells.AddEdge(xz[a * 2], xz[a * 2 + 1], xz[b * 2], xz[b * 2 + 1]);
                     cells.AddEdge(xz[b * 2], xz[b * 2 + 1], xz[c * 2], xz[c * 2 + 1]);
                     cells.AddEdge(xz[c * 2], xz[c * 2 + 1], xz[a * 2], xz[a * 2 + 1]);
@@ -754,7 +822,14 @@ public static partial class GroundTrafficModelReader
             const string marker = ";base64,";
             int at = uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? uri.IndexOf(marker, StringComparison.Ordinal) : -1;
             if (at >= 0) return Convert.FromBase64String(uri[(at + marker.Length)..]);
-            string path = Path.Combine(_dir, Uri.UnescapeDataString(uri));
+            // Only a file of the model's own package (the folder holding its SimObjects, else its own
+            // folder): a uri is text from the file, and an absolute one, or one of ".." steps, named any
+            // file on the disk to be read whole into memory.
+            string path = Path.GetFullPath(Path.Combine(_dir, Uri.UnescapeDataString(uri)));
+            string home = Path.GetFullPath(_dir);
+            for (var d = new DirectoryInfo(home); d != null; d = d.Parent)
+                if (string.Equals(d.Name, "SimObjects", StringComparison.OrdinalIgnoreCase)) { home = d.Parent?.FullName ?? home; break; }
+            if (!path.StartsWith(home.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return null;
             return File.Exists(path) ? File.ReadAllBytes(path) : null;
         }
 
@@ -880,7 +955,7 @@ public static partial class GroundTrafficModelReader
         /// node is nowhere, or that names none, is left out.
         /// </summary>
         public List<Part> WorldParts(Regex notAirframe, Regex gearAnimation, double[] root,
-            IReadOnlyDictionary<string, double[]> placed, IReadOnlyDictionary<string, double[]>? later, HashSet<string> missing,
+            IReadOnlyDictionary<string, double[]> placed, Earlier? later, HashSet<string> missing,
             out Dictionary<string, double[]> nodeWorlds)
         {
             var parts = new List<Part>();
@@ -908,7 +983,7 @@ public static partial class GroundTrafficModelReader
             // The default scene is itself hung on another part's node when it is tagged with one (both
             // scenes of the Fenix's wing fences are: left tip, right tip).
             string defaultTarget = (uint)scene < (uint)scenes.Length ? UniqueId(scenes[scene]) : "";
-            bool hangs = placed.TryGetValue(defaultTarget, out var hung) || (later != null && later.TryGetValue(defaultTarget, out hung));
+            bool hangs = placed.TryGetValue(defaultTarget, out var hung) || (later != null && later.TryGet(defaultTarget, out hung!));
             double[] defaultRoot = defaultTarget.Length > 0 && hangs ? hung! : root;
             if (defaultTarget.Length > 0 && !hangs)
             {
@@ -958,7 +1033,7 @@ public static partial class GroundTrafficModelReader
                 if (s == scene || UniqueId(scenes[s]) is not { Length: > 0 } target
                     || !scenes[s].TryGetProperty("nodes", out var attached)) continue;
                 if (!worlds.TryGetValue(target, out var at) && !placed.TryGetValue(target, out at)
-                    && !(later != null && later.TryGetValue(target, out at)))
+                    && !(later != null && later.TryGet(target, out at!)))
                 {
                     missing.Add(target);
                     Notes?.Invoke($"scene hung on '{target}', which is nowhere: left out");
