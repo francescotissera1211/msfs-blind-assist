@@ -246,6 +246,26 @@ public class GroundTrafficWatchTests
     }
 
     [Fact]
+    public void The_stands_are_asked_for_once_per_airport_and_again_after_a_database_switch()
+    {
+        var h = OnRoute();
+        int asked = 0;
+        h.Monitor.StandSupplier = _ => { asked++; return new[] { (-90 * M, 400 * M, 20.0) }; };
+        var ac = A320(1, 400, -90, 0, headingDeg: 180);
+        h.Sim.Traffic.Add(ac);
+        double own = 300;
+        for (int s = 0; s < 6; s++) Step(h, ref own, 5, ac, 400, -90, 0);
+        Assert.Equal(1, asked);
+
+        // A database switch (ClearRunwayCache): the next aircraft judged has the stands asked for again.
+        h.Monitor.ClearRunwayCache();
+        var next = A320(2, 400, 80, 0, headingDeg: 0);
+        h.Sim.Traffic.Add(next);
+        for (int s = 0; s < 6; s++) Step(h, ref own, 5, next, 400, 80, 0);
+        Assert.Equal(2, asked);
+    }
+
+    [Fact]
     public void An_aircraft_on_a_stand_whose_tail_is_in_the_way_is_still_Stop()
     {
         var h = OnRoute();

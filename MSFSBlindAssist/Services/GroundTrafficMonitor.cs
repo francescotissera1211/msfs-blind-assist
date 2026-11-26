@@ -526,7 +526,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     }
 
     /// <summary>
-    /// Clears the runway cache — a database switch, after which the same airport can carry different
+    /// Clears the runway cache and the stands — a database switch, after which the same airport can carry different
     /// runway names and geometry — and any linger measured against it. The next local route context or
     /// takeoff-assist runway loads the runways again, and — like an airport change — ends the watch, so
     /// one in progress restarts on the new database's runways.
@@ -536,6 +536,12 @@ public sealed class GroundTrafficMonitor : IDisposable
         _cachedRunways = Array.Empty<TaxiGraph.RunwayCenterline>();
         _cachedRunwaysIcao = "";
         ClearLinger("runways-cleared");
+        // The stands come from the same database: asked for again at the next evaluation ([TRF-20]).
+        lock (_lock)
+        {
+            _standsIcao = "";
+            _stands = Array.Empty<(double, double, double)>();
+        }
     }
 
     /// <summary>
