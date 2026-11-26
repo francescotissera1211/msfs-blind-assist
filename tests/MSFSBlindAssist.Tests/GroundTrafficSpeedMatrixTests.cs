@@ -156,4 +156,58 @@ public class GroundTrafficSpeedMatrixTests
             $"own {ownKts,2} kt behind {trafficKts,2} kt: Stop at {stopGapM,3:0} m = {stopGapM / closingMps:0} s from touching at the closing speed"));
         Assert.True(stopGapM / closingMps >= 5.0, $"{stopGapM / closingMps:0.0} s");
     }
+
+    [Theory]
+    [MemberData(nameof(SpeedPairs))]
+    public void Head_on_traffic_Stop_leaves_the_time_a_stopped_aircraft_does(double ownKts, double trafficKts)
+    {
+        // Two A320s nose to nose on the route, each rolling toward the other: the gap is the distance
+        // between the two points less both noses (17.3 m each). The gap closes at BOTH speeds, so "Stop"
+        // given for the pilot's own speed alone left 3.5 s at 10 kt against 10 kt, where a stopped aircraft
+        // ahead leaves 7.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(6000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        double its = 2500, east = 0;
+        var headOn = Ac(1, its, 0, trafficKts, "Delta", "DAL1", headingDeg: 270);
+        h.Sim.Traffic.Add(headOn);
+        double stopGapM = double.NaN;
+        for (int s = 0; s < 600 && double.IsNaN(stopGapM); s++)
+        {
+            east += ownKts * Kt; its -= trafficKts * Kt;
+            headOn.Longitude = its * M;
+            h.Sim.Position = Own(east, ownKts);
+            int before = h.Said.All.Count;
+            h.Tick();
+            if (h.Said.All.Skip(before).Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) stopGapM = its - east - 34.6;
+            if (its - east - 34.6 < 0) break;
+        }
+        double closingMps = (ownKts + trafficKts) * Kt;
+        Assert.False(double.IsNaN(stopGapM), "touched with no Stop: " + string.Join(" | ", h.Transcript));
+        _out.WriteLine(FormattableString.Invariant(
+            $"own {ownKts,2} kt against {trafficKts,2} kt: Stop at {stopGapM,3:0} m = {stopGapM / closingMps:0.0} s from touching at the closing speed"));
+        Assert.True(stopGapM / closingMps >= 5.0, $"{stopGapM / closingMps:0.0} s");
+    }
+
+    [Theory]
+    [MemberData(nameof(SpeedPairs))]
+    public void Traffic_going_the_other_way_on_the_parallel_taxiway_is_never_Stop(double ownKts, double trafficKts)
+    {
+        // The same two A320s, the other one on a taxiway 80 m to the side (44 m between the wingtips as they
+        // pass). It closes as fast as head-on traffic does and never comes near: no lead for it, no "Slow
+        // down", no "Stop".
+        var h = new GroundTrafficHarness { Context = RouteContext(East(6000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        double its = 1500, east = 0;
+        var other = Ac(1, its, 80, trafficKts, "Delta", "DAL1", headingDeg: 270);
+        h.Sim.Traffic.Add(other);
+        for (int s = 0; s < 600 && its > east - 300; s++)
+        {
+            east += ownKts * Kt; its -= trafficKts * Kt;
+            other.Longitude = its * M;
+            h.Sim.Position = Own(east, ownKts);
+            h.Tick();
+        }
+        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Stop", StringComparison.Ordinal)
+            || m.StartsWith("Slow down", StringComparison.Ordinal));
+    }
 }

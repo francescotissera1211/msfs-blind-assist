@@ -126,8 +126,9 @@ public class GroundTrafficMonitorRuleTests
             "t=3 [INT] Stop, Delta A320 very close, ahead, 175 feet.",
             "t=3 Delta A320 converging from ahead, about 20 seconds.",
             "t=6 Lufthansa A320 on your route, taxiway A, 950 feet ahead, coming toward you.",
-            "t=21 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
-            "t=24 [INT] Stop, Lufthansa A320 very close, ahead, 175 feet.",
+            // It is coming at the pilot at 15 kt, so its own closing speed earns seven seconds of lead as well.
+            "t=17 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
+            "t=19 [INT] Stop, Lufthansa A320 very close, ahead, 400 feet.",
             "t=29 Clear of Delta A320.",
         }, h.Transcript);
     }

@@ -844,24 +844,30 @@ public sealed class GroundTrafficMonitor : IDisposable
             ac.GS = e.GroundSpeedKnots;
             ac.HasFix = true;
 
-            // Name: rebuilt when the callsign changes, and once a missing type becomes known (L3).
+            // Name: rebuilt when the callsign changes, once a missing type becomes known (L3), and when the
+            // installed packages have been read (again): what they declare names the type and the airline.
             bool callsignChanged = ac.Callsign != e.Callsign || ac.Name.Length == 0;
-            if (callsignChanged || !ac.NameHasType)
+            int declaredVersion = ModelOutlines?.IndexVersion ?? 0;
+            bool declaredChanged = ac.NameDeclaredVersion != declaredVersion;
+            if (callsignChanged || declaredChanged || !ac.NameHasType)
             {
-                string type = string.IsNullOrEmpty(e.AircraftType)
+                string received = string.IsNullOrEmpty(e.AircraftType)
                     ? VatsimPilotDataService.GetAircraftType(e.Callsign)
                     : e.AircraftType;
                 // AIG's ATC type and model are a maker and a family ("$$:Boeing", "$$:Triple 7"), which
                 // spoke as "Emirates $$:Boeing": the type its title names is the one to say.
-                string icao = GroundTrafficAircraftSizes.ResolveIcao(type, e.AtcModel, e.Title);
-                if (icao.Length > 0) type = icao;
-                if (callsignChanged || GroundTrafficLogic.NameNeedsRefresh(ac.NameHasType, type))
+                var declared = ModelOutlines?.Declared(e.Title) ?? ("", "");
+                string type = GroundTrafficLogic.NamingType(received, e.AtcModel, e.Title, declared.Icao);
+                if (callsignChanged || declaredChanged || GroundTrafficLogic.NameNeedsRefresh(ac.NameHasType, type))
                 {
+                    string airline = GroundTrafficLogic.SpokenAirline(e.Airline, declared.AirlineCode, e.Callsign,
+                        ModelOutlines != null ? ModelOutlines.AirlineName : null);
                     ac.Callsign = e.Callsign;
-                    ac.Airline = e.Airline;
+                    ac.Airline = airline;
                     ac.RawType = type;
-                    ac.Name = GroundTrafficLogic.SpokenName(e.Airline, e.Callsign, type);
+                    ac.Name = GroundTrafficLogic.SpokenName(airline, e.Callsign, type);
                     ac.NameHasType = GroundTrafficLogic.SpokenType(type).Length > 0;
+                    ac.NameDeclaredVersion = declaredVersion;
                 }
             }
             sizeLog = ResolveHull(ac, e);
@@ -1197,8 +1203,12 @@ public sealed class GroundTrafficMonitor : IDisposable
                 : null;
             double gapFt = GapFt(ownHull, ownLat, ownLon, ownHdg, ac);
             double relTravel = reversing ? RelativeDirection.Normalize360(rel + ownHdg - ownDir) : rel;
+            // How fast the traffic itself is coming at the pilot (m/s along the line between them, never
+            // negative): what its own motion takes off the gap, whatever the pilot does.
+            double range = Math.Sqrt(rx * rx + ry * ry);
+            double itsClosingMps = range < 1.0 ? 0.0 : Math.Max(0.0, -(rx * tvx + ry * tvy) / range);
             views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion,
-                openingMps, gapFt, relTravel));
+                openingMps, gapFt, relTravel, itsClosingMps));
         }
 
         // Speed-based zone boundaries, in feet of gap.
@@ -1328,11 +1338,20 @@ public sealed class GroundTrafficMonitor : IDisposable
 
             bool inTheWay = (v.NearRoute && !reversing)
                             || v.RelTravel <= GroundTrafficLogic.QueueAheadConeDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.QueueAheadConeDeg;
-            double warnGapHere = inTheWay ? STOP_BEHIND_GAP_FT + lead : warnGapFt;
+            // The lead is worked out from the pilot's own speed. Traffic that is itself coming at the pilot
+            // (head-on along the taxiway, or closing from the side) takes room off the gap as well: the
+            // seconds of lead are given for ITS closing speed too, or two aircraft meeting at 10 kt each had
+            // "Stop" with half the time one closing on a parked aircraft has. Only for traffic whose closest
+            // approach is a near one (ThreatDcpaM): an aircraft going the other way on the parallel taxiway
+            // closes fast too and never comes near.
+            bool comingAtThePilot = ac.GS >= GroundTrafficLogic.MovingTrafficKts && v.Tcpa > 0.0
+                && v.Dcpa <= GroundTrafficLogic.ThreatDcpaM;
+            double itsLeadFt = comingAtThePilot ? v.ItsClosingMps * ZONE_LEAD_SEC * FEET_PER_METRE : 0.0;
+            double warnGapHere = (inTheWay ? STOP_BEHIND_GAP_FT + lead : warnGapFt) + itsLeadFt;
             GroundZone newZone;
-            if (v.GapFt > awareGapFt)        newZone = GroundZone.None;
-            else if (v.GapFt <= warnGapHere) newZone = GroundZone.Warning;
-            else if (v.GapFt <= cautGapFt)   newZone = GroundZone.Caution;
+            if (v.GapFt > awareGapFt + itsLeadFt)        newZone = GroundZone.None;
+            else if (v.GapFt <= warnGapHere)             newZone = GroundZone.Warning;
+            else if (v.GapFt <= cautGapFt + itsLeadFt)   newZone = GroundZone.Caution;
             else                             newZone = GroundZone.Awareness;
 
             if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; SetStopHeld(ac, false, "far"); continue; }
@@ -2124,7 +2143,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
         TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
-        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt, double RelTravel);
+        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt, double RelTravel, double ItsClosingMps);
 
     public void Dispose()
     {
@@ -2161,6 +2180,8 @@ internal sealed class TrackedGroundAircraft
     public string Airline = "";
     public string RawType = "";
     public string Name = "";      // spoken name: "Delta A320", "DAL 123, A320", "A320", "traffic"
+    /// <summary><c>GroundTrafficModelCatalog.IndexVersion</c> as it was when <see cref="Name"/> was built.</summary>
+    public int NameDeclaredVersion;
     public bool NameHasType;
     /// <summary>Its outline: what every distance to it is measured to (<c>GroundTrafficMonitor.ResolveHull</c>).</summary>
     public AircraftHull Hull = AircraftHull.Default;

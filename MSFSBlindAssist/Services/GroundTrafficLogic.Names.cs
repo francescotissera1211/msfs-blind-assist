@@ -6,34 +6,62 @@ internal static partial class GroundTrafficLogic
 {
     private static readonly Regex RxCallsign = new(@"^([A-Z]{2,4})(\d{1,5}[A-Z]{0,2})$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Dictionary<string, string> SpokenTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["A19N"] = "A319", ["A20N"] = "A320", ["A21N"] = "A321",
-        ["A332"] = "A330", ["A333"] = "A330", ["A338"] = "A330", ["A339"] = "A330",
-        ["A342"] = "A340", ["A343"] = "A340", ["A345"] = "A340", ["A346"] = "A340",
-        ["A359"] = "A350", ["A35K"] = "A350", ["A388"] = "A380",
-        ["BCS1"] = "A220", ["BCS3"] = "A220",
-        ["B37M"] = "737 MAX", ["B38M"] = "737 MAX", ["B39M"] = "737 MAX", ["B3XM"] = "737 MAX",
-        ["B736"] = "737", ["B737"] = "737", ["B738"] = "737", ["B739"] = "737",
-        ["B744"] = "747", ["B748"] = "747", ["B74F"] = "747",
-        ["B752"] = "757", ["B753"] = "757",
-        ["B762"] = "767", ["B763"] = "767", ["B764"] = "767",
-        ["B772"] = "777", ["B773"] = "777", ["B77L"] = "777", ["B77W"] = "777", ["B778"] = "777", ["B779"] = "777",
-        ["B788"] = "787", ["B789"] = "787", ["B78X"] = "787",
-        ["MD11"] = "MD-11", ["CRJ7"] = "CRJ", ["CRJ9"] = "CRJ", ["CRJX"] = "CRJ",
-        ["E170"] = "Embraer 170", ["E75L"] = "Embraer 175", ["E190"] = "Embraer 190", ["E195"] = "Embraer 195",
-        ["AT72"] = "ATR 72", ["AT76"] = "ATR 72", ["DH8D"] = "Dash 8", ["C172"] = "Cessna 172",
-    };
+    // A flight's callsign: the airline's three-letter ICAO code, then the flight number.
+    private static readonly Regex RxAirlineCallsign = new(@"^([A-Z]{3})\d", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    /// <summary>An aircraft type the way a pilot says it ("B77W" → "777").</summary>
+    // Two to four letters and digits, a letter first: the shape of an ICAO type designator.
+    private static readonly Regex RxDesignator = new(@"^[A-Z][A-Z0-9]{1,3}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// An aircraft type the way a pilot says it ("B77W" → "777", "E55P" → "Phenom 300"): its name in
+    /// <c>SpokenTypes</c>, else the designator as it is written. "" for no type, and for a placeholder
+    /// that names none ("ZZZZ").
+    /// </summary>
     public static string SpokenType(string? rawType)
     {
+        if (SpokenTypeName(rawType) is { } whole) return whole;
         string icao = Forms.TcasForm.ShortenAircraftType(rawType ?? "");
         if (string.IsNullOrEmpty(icao)) return "";
-        if (SpokenTypes.TryGetValue(icao, out var spoken)) return spoken;
-        // A320 / A321 / B747 style: already speakable; drop the Boeing B.
+        if (SpokenTypeName(icao) is { } spoken) return spoken;
+        // B747 style: already speakable; drop the Boeing B.
         if (Regex.IsMatch(icao, @"^B7\d7$", RegexOptions.CultureInvariant)) return icao[1..];
         return icao;
+    }
+
+    /// <summary>
+    /// The type a traffic aircraft is NAMED by, from everything known about it, best first: the type its
+    /// title or its ATC strings name (<see cref="GroundTrafficAircraftSizes.ResolveIcao"/>); the designator
+    /// its own package declares (<paramref name="declaredIcao"/>, <c>icao_type_designator</c> in its
+    /// aircraft.cfg) or the type the simulator reports, whichever has a spoken name; a title that is itself
+    /// a designator (IVAO's "A5"); then the declared designator as it is written, so a type nobody has
+    /// named here is still read as its code and never as its maker ("Panavia", "Sikorsky": what AIG and
+    /// IVAO put in the ATC type).
+    /// </summary>
+    public static string NamingType(string? receivedType, string? atcModel, string? title, string? declaredIcao)
+    {
+        string icao = GroundTrafficAircraftSizes.ResolveIcao(receivedType, atcModel, title);
+        if (icao.Length > 0) return icao;
+        string declared = (declaredIcao ?? "").Trim().ToUpperInvariant(), received = (receivedType ?? "").Trim(), t = (title ?? "").Trim();
+        if (SpokenTypeName(declared) != null) return declared;
+        if (SpokenTypeName(received) != null) return received;
+        if (SpokenTypeName(t) != null) return t;
+        return RxDesignator.IsMatch(declared) ? declared : received;
+    }
+
+    /// <summary>
+    /// The airline to name a traffic aircraft by: the one its model gives (<c>ATC AIRLINE</c>); else, for
+    /// a model that gives none (every IVAO model, a plain livery), the name the INSTALLED liveries give
+    /// the airline code its package declares, or the code its callsign begins with ("RYR123"):
+    /// <paramref name="airlineByCode"/>, <c>GroundTrafficModelCatalog.AirlineName</c>. "" when none is known.
+    /// </summary>
+    public static string SpokenAirline(string? modelAirline, string? declaredAirlineCode, string? callsign, Func<string, string>? airlineByCode)
+    {
+        string airline = (modelAirline ?? "").Trim();
+        if (airline.Length > 0 || airlineByCode == null) return airline;
+        string code = (declaredAirlineCode ?? "").Trim().ToUpperInvariant();
+        if (code.Length == 3 && airlineByCode(code) is { Length: > 0 } byPackage) return byPackage;
+        var m = RxAirlineCallsign.Match((callsign ?? "").Trim().ToUpperInvariant());
+        return m.Success ? airlineByCode(m.Groups[1].Value) ?? "" : "";
     }
 
     /// <summary>

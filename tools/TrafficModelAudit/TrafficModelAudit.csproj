@@ -10,6 +10,8 @@
     <!-- The app's own ground-traffic sizing code, linked so the audit measures with exactly what ships. -->
     <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficAircraftSizes.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficLogic.Hull.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- What each type is called in a callout: the audit lists the installed types with no name there. -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficLogic.TypeNames.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficModelReader.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficModelCatalog.cs" Link="Linked\%(Filename)%(Extension)" />
     <!-- Where the packages are, and which folders hold them. -->

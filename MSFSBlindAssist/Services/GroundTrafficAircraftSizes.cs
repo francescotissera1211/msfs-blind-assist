@@ -251,6 +251,9 @@ public static class GroundTrafficAircraftSizes
 
     private static readonly ConcurrentDictionary<(string, string, string), string> IcaoCache = new();
 
+    /// <summary>Every type designator the size table holds (tests: each one has a spoken name).</summary>
+    internal static IReadOnlyCollection<string> SizedTypes => Table.Keys;
+
     /// <summary>The published length and wing span of an ICAO type designator, or null when it is not in the table.</summary>
     public static (double LengthM, double WingspanM)? Lookup(string? icao)
         => icao != null && Table.TryGetValue(icao.Trim(), out var s) ? s : null;

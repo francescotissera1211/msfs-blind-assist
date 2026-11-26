@@ -387,7 +387,7 @@ public class GroundTrafficGapSpeechTests
         h.Tick(3);
         string summary = h.Monitor.GetNearestTrafficSummary();
         int a380 = summary.IndexOf("Emirates A380, behind", StringComparison.Ordinal),
-            be58 = summary.IndexOf("BE58, to the right", StringComparison.Ordinal),
+            be58 = summary.IndexOf("Baron, to the right", StringComparison.Ordinal),
             qantas = summary.IndexOf("Qantas A380, to the left", StringComparison.Ordinal);
         Assert.True(a380 >= 0 && be58 > a380 && qantas > be58, summary);
         Assert.StartsWith("3 aircraft nearby.", summary);
@@ -404,7 +404,7 @@ public class GroundTrafficGapSpeechTests
         h.Sim.Traffic.Add(Typed(1, 75, "", "BE58", "BE58"));
         h.Tick(6);
         Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Stop", StringComparison.Ordinal));
-        Assert.Contains(h.Said.All, m => m.Contains("BE58, ahead, 175 feet, stopped."));
+        Assert.Contains(h.Said.All, m => m.Contains("Baron, ahead, 175 feet, stopped."));
     }
 
     [Fact]

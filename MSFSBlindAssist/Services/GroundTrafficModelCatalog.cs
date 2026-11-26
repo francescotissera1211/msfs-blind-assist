@@ -32,7 +32,11 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     private const int MaxScanDepth = 6;
 
     /// <summary>Where one title's model lives: its aircraft folder, its <c>model=</c> suffix, and the folder its <c>base_container</c> names.</summary>
-    internal readonly record struct ModelRef(string AircraftDir, string ModelSuffix, string? BaseDir);
+    /// <param name="Icao">The type its aircraft.cfg declares (<c>icao_type_designator</c>), upper case; "" for none.</param>
+    /// <param name="AirlineCode">Its livery's <c>icao_airline</c>, upper case; "" for none.</param>
+    /// <param name="Airline">Its livery's <c>atc_airline</c>, the name the simulator reports as ATC AIRLINE; "" for none.</param>
+    internal readonly record struct ModelRef(string AircraftDir, string ModelSuffix, string? BaseDir,
+        string Icao = "", string AirlineCode = "", string Airline = "");
 
     private static readonly LogChannel _log = Log.Channel("ground_traffic");
 
@@ -48,7 +52,10 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     private readonly BlockingCollection<string> _queue = new();
     // model file key → outline (null = unmeasurable). Worker thread only.
     private Dictionary<string, AircraftOutline?> _byFile = new(StringComparer.OrdinalIgnoreCase);
-    private Dictionary<string, ModelRef>? _index;
+    // Written by the worker thread only, each published whole: the traffic monitor reads them from its own.
+    private volatile Dictionary<string, ModelRef>? _index;
+    private volatile Dictionary<string, string> _airlines = new(StringComparer.OrdinalIgnoreCase);
+    private volatile int _indexVersion;
     private DateTime _indexedUtc = DateTime.MinValue;
     private string _indexStamp = "";
     private bool _cacheDirty;
@@ -87,6 +94,33 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// Counts the times the installed packages have been read: 0 until the first read. What the packages
+    /// DECLARE (<see cref="Declared"/>, <see cref="AirlineName"/>) is known from then on, and may differ
+    /// after each later read, so a name built from it is built again when this moves.
+    /// </summary>
+    public int IndexVersion => _indexVersion;
+
+    /// <summary>
+    /// What the package that owns <paramref name="title"/> declares for it in its aircraft.cfg: its ICAO
+    /// type designator and its livery's airline code. Empty strings for a title no package declares, and
+    /// until the packages have been read (they are read when the first traffic title is asked for).
+    /// </summary>
+    public (string Icao, string AirlineCode) Declared(string? title)
+    {
+        var index = _index;
+        return index != null && !string.IsNullOrWhiteSpace(title) && index.TryGetValue(title.Trim(), out var model)
+            ? (model.Icao, model.AirlineCode) : ("", "");
+    }
+
+    /// <summary>
+    /// The name the installed liveries give an airline, by its three-letter ICAO code ("RYR" → "Ryanair"):
+    /// learnt from every livery that declares both (<see cref="AirlineNames"/>), so nothing here is a list
+    /// anyone maintains. "" for a code no installed livery names.
+    /// </summary>
+    public string AirlineName(string code)
+        => !string.IsNullOrWhiteSpace(code) && _airlines.TryGetValue(code.Trim(), out var name) ? name : "";
+
     /// <summary>True once <paramref name="title"/> has an answer, measured or not (tests and the audit tool).</summary>
     internal bool IsSettled(string title)
         => _byTitle.ContainsKey(title.Trim()) || (_unknownUntil.TryGetValue(title.Trim(), out var until) && _utcNow() < until);
@@ -110,22 +144,26 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     private void Settle(string title)
     {
         var now = _utcNow();
-        if (_index == null || (!_index.ContainsKey(title) && (now - _indexedUtc).TotalMinutes >= ReindexMinutes))
+        var index = _index;
+        if (index == null || (!index.ContainsKey(title) && (now - _indexedUtc).TotalMinutes >= ReindexMinutes))
         {
             // A title no package declares is common (the simulator's own streamed traffic), so the packages
             // are read again only when their folders have changed since the last read.
             string? root = _packagesRoot();
             string stamp = root != null ? PackagesStamp(root) : "";
-            if (_index == null || stamp != _indexStamp)
+            if (index == null || stamp != _indexStamp)
             {
                 var clock = System.Diagnostics.Stopwatch.StartNew();
-                _index = root != null ? BuildIndex(root) : new Dictionary<string, ModelRef>(StringComparer.OrdinalIgnoreCase);
+                index = root != null ? BuildIndex(root) : new Dictionary<string, ModelRef>(StringComparer.OrdinalIgnoreCase);
+                _airlines = AirlineNames(index.Values);
+                _index = index;
                 _indexStamp = stamp;
-                _log.Info($"ev=model-index titles={_index.Count} ms={clock.ElapsedMilliseconds}");
+                _indexVersion++;
+                _log.Info($"ev=model-index titles={index.Count} airlines={_airlines.Count} ms={clock.ElapsedMilliseconds}");
             }
             _indexedUtc = now;
         }
-        if (!_index.TryGetValue(title, out var model))
+        if (!index.TryGetValue(title, out var model))
         {
             _unknownUntil[title] = now.AddMinutes(ReindexMinutes);
             _log.Info($"ev=model title=\"{title}\" result=not-installed");
@@ -254,12 +292,13 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     {
         string dir = Path.GetDirectoryName(cfgPath) ?? "";
         string section = "";
-        string? baseDir = null, title = null, suffix = null;
-        var found = new List<(string Title, string Suffix)>();
+        string? baseDir = null, title = null, suffix = null, airlineCode = null, airline = null;
+        string icao = "";
+        var found = new List<(string Title, string Suffix, string AirlineCode, string Airline)>();
         void Close()
         {
-            if (title != null) found.Add((title, suffix ?? ""));
-            title = suffix = null;
+            if (title != null) found.Add((title, suffix ?? "", (airlineCode ?? "").ToUpperInvariant(), airline ?? ""));
+            title = suffix = airlineCode = airline = null;
         }
         foreach (string raw in lines)
         {
@@ -278,15 +317,47 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             string value = Unquote(line[(eq + 1)..]);
             if (section == "VARIATION" && key == "base_container" && value.Length > 0)
                 baseDir = Path.GetFullPath(Path.Combine(dir, value.Replace('/', Path.DirectorySeparatorChar)));
+            else if (section == "GENERAL" && key == "icao_type_designator")
+                icao = value.ToUpperInvariant();
             else if (section.StartsWith("FLTSIM.", StringComparison.Ordinal))
             {
                 if (key == "title") title = value;
                 else if (key == "model") suffix = value;
+                else if (key == "icao_airline") airlineCode = value;
+                else if (key == "atc_airline") airline = value;
             }
         }
         Close();
-        foreach (var (t, s) in found)
-            if (t.Length > 0) index.TryAdd(t, new ModelRef(dir, s, baseDir));   // the first package to name a title keeps it
+        foreach (var (t, s, code, name) in found)
+            if (t.Length > 0) index.TryAdd(t, new ModelRef(dir, s, baseDir, icao, code, name));   // the first package to name a title keeps it
+    }
+
+    /// <summary>
+    /// Airline code → the name to say, learnt from the liveries that declare both an <c>icao_airline</c>
+    /// and an <c>atc_airline</c>: the name most of that code's liveries carry (libraries disagree: one
+    /// writes "SPEEDBIRD", another "Speedbird", a wet lease carries its operator's), in the spelling that
+    /// is not all capitals when there is one, since a screen reader may spell a short capitalised word out.
+    /// Only three-letter codes: AIG marks its private aircraft with made-up longer ones ("GA2J").
+    /// </summary>
+    internal static Dictionary<string, string> AirlineNames(IEnumerable<ModelRef> models)
+    {
+        var counts = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in models)
+        {
+            if (m.AirlineCode.Length != 3 || m.Airline.Length == 0 || !m.AirlineCode.All(char.IsAsciiLetter)) continue;
+            if (!counts.TryGetValue(m.AirlineCode, out var names)) counts[m.AirlineCode] = names = new Dictionary<string, int>(StringComparer.Ordinal);
+            names[m.Airline] = names.GetValueOrDefault(m.Airline) + 1;
+        }
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, names) in counts)
+        {
+            // The name, whatever its capitals, that most liveries carry; then its best spelling.
+            var winner = names.GroupBy(n => n.Key, n => n, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Sum(n => n.Value)).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase).First();
+            result[code] = winner.OrderBy(n => n.Key.Any(char.IsLower) ? 0 : 1).ThenByDescending(n => n.Value)
+                .ThenBy(n => n.Key, StringComparer.Ordinal).First().Key;
+        }
+        return result;
     }
 
     // A value without its quotes or its trailing comment: "x" ; note → x.

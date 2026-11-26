@@ -14,7 +14,9 @@
 //   NO-TYPE     measured, its declared type is not in the size table (the measurement is still used)
 //   UNREADABLE  the model's geometry could not be measured: the app falls back to the published size
 //   NO-FILE     the title's model file is not on disk (streamed or encrypted package)
-// and how the title-only type resolver did on every installed title (what the app falls back on).
+// and how the title-only type resolver did on every installed title (what the app falls back on); then
+// what the callouts would CALL each installed aircraft: the types with no spoken name, to add to
+// GroundTrafficLogic.TypeNames.cs, and how many airline codes the installed liveries name.
 using System.Globalization;
 using MSFSBlindAssist.Services;
 
@@ -132,4 +134,23 @@ void Note(string key, string title) => wrong[key] = wrong.TryGetValue(key, out v
 Console.WriteLine();
 Console.WriteLine($"Type from the title alone: {same} exact, {sameSize} same size, {different} different size, {unresolved} not recognised ({undeclared} titles declare a type the table lacks)");
 foreach (var (key, w) in wrong) Console.WriteLine($"  {key} x{w.Count}: e.g. \"{w.Example}\"");
+
+// What each installed aircraft is CALLED: the type its title names, else the one its package declares,
+// must have a spoken name (GroundTrafficLogic.TypeNames.cs), or the callouts read its code out.
+var unnamed = new SortedDictionary<string, (string Example, int Count)>(StringComparer.OrdinalIgnoreCase);
+int named = 0, typeless = 0;
+foreach (var (title, model) in index)
+{
+    if (only != null && model.AircraftDir.IndexOf(only, StringComparison.OrdinalIgnoreCase) < 0) continue;
+    string type = GroundTrafficAircraftSizes.ResolveIcao(null, null, title);
+    if (type.Length == 0) type = model.Icao;
+    if (type.Length == 0) { typeless++; continue; }
+    if (GroundTrafficLogic.SpokenTypeName(type) != null) { named++; continue; }
+    unnamed[type] = unnamed.TryGetValue(type, out var u) ? (u.Example, u.Count + 1) : (title, 1);
+}
+var airlines = GroundTrafficModelCatalog.AirlineNames(index.Values);
+Console.WriteLine();
+Console.WriteLine($"Spoken type names: {named} titles named, {unnamed.Values.Sum(u => u.Count)} titles of {unnamed.Count} types read out as their code, {typeless} titles with no type in the title or the package");
+foreach (var (type, u) in unnamed) Console.WriteLine($"  {type} x{u.Count}: e.g. \"{u.Example}\"");
+Console.WriteLine($"Airlines: {index.Values.Count(m => m.Airline.Length > 0)} of {index.Count} titles give one; {airlines.Count} airline codes have a name learnt from the installed liveries");
 return 0;
