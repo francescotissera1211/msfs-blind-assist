@@ -37,6 +37,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double AWARENESS_GAP_FT = 400.0;
     private const double CAUTION_GAP_FT   = 200.0;
     private const double WARNING_GAP_FT   = 50.0;
+    // "Stop" for an aircraft IN THE WAY (on or near the route ahead, or within the queue cone of the
+    // direction of travel) is given for 100 ft of clear space, 30 m: about the distance pilots keep
+    // behind a jet at taxi thrust, where 50 ft left a widebody's nose in the idle exhaust of the one
+    // ahead (owner, 2026-11-26). An aircraft beside the path keeps WARNING_GAP_FT: taxilane wingtip
+    // clearances are under 30 m by design, and every parked aircraft would otherwise be a "Stop".
+    private const double STOP_BEHIND_GAP_FT = 100.0;
 
     // Lead time (seconds) added to each zone boundary for reaction + braking + poll lag:
     // effective boundary = fixed_ft + v × ktsToFps × ZONE_LEAD_SEC. Sized for the 3 s worst-case
@@ -1301,9 +1307,12 @@ public sealed class GroundTrafficMonitor : IDisposable
                         () => { ac.StopSpokenUtc = null; ac.LastAlertTime = now; }));
             }
 
+            bool inTheWay = (v.NearRoute && !reversing)
+                            || v.RelTravel <= GroundTrafficLogic.QueueAheadConeDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.QueueAheadConeDeg;
+            double warnGapHere = inTheWay ? STOP_BEHIND_GAP_FT + lead : warnGapFt;
             GroundZone newZone;
             if (v.GapFt > awareGapFt)        newZone = GroundZone.None;
-            else if (v.GapFt <= warnGapFt)   newZone = GroundZone.Warning;
+            else if (v.GapFt <= warnGapHere) newZone = GroundZone.Warning;
             else if (v.GapFt <= cautGapFt)   newZone = GroundZone.Caution;
             else                             newZone = GroundZone.Awareness;
 

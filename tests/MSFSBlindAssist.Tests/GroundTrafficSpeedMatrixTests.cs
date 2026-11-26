@@ -25,7 +25,7 @@ public class GroundTrafficSpeedMatrixTests
 
     [Theory]
     [MemberData(nameof(OwnSpeeds))]
-    public void Closing_on_a_stopped_aircraft_Stop_comes_seven_seconds_before_a_50_ft_gap(double ownKts)
+    public void Closing_on_a_stopped_aircraft_Stop_comes_seven_seconds_before_a_100_ft_gap(double ownKts)
     {
         // An A320 stopped on the route 900 m ahead of an A320: nose 17.3 m ahead of the own point, its
         // tail 20.3 m behind its own, so the gap is the distance between the two points less 37.6 m.
@@ -48,7 +48,7 @@ public class GroundTrafficSpeedMatrixTests
             }
         }
         double fps = ownKts * 1.6878;
-        double secondsToTouch = stopGapFt / fps, boundaryFt = 50 + 7 * fps;
+        double secondsToTouch = stopGapFt / fps, boundaryFt = 100 + 7 * fps;
         _out.WriteLine(FormattableString.Invariant(
             $"own {ownKts,2} kt: Slow down at {slowGapFt,4:0} ft ({slowGapFt * 0.3048,3:0} m), Stop at {stopGapFt,4:0} ft ({stopGapFt * 0.3048,3:0} m) = {secondsToTouch:0.0} s from touching; rule {boundaryFt:0} ft"));
 

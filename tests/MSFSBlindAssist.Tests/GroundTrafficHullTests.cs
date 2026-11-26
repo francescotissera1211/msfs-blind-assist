@@ -526,8 +526,8 @@ public class GroundTrafficPushbackTests
         string said = string.Join(" | ", h.Transcript);
         Assert.Contains(h.Said.All, m => m.StartsWith("Slow down, Delta A320 behind", StringComparison.Ordinal));
         string stop = Assert.Single(h.Said.All, m => m.StartsWith("Stop, Delta A320 very close, behind", StringComparison.Ordinal));
-        // "Stop" is given with the 50 ft of gap it is given with nose-first, plus the lead 3 kt earns.
-        Assert.True(stop.EndsWith("50 feet.", StringComparison.Ordinal) || stop.EndsWith("75 feet.", StringComparison.Ordinal), said);
+        // "Stop" is given for the 100 ft of gap it is given for nose-first, plus the lead 3 kt earns (35 ft).
+        Assert.True(stop.EndsWith("125 feet.", StringComparison.Ordinal) || stop.EndsWith("150 feet.", StringComparison.Ordinal), said);
     }
 
     [Fact]

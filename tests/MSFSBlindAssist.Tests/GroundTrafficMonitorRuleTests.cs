@@ -86,7 +86,8 @@ public class GroundTrafficMonitorRuleTests
             "t=3 Delta A320 on your route, taxiway A, 100 feet ahead, crossing.",
             "t=6 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
             "t=6 Lufthansa A320 on your route, taxiway A, 300 feet ahead, stopped.",
-            "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 175 feet.",
+            // "Stop" for an aircraft in the way is given for 100 ft of gap (30 m), not 50: three seconds sooner.
+            "t=9 [INT] Stop, Lufthansa A320 very close, ahead, 250 feet.",
             // The crossing aircraft "Stop" was said for has gone on its way.
             "t=28 Clear of Delta A320.",
         }, h.Transcript);
@@ -120,14 +121,13 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            // The crosser is side-on: its nearest part is its fuselage, further off than a tail would be, so
-            // it is "Slow down" for a second before "Stop".
-            "t=3 [INT] Slow down, Delta A320 ahead, 175 feet.",
+            // The crosser is side-on, 175 ft off: inside the 100 ft an aircraft in the way is given, plus the
+            // lead 12 kt earns, so it is "Stop" at once.
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 175 feet.",
             "t=3 Delta A320 converging from ahead, about 20 seconds.",
-            "t=4 [INT] Stop, Delta A320 very close, ahead, 150 feet.",
             "t=6 Lufthansa A320 on your route, taxiway A, 950 feet ahead, coming toward you.",
             "t=21 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
-            "t=25 [INT] Stop, Lufthansa A320 very close, ahead, 150 feet.",
+            "t=24 [INT] Stop, Lufthansa A320 very close, ahead, 175 feet.",
             "t=29 Clear of Delta A320.",
         }, h.Transcript);
     }
@@ -219,12 +219,12 @@ public class GroundTrafficMonitorRuleTests
     [Fact]
     public void A_leader_that_departs_and_stops_again_ahead_earns_Stop_as_soon_as_it_stops()
     {
-        // PR #247 integration review P1 (a queue hop): stopped 85 m behind a stopped leader, the pilot follows
-        // it at 10 kt as it departs at up to 16 kt; six seconds later it stops again, 102 m ahead — inside the
-        // Warning distance (about 112 m at 10 kt). While it pulls away, no "Stop"; on the first evaluation
+        // PR #247 integration review P1 (a queue hop): stopped 100 m behind a stopped leader, the pilot follows
+        // it at 10 kt as it departs at up to 16 kt; six seconds later it stops again, 117 m ahead — inside the
+        // Warning distance (about 127 m at 10 kt). While it pulls away, no "Stop"; on the first evaluation
         // that sees it stopped, "Stop". On the reviewed base this "Stop" was swallowed: withheld while the
         // leader opened, the Warning was recorded as if spoken, and a stop was no longer an escalation.
-        var s = new FollowingLeader(leadM: 85);
+        var s = new FollowingLeader(leadM: 100);
         int stoppedAt = -1, stopAt = -1;
         while (s.Second < 20 && stopAt < 0)
         {
@@ -244,11 +244,11 @@ public class GroundTrafficMonitorRuleTests
     public void Following_a_departing_leader_earns_no_Stop_while_it_pulls_away()
     {
         // PR #247 integration review P2: the leader departs and the pilot follows three seconds later with the
-        // same acceleration; both settle at 12 kt with the gap, about 103 m, inside the Warning distance (about
-        // 119 m at 12 kt). The gap never closes. The "Stop" withheld while the leader opened at 1 m/s or more
+        // same acceleration; both settle at 12 kt with the gap, about 118 m, inside the Warning distance (about
+        // 134 m at 12 kt). The gap never closes. The "Stop" withheld while the leader opened at 1 m/s or more
         // stays withheld once the pilot, catching up to its speed, brings the opening below that — it fired
         // there, at 350 feet, before the hold-down. Then the leader stops: "Stop" at once.
-        var s = new FollowingLeader(leadM: 85);
+        var s = new FollowingLeader(leadM: 100);
         while (s.Second < 45)
         {
             int t = s.Second + 1;
@@ -257,7 +257,7 @@ public class GroundTrafficMonitorRuleTests
             s.Step();
         }
         Assert.DoesNotContain(s.H.Said.All, m => m.StartsWith("Stop,"));
-        Assert.InRange(s.GapM, 100, 106);   // still inside the Warning distance: it was held, not out of range
+        Assert.InRange(s.GapM, 115, 121);   // still inside the Warning distance: it was held, not out of range
 
         s.LeadMps = 0;
         s.Step();
@@ -268,10 +268,10 @@ public class GroundTrafficMonitorRuleTests
     public void A_leader_that_pulls_away_then_slows_to_4_kt_earns_Stop_once_the_pilot_closes_on_it()
     {
         // Why the withheld "Stop" is held down rather than recorded until the leader stops: this leader never
-        // stops. As in the previous test both settle at 12 kt, 103 m apart; then it slows to 4 kt. It is still
+        // stops. As in the previous test both settle at 12 kt, 118 m apart; then it slows to 4 kt. It is still
         // MOVING, but the pilot closes on it at 1 m/s and more — "Stop" on that first evaluation. Recorded
         // until the leader stopped, the Warning would never have been an escalation again.
-        var s = new FollowingLeader(leadM: 85);
+        var s = new FollowingLeader(leadM: 100);
         while (s.Second < 30)
         {
             int t = s.Second + 1;
@@ -288,7 +288,8 @@ public class GroundTrafficMonitorRuleTests
             s.Step();
             if (s.StopSpoken) stopAt = s.Second;
         }
-        Assert.Equal(31, stopAt);   // the first second it closes, at 1 m/s
+        // Within two seconds of it slowing: once the lead's rate over a few seconds shows the pilot closing too.
+        Assert.Equal(32, stopAt);
     }
 
     [Fact]
