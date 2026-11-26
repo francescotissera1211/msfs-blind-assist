@@ -25,8 +25,14 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     /// <summary>A title no package declares is looked for again after this long, once the packages are re-read.</summary>
     public const int ReindexMinutes = 5;
 
-    /// <summary>Bumped when the measurement changes, so every cached outline is measured again.</summary>
-    public const int CacheVersion = 1;
+    /// <summary>
+    /// Bumped when the measurement changes, so every cached outline is measured again: with ANY change to
+    /// what <see cref="GroundTrafficModelReader"/> or <see cref="Parts"/> makes of a model. The cache is
+    /// keyed by the model file alone, so without it a model measured before the change keeps its old
+    /// outline for ever. 2: skinned parts placed by their skeleton, rotor discs, parts on merged attach
+    /// nodes, see-through light and decals left out (2026-11-26).
+    /// </summary>
+    public const int CacheVersion = 2;
 
     private const string CacheFileName = "outlines.json";
     private const int MaxScanDepth = 6;
@@ -278,8 +284,13 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         return index;
     }
 
-    /// <summary>Every installed package that holds SimObjects, as of the last <see cref="BuildIndex"/>: where <see cref="Vfs"/> looks.</summary>
-    internal static IReadOnlyList<string> VfsRoots { get; private set; } = Array.Empty<string>();
+    /// <summary>
+    /// Every installed package that holds SimObjects, as of the last <see cref="BuildIndex"/> on THIS thread:
+    /// where <see cref="Vfs"/> looks. Per thread, since an index is built and used on one (the catalog's
+    /// worker, the audit tool's): shared, two catalogs resolved each other's packages.
+    /// </summary>
+    internal static IReadOnlyList<string> VfsRoots { get => _vfsRoots ?? Array.Empty<string>(); private set => _vfsRoots = value; }
+    [ThreadStatic] private static IReadOnlyList<string>? _vfsRoots;
 
     /// <summary>
     /// A path as the simulator's virtual file system sees it: the packages overlay one another, so a file

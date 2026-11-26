@@ -197,12 +197,12 @@ internal static partial class GroundTrafficLogic
     /// traffic in the queue cone ahead, or a pilot ROLLING (<paramref name="ownGsKts"/> at least
     /// <see cref="FastPollOwnRollingKts"/>) with any ground aircraft — parked included — directly ahead
     /// (±<see cref="QueueAheadConeDeg"/> of the nose) and within <paramref name="cautionDistFt"/>, the
-    /// monitor's own speed-scaled Caution distance (<c>CAUTION_FT</c> plus the speed lead). Parked
+    /// monitor's own speed-scaled Caution gap (<c>CAUTION_GAP_FT</c> plus the speed lead). Parked
     /// aircraft beside or behind the pilot, or further ahead, never keep it fast (L7); the slow 3 s
     /// cadence is what <c>ZONE_LEAD_SEC</c> was sized for.
     /// <para>The rolling case is PR #247 integration review Q4: a PARKED aircraft off the route is no route
     /// threat (<see cref="IsRouteThreat"/>), so it earns no "Slow down" — only "Stop", inside the fixed
-    /// 250 ft — and with only parked traffic around the sweeps stayed on the 3 s cadence: a pilot who
+    /// Warning distance (250 ft between centres then, a 50 ft gap since [TRF-12]) — and with only parked traffic around the sweeps stayed on the 3 s cadence: a pilot who
     /// missed a bend and rolled at one at 12 kt heard "Stop" at about 200 ft. At 1 s it comes within a
     /// second's travel of the line.</para>
     /// </summary>

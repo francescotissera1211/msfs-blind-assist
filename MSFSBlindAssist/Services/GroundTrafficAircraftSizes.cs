@@ -266,6 +266,8 @@ public static class GroundTrafficAircraftSizes
     public static string ResolveIcao(string? type, string? model, string? title)
     {
         var key = (type ?? "", model ?? "", title ?? "");
+        if (IcaoCache.TryGetValue(key, out string? known)) return known;
+        // Count takes every lock of the cache: only when a key is about to be added.
         if (IcaoCache.Count > 4096) IcaoCache.Clear();
         return IcaoCache.GetOrAdd(key, static k => ResolveIcaoUncached(k.Item1, k.Item2, k.Item3));
     }

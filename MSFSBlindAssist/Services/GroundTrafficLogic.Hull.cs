@@ -134,7 +134,25 @@ internal static partial class GroundTrafficLogic
                 }
             }
         }
-        return best == double.MaxValue ? Math.Sqrt(rx * rx + ry * ry) : best;
+        if (best == double.MaxValue) return Math.Sqrt(rx * rx + ry * ry);
+        // No edges cross, yet one outline may lie wholly INSIDE the other (a light aircraft's predicted
+        // place in a widebody's wing root): that is no gap at all.
+        if ((other.Source == AircraftHullSource.Model && a.Length > 0 && Inside(b, a[0].X1, a[0].Z1))
+            || (own.Source == AircraftHullSource.Model && b.Length > 0 && Inside(a, b[0].X1, b[0].Z1)))
+            return 0.0;
+        return best;
+    }
+
+    // Is the point inside the closed outline these segments make? (A ray toward +X crosses it an odd number of times.)
+    private static bool Inside(AircraftHull.Segment[] outline, double px, double py)
+    {
+        bool inside = false;
+        foreach (var s in outline)
+        {
+            if ((s.Z1 > py) == (s.Z2 > py)) continue;
+            if (px < s.X1 + (s.X2 - s.X1) * (py - s.Z1) / (s.Z2 - s.Z1)) inside = !inside;
+        }
+        return inside;
     }
 
     // A hull's segments in the local east/north frame: (X1, Z1) is then (east, north).

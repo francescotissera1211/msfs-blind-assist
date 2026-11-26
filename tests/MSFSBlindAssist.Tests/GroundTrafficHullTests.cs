@@ -109,6 +109,20 @@ public class GroundTrafficHullGapTests
     }
 
     [Fact]
+    public void An_outline_wholly_inside_another_is_no_gap_at_all()
+    {
+        // No edge of one crosses an edge of the other, so the nearest edges are metres apart: it read as
+        // a gap, for a light aircraft whose predicted place was inside a widebody's wing root.
+        var big = AircraftHull.FromOutline(new AircraftOutline(20, 20, Enumerable.Repeat(20f, 160).ToArray()));
+        var small = AircraftHull.FromOutline(new AircraftOutline(2, 2, Enumerable.Repeat(2f, 16).ToArray()));
+
+        Assert.Equal(0.0, GroundTrafficLogic.HullGapM(big, 0, small, 30, 5, 3), 6);
+        Assert.Equal(0.0, GroundTrafficLogic.HullGapM(small, 30, big, 0, -5, -3), 6);
+        // Outside it, the gap is the distance between the nearest edges as before.
+        Assert.Equal(60 - 20 - 2, GroundTrafficLogic.HullGapM(big, 0, small, 0, 60, 0), 1);
+    }
+
+    [Fact]
     public void Traffic_crossing_ahead_is_measured_to_the_wingtip_it_points_at_the_own_nose()
     {
         var own = Hull(70, 60);

@@ -1007,6 +1007,23 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     }
 
     [Fact]
+    public void The_own_outline_is_held_against_the_type_s_published_size_not_the_span_its_flight_model_reports()
+    {
+        // A flight model whose wing span is a third short (24.4 m for an A320): the measured outline is
+        // the better evidence, and it fits the type. Held against that span it was thrown away, and the
+        // aircraft sized from the wrong span instead.
+        const string title = "Own A320 Odd Span";
+        using var catalog = OwnCatalog(title, wingHalfWidth: 17.9);
+        var h = new GroundTrafficHarness();
+        h.UseRealSizes(models: catalog);
+        h.Monitor.OwnAircraftProvider = () => (title, "A320", 80.0);
+
+        var hull = OwnHullOnceMeasured(h, catalog, title);
+        Assert.Equal(AircraftHullSource.Model, hull.Source);
+        Assert.Equal(17.9, hull.HalfSpanM, 2);
+    }
+
+    [Fact]
     public void An_own_outline_far_from_the_aircraft_s_size_is_not_believed()
     {
         // A wing that measures 14 m on an aircraft whose flight model says 35.81 m was not assembled:

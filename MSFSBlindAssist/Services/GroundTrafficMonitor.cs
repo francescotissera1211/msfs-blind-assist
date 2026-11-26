@@ -834,6 +834,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         foreach (var ac in _tracked.Values)
         {
             if (!ac.OnGround || ac.LastSeenTime < fresh) continue;
+            // Only what is near enough to change the answer is measured outline to outline: the fast poll
+            // looks no further than FastPollRangeFt of gap, and no outline reaches 500 ft from its point.
+            if (NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET > GroundTrafficLogic.TrackRangeFt) continue;
             double gapFt = GapFt(ownHull, _ownLat, _ownLon, _ownHeadingTrue, ac);
             // Relative to the direction of travel: pushed back, what matters is behind the tail.
             double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - ownDirection);
@@ -975,8 +978,11 @@ public sealed class GroundTrafficMonitor : IDisposable
         key = (key.Title ?? "", key.IcaoType ?? "", key.WingSpanFt);
         if (_ownHullResolved && key == _ownHullKey && _ownHull.Source == AircraftHullSource.Model) return _ownHull;
         var outline = key.Title.Length > 0 ? ModelOutlines?.TryGet(key.Title) : null;
+        // Held against the type's PUBLISHED size, never the span the flight model reports: that figure is
+        // a number its author typed (the PMDG 777's says 62.7 m for a wing of 64.7), and a measured
+        // outline is the better evidence of the two.
         if (outline != null && !GroundTrafficAircraftSizes.Agrees(outline,
-                GroundTrafficAircraftSizes.ResolveOwn(key.IcaoType, key.Title, key.WingSpanFt * 0.3048)))
+                GroundTrafficAircraftSizes.Resolve(key.IcaoType, null, key.Title, 0.0)))
             outline = null;
         if (outline == null && _ownHullResolved && key == _ownHullKey) return _ownHull;
         var hull = outline != null
