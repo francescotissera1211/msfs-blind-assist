@@ -64,7 +64,7 @@ public static class QueueMovementPolicy
     /// this close disarms the nudge (the one that left counts only once it has stopped again), and the
     /// one that left, while still moving this close, keeps it armed and silent until the gap opens (N3).
     /// </summary>
-    public const double NudgeMinGapFt = 250.0;
+    public const double NudgeMinGapFt = 50.0;
     /// <summary>The pilot rolling at this speed has moved up: disarm.</summary>
     public const double NudgeResetOwnGsKts = 2.0;
     /// <summary>The nudge only speaks to a pilot below this speed (stopped).</summary>

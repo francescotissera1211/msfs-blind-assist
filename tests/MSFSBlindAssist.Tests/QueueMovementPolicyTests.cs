@@ -127,7 +127,7 @@ public class QueueMovementPolicyTests
     [Theory]
     [InlineData(false, 0.0, 400.0)]   // at a gate, a hold, on a runway, arrived: not a queue prompt
     [InlineData(true, 2.0, 400.0)]    // the pilot is rolling
-    [InlineData(true, 0.0, 200.0)]    // something else is already close in front
+    [InlineData(true, 0.0, 20.0)]     // something else is already close in front (a 20 ft gap)
     public void The_nudge_disarms(bool allowed, double ownGs, double nearest)
         => Assert.Equal(NudgeAction.Disarm,
             Nudge(NudgeState.ArmedAt(T0), allowed, ownGs, nearest).Action);
@@ -196,9 +196,9 @@ public class QueueMovementPolicyTests
     }
 
     [Fact]
-    public void The_leader_stopped_again_within_250_ft_disarms_the_nudge()
+    public void The_leader_stopped_again_within_the_minimum_gap_disarms_the_nudge()
     {
-        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 200.0, 0.5) }, leaderId: 7u);
+        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 20.0, 0.5) }, leaderId: 7u);
         Assert.Equal(NudgeAction.Disarm, Nudge(NudgeState.ArmedAt(T0), nearest: other).Action);
     }
 
@@ -220,19 +220,19 @@ public class QueueMovementPolicyTests
     }
 
     [Fact]
-    public void Another_aircraft_200_feet_ahead_disarms()
-        // nearestOtherAheadFt: 200 — something other than the leader, inside the 250 ft gap.
+    public void Another_aircraft_inside_the_minimum_gap_disarms()
+        // nearestOtherAheadFt: 20 — something other than the leader, inside the 50 ft gap (NudgeMinGapFt).
         => Assert.Equal(NudgeAction.Disarm,
             QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
-                200, 200, T0.AddSeconds(21), Ft).Action);
+                20, 20, T0.AddSeconds(21), Ft).Action);
 
     [Fact]
-    public void The_leader_alone_205_feet_ahead_does_not_disarm()
+    public void The_leader_alone_inside_the_minimum_gap_does_not_disarm()
     {
-        // nearestOtherAheadFt: null (the 205 ft aircraft IS the leader, excluded), nearestAheadFt: 205.
-        // Not disarmed — and, inside 250 ft, not spoken either: it waits for the gap to open (N3).
+        // nearestOtherAheadFt: null (the aircraft 30 ft ahead IS the leader, excluded), nearestAheadFt: 30.
+        // Not disarmed — and, inside the 50 ft gap, not spoken either: it waits for the gap to open (N3).
         var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
-            null, 205, T0.AddSeconds(21), Ft);
+            null, 30, T0.AddSeconds(21), Ft);
         Assert.Equal(NudgeAction.None, d.Action);
     }
 
@@ -242,11 +242,11 @@ public class QueueMovementPolicyTests
     // inside the Warning distance. The nudge now stays armed and says nothing until the gap has opened.
 
     [Fact]
-    public void The_leader_moving_at_two_knots_210_feet_ahead_keeps_the_nudge_armed_and_silent()
+    public void The_leader_moving_at_two_knots_inside_the_minimum_gap_keeps_the_nudge_armed_and_silent()
     {
-        var ahead = new[] { (7u, 210.0, 2.0) };
+        var ahead = new[] { (7u, 40.0, 2.0) };
         var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
-            QueueMovementPolicy.NearestOtherAheadFt(ahead, leaderId: 7u), 210.0, T0.AddSeconds(21), Ft);
+            QueueMovementPolicy.NearestOtherAheadFt(ahead, leaderId: 7u), 40.0, T0.AddSeconds(21), Ft);
         Assert.Equal(NudgeAction.None, d.Action);   // None, not Disarm: still armed for when the gap opens
     }
 

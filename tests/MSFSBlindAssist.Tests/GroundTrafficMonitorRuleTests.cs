@@ -298,7 +298,8 @@ public class GroundTrafficMonitorRuleTests
         // opens fast for the first three seconds — a fast poll needs an already-tracked aircraft, so with
         // nothing tracked yet the first sweep only lands on the slow, every-third-tick cadence — arming the
         // hold on the very first evaluation that sees it (motion-based, PR #247 author's fix), then settles
-        // at 3.5 kt: still MOVING, but closing at only 0.3 m/s. GroundTrafficLogic.StopHoldFloorFt (200 ft)
+        // at 3.5 kt: still MOVING, but closing at only 0.3 m/s. GroundTrafficLogic.StopHoldFloorFt (a 15 ft gap:
+        // 215 ft centre to centre for these two reference widebodies, which is what s.GapM measures)
         // releases the hold once the gap reaches it, regardless of the speeds.
         var s = new FollowingLeader(leadM: 62);
         s.OwnMps = 3.5 * Kt + 0.3;   // constant from the first tick: 4.08 kt, so the Warning boundary never moves
@@ -312,15 +313,15 @@ public class GroundTrafficMonitorRuleTests
         while (s.Second < 200 && stopAt < 0)
         {
             s.Step();
-            if (s.GapM * GroundTrafficLogic.FeetPerMetre > 205 && s.StopSpoken)
+            if (s.GapM * GroundTrafficLogic.FeetPerMetre > 220 && s.StopSpoken)
                 Assert.Fail($"Stop fired at {s.Second}s, {s.GapM * GroundTrafficLogic.FeetPerMetre:0.0} ft — well outside the floor");
             if (stopAt < 0 && s.StopSpoken) { stopAt = s.Second; gapFtAtStop = s.GapM * GroundTrafficLogic.FeetPerMetre; }
         }
 
-        // Measured: "Stop" comes at t=66, with the gap at 199.5 ft — never before the floor (at t=65 the
-        // gap is still 200.4 ft, above it), never later than one tick's travel (0.3 m/s, about 1 ft) past it.
-        Assert.Equal(66, stopAt);
-        Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
+        // Measured: "Stop" comes at t=51, 214.2 ft centre to centre — never before the floor, never later
+        // than one tick's travel (0.3 m/s, about 1 ft) past it.
+        Assert.Equal(51, stopAt);
+        Assert.InRange(gapFtAtStop, 215 - 0.3 * GroundTrafficLogic.FeetPerMetre, 215);
     }
 
     // ── A parked aircraft off the route: no "Slow down", and "Stop" on time ─────────────────────────────

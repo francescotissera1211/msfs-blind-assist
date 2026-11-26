@@ -131,7 +131,8 @@ internal static partial class GroundTrafficLogic
     public const double HeldStopReleaseClosingMps = 0.5;
 
     /// <summary>
-    /// Below this distance (feet) the HELD branch of <see cref="IsMovingAwayOrHeld"/> is never held back,
+    /// Below this GAP (feet, [TRF-12]; it was 200 ft centre to centre, which for the reference widebodies is
+    /// nose to tail: about to touch) the HELD branch of <see cref="IsMovingAwayOrHeld"/> is never held back,
     /// whatever the speeds say (PR #247 integration review R1): that branch otherwise leaves a pilot closing
     /// on a leader that is still moving at <see cref="MovingTrafficKts"/> or more, at under
     /// <see cref="HeldStopReleaseClosingMps"/>, unwarned at ANY gap until the leader stops or closes faster.
@@ -140,7 +141,7 @@ internal static partial class GroundTrafficLogic
     /// that is GENUINELY opening right now (<paramref name="openingNow"/> below) is still never given a
     /// "Stop" this close in either; a leader accelerating away from inside the floor is not a threat.
     /// </summary>
-    public const double StopHoldFloorFt = 200.0;
+    public const double StopHoldFloorFt = 15.0;
 
     /// <summary>
     /// Is the traffic moving away, for its zone callouts — withheld, as traffic pulling away is? Yes while it

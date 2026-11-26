@@ -115,16 +115,16 @@ public class MovingAwayByMotionTests
     [Fact]
     public void A_held_Stop_speaks_once_the_gap_shrinks_below_the_floor()
         => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
-            openingMps: 0.0, distFt: 199.9));
+            openingMps: 0.0, distFt: GroundTrafficLogic.StopHoldFloorFt - 0.1));
 
     [Fact]
     public void A_held_Stop_still_holds_just_outside_the_floor()
         => Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
-            openingMps: 0.0, distFt: 200.1));
+            openingMps: 0.0, distFt: GroundTrafficLogic.StopHoldFloorFt + 0.1));
 
     [Fact]
     public void The_floor_itself_releases_the_hold()
-        // "≤" the floor releases it: exactly 200 ft is inside, not outside.
+        // "≤" the floor releases it: exactly the floor is inside, not outside.
         => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
             openingMps: 0.0, distFt: GroundTrafficLogic.StopHoldFloorFt));
 

@@ -46,8 +46,8 @@ internal static partial class GroundTrafficLogic
     public const double FastPollRangeFt = 1500.0;
     /// <summary>"Directly ahead" for the queue: within ±this of the nose.</summary>
     public const double QueueAheadConeDeg = 30.0;
-    /// <summary>The queue-moving watch looks this far ahead.</summary>
-    public const double QueueAheadRangeFt = 600.0;
+    /// <summary>The queue-moving watch looks this far ahead: feet of GAP (600 ft centre to centre for the reference widebodies it was tuned on, [TRF-12]).</summary>
+    public const double QueueAheadRangeFt = 400.0;
 
     /// <summary>One aircraft on or near the route ahead, as the queue sees it.</summary>
     /// <param name="AheadM">Along-route metres ahead of the pilot (NaN when not projected).</param>

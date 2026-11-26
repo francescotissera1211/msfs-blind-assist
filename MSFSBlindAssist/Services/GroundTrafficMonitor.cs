@@ -37,10 +37,6 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double AWARENESS_GAP_FT = 400.0;
     private const double CAUTION_GAP_FT   = 200.0;
     private const double WARNING_GAP_FT   = 50.0;
-    // The CENTRE distances the cadence and queue rules still read (GroundGeometryForPoll, the nudge's
-    // priority): the old zone figures, kept for what they were tuned as.
-    private const double AWARENESS_FT = 600.0;
-    private const double CAUTION_FT   = 400.0;
 
     // Lead time (seconds) added to each zone boundary for reaction + braking + poll lag:
     // effective boundary = fixed_ft + v × ktsToFps × ZONE_LEAD_SEC. Sized for the 3 s worst-case
@@ -393,7 +389,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool fast;
         lock (_lock)
             fast = GroundTrafficLogic.NeedsFastPoll(watch.IsActive,
-                _ownGS <= QueueMovementPolicy.OwnQueueGsKts, _ownGS, CAUTION_FT + ZoneLeadFt(_ownGS),
+                _ownGS <= QueueMovementPolicy.OwnQueueGsKts, _ownGS, CAUTION_GAP_FT + ZoneLeadFt(_ownGS),
                 GroundGeometryForPoll(now));
         if (!outstanding && (fast || _tickCount % SLOW_POLL_EVERY_TICKS == 0))
         {
@@ -760,13 +756,14 @@ public sealed class GroundTrafficMonitor : IDisposable
     private List<(double DistFt, double GsKts, double RelBearingDeg)> GroundGeometryForPoll(DateTime now)
     {
         var fresh = now.AddMilliseconds(-FRESH_MS);
+        var ownHull = OwnHull();
         var list = new List<(double, double, double)>();
         foreach (var ac in _tracked.Values)
         {
             if (!ac.OnGround || ac.LastSeenTime < fresh) continue;
-            double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
+            double gapFt = GapFt(ownHull, _ownLat, _ownLon, _ownHeadingTrue, ac);
             double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
-            list.Add((distFt, ac.GS, rel));
+            list.Add((gapFt, ac.GS, rel));
         }
         return list;
     }
@@ -1149,7 +1146,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 && GroundTrafficLogic.ConvergingAllowed(v.Rel, ownGS))
             {
                 int secs = Math.Max(5, (int)(Math.Round(v.Tcpa / 5.0) * 5));
-                candidates.Add(new TrafficCallout(TrafficCalloutKind.Converging, v.DistFt,
+                candidates.Add(new TrafficCallout(TrafficCalloutKind.Converging, v.GapFt,
                     $"{name} converging {GroundTrafficLogic.DescribeSide(v.Rel)}, about {secs} seconds.",
                     () => { ac.ConflictAlertArmed = false; ac.LastAlertTime = now; }));
             }
@@ -1176,7 +1173,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // Along the route, from the own nose to the part of it that faces back down the route.
                 double aheadGapM = Math.Max(0.0, v.AheadM - ownHull.NoseM
                     - ac.Hull.ExtentToward(v.Proj!.Value.SegmentBearingDeg + 180.0 - ac.HeadingTrue));
-                candidates.Add(new TrafficCallout(TrafficCalloutKind.OnRoute, v.DistFt,
+                candidates.Add(new TrafficCallout(TrafficCalloutKind.OnRoute, v.GapFt,
                     $"{name} on your route{on}, {FormatDistance(aheadGapM * FEET_PER_METRE, useMetres)} ahead, {motion}.",
                     () => { ac.RouteAlertArmed = false; ac.LastAlertTime = now; }));
             }
@@ -1217,9 +1214,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             // of our route reads a shrinking lead while the real gap opens. A pilot genuinely catching it up
             // closes on both, and the StopHoldFloorFt floor still releases the hold whatever either says.
             double holdOpeningMps = leadRateMps is double lr ? Math.Max(lr, v.OpeningMps) : v.OpeningMps;
-            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, holdOpeningMps, v.DistFt);
+            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, holdOpeningMps, v.GapFt);
             if (!movingAway)
-                SetStopHeld(ac, false, v.DistFt <= GroundTrafficLogic.StopHoldFloorFt ? "close"
+                SetStopHeld(ac, false, v.GapFt <= GroundTrafficLogic.StopHoldFloorFt ? "close"
                     : ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
 
             GroundZone newZone;
@@ -1265,7 +1262,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (movingAway)
             {
                 SetStopHeld(ac, GroundTrafficLogic.StopHeldAfterMovingAway(newZone, ac.CurrentZone, ac.StopHeldWhileOpening),
-                    "zone", v.DistFt);
+                    "zone", v.GapFt);
                 ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
                 continue;
             }
@@ -1302,7 +1299,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
             var zone = newZone;
             double zoneDistFt = v.GapFt;
-            candidates.Add(new TrafficCallout(kind, v.DistFt, announcement,
+            candidates.Add(new TrafficCallout(kind, v.GapFt, announcement,
                 () =>
                 {
                     ac.CurrentZone = zone;
@@ -1333,26 +1330,26 @@ public sealed class GroundTrafficMonitor : IDisposable
         foreach (var v in views)
         {
             if (!GroundTrafficLogic.IsDirectlyAhead(v.Rel)) continue;
-            directlyAhead.Add((v.Ac.ObjectId, v.DistFt, v.Ac.GS));
-            if (nearestAhead == null || v.DistFt < nearestAhead.DistFt) nearestAhead = v;
+            directlyAhead.Add((v.Ac.ObjectId, v.GapFt, v.Ac.GS));
+            if (nearestAhead == null || v.GapFt < nearestAhead.GapFt) nearestAhead = v;
         }
 
         foreach (var ac in _tracked.Values)
         {
             var obs = byId.TryGetValue(ac.ObjectId, out var view)
-                ? new QueueMoverObservation(GroundTrafficLogic.IsInQueueCone(view.DistFt, view.Rel), view.DistFt, ac.GS)
+                ? new QueueMoverObservation(GroundTrafficLogic.IsInQueueCone(view.GapFt, view.Rel), view.GapFt, ac.GS)
                 : new QueueMoverObservation(false, double.MaxValue, ac.GS);
             ac.Mover = QueueMovementPolicy.Step(ac.Mover, obs, ownGS);
         }
 
         if (nearestAhead is { } mover
             && mover.Ac.Mover.Phase == QueueMoverPhase.Departed
-            && GroundTrafficLogic.IsInQueueCone(mover.DistFt, mover.Rel))
+            && GroundTrafficLogic.IsInQueueCone(mover.GapFt, mover.Rel))
         {
             var ac = mover.Ac;
             bool? along = mover.RouteMotion is { } rm ? rm == RouteRelativeMotion.Along : null;
-            double gap = ac.Mover.StoppedGapFt, dist = mover.DistFt;
-            candidates.Add(new TrafficCallout(TrafficCalloutKind.QueueMoving, mover.DistFt,
+            double gap = ac.Mover.StoppedGapFt, dist = mover.GapFt;
+            candidates.Add(new TrafficCallout(TrafficCalloutKind.QueueMoving, mover.GapFt,
                 $"{Capitalise(ac.Name)} ahead is moving.",
                 () =>
                 {
@@ -1375,9 +1372,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // The disarm rule leaves the leader out only while it is still moving (M3); the spoken text
         // names whichever aircraft is nearest ahead, the leader included (K1) — the traffic to close on —
         // and waits, armed, while that one is still within NudgeMinGapFt (N3).
-        // The rules read the centre distance they were tuned on; the pilot hears the gap.
         var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt,
-            nearestAhead?.DistFt, now, _ => FormatDistance(nearestAhead?.GapFt ?? 0.0, useMetres));
+            nearestAhead?.GapFt, now, ft => FormatDistance(ft, useMetres));
         switch (decision.Action)
         {
             case NudgeAction.Disarm:
@@ -1388,7 +1384,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 _log.Info("ev=nudge reset reason=disarmed");
                 break;
             case NudgeAction.Speak:
-                candidates.Add(new TrafficCallout(TrafficCalloutKind.MoveUp, nearestOtherFt ?? AWARENESS_FT,
+                candidates.Add(new TrafficCallout(TrafficCalloutKind.MoveUp, nearestOtherFt ?? AWARENESS_GAP_FT,
                     decision.Text, () => _nudge = QueueMovementPolicy.AfterSpoken(_nudge, now)));
                 break;
         }
@@ -1560,7 +1556,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 if (_knownOccupants.Contains(o.Ac.ObjectId)) continue;
                 uint id = o.Ac.ObjectId;
                 candidates.Add(new TrafficCallout(
-                    interrupts ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, o.DistFt,
+                    interrupts ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, o.GapFt,
                     $"{Capitalise(o.Ac.Name)} on runway {s.Designator}, {DescribeRunwayMovement(o)}, " +
                     $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.GapFt, useMetres)}.",
                     () => { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; }));
@@ -1727,7 +1723,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         }
         foreach (var st in result)
         {
-            st.Occupants.Sort((x, y) => x.DistFt.CompareTo(y.DistFt));
+            st.Occupants.Sort((x, y) => x.GapFt.CompareTo(y.GapFt));
             st.Finals.Sort((x, y) => x.Fix.DistanceNm.CompareTo(y.Fix.DistanceNm));
         }
         return result;
@@ -1955,9 +1951,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     /// <summary>
     /// Holds or releases <paramref name="ac"/>'s withheld "Stop" (<see cref="TrackedGroundAircraft.StopHeldWhileOpening"/>),
-    /// logging only a change: <c>ev=stop-hold … state=on distFt=…</c> when a "Stop" withheld as moving away
+    /// logging only a change: <c>ev=stop-hold … state=on gapFt=…</c> when a "Stop" withheld as moving away
     /// starts being held, <c>state=off reason=…</c> when the hold ends — <c>close</c> (the gap has reached
-    /// <see cref="GroundTrafficLogic.StopHoldFloorFt"/>, 200 ft, whatever the speeds: PR #247 integration
+    /// <see cref="GroundTrafficLogic.StopHoldFloorFt"/>, 15 ft, whatever the speeds: PR #247 integration
     /// follow-up R1), else <c>stopped</c> (the traffic is below 3 kt), else <c>closing</c> (the pilot closes on
     /// it), after which the same evaluation judges the "Stop"; <c>zone</c> (still moving away, but outside the
     /// Warning distance, or not a route threat), <c>far</c> (beyond the Awareness distance or the tracking
@@ -1969,7 +1965,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (ac.StopHeldWhileOpening == held) return;
         ac.StopHeldWhileOpening = held;
         _log.Info(held
-            ? FormattableString.Invariant($"ev=stop-hold id={ac.ObjectId} name=\"{Q(ac.Name)}\" state=on distFt={distFt:0}")
+            ? FormattableString.Invariant($"ev=stop-hold id={ac.ObjectId} name=\"{Q(ac.Name)}\" state=on gapFt={distFt:0}")
             : FormattableString.Invariant($"ev=stop-hold id={ac.ObjectId} name=\"{Q(ac.Name)}\" state=off reason={releaseReason}"));
     }
 
@@ -2073,7 +2069,7 @@ internal sealed class TrackedGroundAircraft
     public readonly List<(DateTime Utc, double AheadM)> AheadSamples = new();
     /// <summary>
     /// A "Stop" withheld because it was opening is HELD — still unrecorded — while it keeps moving, is not
-    /// closing and is still farther than <c>GroundTrafficLogic.StopHoldFloorFt</c> (200 ft; at the floor the
+    /// closing and is still farther than <c>GroundTrafficLogic.StopHoldFloorFt</c> (a 15 ft gap; at the floor the
     /// hold is released whatever the speeds, PR #247 integration follow-up R1)
     /// (<c>GroundTrafficLogic.IsMovingAwayOrHeld</c>); set and cleared only through
     /// <c>GroundTrafficMonitor.SetStopHeld</c>, which logs the change.

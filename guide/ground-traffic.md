@@ -167,7 +167,7 @@ A gap has opened in front of you and you have not moved. This is only a prompt f
 
 - it only comes after *"ahead is moving"*, and only when that aircraft moved off along your route;
 - you must be stopped, on your route, with taxi guidance running, and not on a runway;
-- it is never given while anything else is within about 250 feet ahead of you, and it waits while the departing aircraft is still that close;
+- it is never given while anything else is within about 50 feet ahead of you, and it waits while the departing aircraft is still that close;
 - it is given at most three times, 20 seconds apart, and stops as soon as you start moving.
 
 ## The Runway Watch {#traffic-runway-watch}
