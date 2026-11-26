@@ -148,7 +148,7 @@ On the way to the runway, the queue can be long. BA tells you where you are in i
 When you are stopped or creeping along your route, BA counts the aircraft lined up ahead of you on the route: those stopped or slowly moving along it, pointing the same way. Aircraft parked beside the route, crossing it or coming the other way are not counted. BA only counts the line you are actually in. A big gap ends the line, so a second queue further on is not added to yours.
 
 - *"Number 3 in the departure queue."* There are two aircraft ahead of you in the line.
-- *"First in the departure queue."* You have moved up to the front. You only hear this after you have been further back.
+- *"Number 1 in the departure queue."* You have moved up to the front. You only hear this after you have been further back.
 - *"... More traffic holding further ahead."* Added when there are more aircraft beyond the end of your line.
 
 You hear *"departure queue"* only when your route ends at a runway and the front of your line is close to the runway hold. Elsewhere you hear just *"queue"*, for example *"Number 2 in the queue."* BA waits until the count is steady before saying it, and says it again only when it changes.

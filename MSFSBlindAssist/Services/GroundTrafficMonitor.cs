@@ -271,6 +271,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // Queue position (UI thread)
     private int _queueCandidate, _queueConfirm, _queueAnnounced;
+    // A queue has been announced on this route ("Number 3 in the..."): only then is the pilot's place at
+    // its head a place in a queue. With nobody ahead and never anybody ahead there is no queue to be in.
+    private bool _queueWasAnnounced;
     private GroundTrafficLogic.QueueReading? _queueReadingForSummary;
 
     // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
@@ -733,6 +736,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _queueCandidate = 0;
         _queueConfirm = 0;
         _queueAnnounced = 0;
+        _queueWasAnnounced = false;
         _queueReadingForSummary = null;
         _lastQueueLog = "";
     }
@@ -1471,11 +1475,16 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         string beyond = reading.MoreBeyond ? " More traffic holding further ahead." : "";
         int position = reading.Position;
+        // "Number 1", as a controller says it, never "first"; and only once there has been a queue.
         string? text = position >= 2 ? $"Number {position} in the {reading.Wording}.{beyond}"
-                     : _queueAnnounced >= 2 ? $"First in the {reading.Wording}.{beyond}"
+                     : _queueAnnounced >= 2 ? $"Number 1 in the {reading.Wording}.{beyond}"
                      : null;
         if (text == null) { _queueAnnounced = position; return; }
-        candidates.Add(new TrafficCallout(TrafficCalloutKind.QueuePosition, 0, text, () => _queueAnnounced = position));
+        candidates.Add(new TrafficCallout(TrafficCalloutKind.QueuePosition, 0, text, () =>
+        {
+            _queueAnnounced = position;
+            _queueWasAnnounced = true;
+        }));
     }
 
     // ── Runway watch ─────────────────────────────────────────────────────────────
@@ -1888,11 +1897,12 @@ public sealed class GroundTrafficMonitor : IDisposable
                 }
             }
 
+            // The queue is named when there is one: aircraft ahead in it, or the pilot at the head of one
+            // that was announced. Alone on a route with nobody ahead there is no queue, and "First in the
+            // queue" after a list of aircraft read as if one of THEM were first (owner, 2026-11-26).
             if (_queueReadingForSummary is { } q && _ownGS <= QueueMovementPolicy.OwnQueueGsKts)
             {
-                sb.Append(q.Position == 1
-                    ? $" First in the {q.Wording}."
-                    : $" Number {q.Position} in the {q.Wording}.");
+                if (q.Position >= 2 || _queueWasAnnounced) sb.Append($" Number {q.Position} in the {q.Wording}.");
                 if (q.MoreBeyond) sb.Append(" More traffic holding further ahead.");
             }
 

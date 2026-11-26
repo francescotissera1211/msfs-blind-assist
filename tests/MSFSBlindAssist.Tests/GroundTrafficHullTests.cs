@@ -568,3 +568,38 @@ public class GroundTrafficPushbackTests
         Assert.Contains(h.Said.All, m => m.StartsWith("Stop, Delta A320 very close, ahead", StringComparison.Ordinal));
     }
 }
+
+public class GroundTrafficQueueWordingTests
+{
+    [Fact]
+    public void Alone_on_a_route_the_summary_names_no_queue()
+    {
+        // OMDB, 2026-11-26: "1 aircraft nearby. ... crossing left to right. First in the queue." with nobody
+        // ahead on the route: there was no queue, and "first" read as if the aircraft just named were.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(2000), 2000, departure: true) };
+        h.Sim.Position = Own(0, 0);
+        h.Sim.Traffic.Add(Ac(1, 0, -150, 0, "Delta", "DAL1"));       // beside the route, not on it
+        h.Tick(6);
+        string summary = h.Monitor.GetNearestTrafficSummary();
+        Assert.DoesNotContain("queue", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("First", summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Behind_another_the_summary_says_Number_2_and_at_its_head_afterwards_Number_1()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(2000), 2000, departure: true) };
+        h.Sim.Position = Own(0, 0);
+        var leader = Ac(1, 300 / GroundTrafficLogic.FeetPerMetre, 0, 0, "Delta", "DAL1");
+        h.Sim.Traffic.Add(leader);
+        h.Tick(8);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Number 2 in the", StringComparison.Ordinal));
+        Assert.Contains("Number 2 in the", h.Monitor.GetNearestTrafficSummary());
+
+        h.Sim.Traffic.Clear();                                        // the leader has gone
+        h.Tick(20);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Number 1 in the", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("First", StringComparison.Ordinal));
+        Assert.Contains("Number 1 in the", h.Monitor.GetNearestTrafficSummary());
+    }
+}
