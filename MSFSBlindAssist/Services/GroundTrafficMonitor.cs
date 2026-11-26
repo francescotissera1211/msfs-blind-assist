@@ -274,6 +274,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     // A queue has been announced on this route ("Number 3 in the..."): only then is the pilot's place at
     // its head a place in a queue. With nobody ahead and never anybody ahead there is no queue to be in.
     private bool _queueWasAnnounced;
+    // The pilot's line has stood at the runway hold on this route: it is the departure queue from then
+    // on (GroundTrafficLogic.ReadQueue's inDepartureQueue).
+    private bool _departureQueue;
     private GroundTrafficLogic.QueueReading? _queueReadingForSummary;
 
     // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
@@ -737,6 +740,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _queueConfirm = 0;
         _queueAnnounced = 0;
         _queueWasAnnounced = false;
+        _departureQueue = false;
         _queueReadingForSummary = null;
         _lastQueueLog = "";
     }
@@ -751,6 +755,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         lock (_lock)
             foreach (var ac in _tracked.Values)
             {
+                ac.QueueMember = false;
                 ac.Mover = QueueMoverState.Initial;
                 SetStopHeld(ac, false, "gate");
             }
@@ -1131,8 +1136,13 @@ public sealed class GroundTrafficMonitor : IDisposable
             double aheadM = proj is { } pj ? pj.RouteMetres - ownRouteM : double.NaN;
 
             if (queueRoute && proj is { } qp && distFt / FEET_PER_METRE <= GroundTrafficLogic.QueueScanM)
-                queueCandidates.Add(new GroundTrafficLogic.QueueCandidate(
-                    aheadM, qp.LateralMetres, ac.GS, direction, qp.SegmentBearingDeg));
+            {
+                var candidate = new GroundTrafficLogic.QueueCandidate(
+                    aheadM, qp.LateralMetres, ac.GS, direction, qp.SegmentBearingDeg, ac.QueueMember);
+                ac.QueueMember = GroundTrafficLogic.QualifiesForQueue(candidate);
+                queueCandidates.Add(candidate);
+            }
+            else ac.QueueMember = false;
 
             if (distFt > GroundTrafficLogic.TrackRangeFt)
             {
@@ -1465,7 +1475,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // Both distances from the AIRCRAFT (R10): the context measures the route end from the
         // start of the current segment.
         double? endAheadM = ctx.RouteEndMetres is double end ? end - ownRouteM : null;
-        var reading = GroundTrafficLogic.ReadQueue(queueCandidates, endAheadM, ctx.IsRunwayDestination);
+        var reading = GroundTrafficLogic.ReadQueue(queueCandidates, endAheadM, ctx.IsRunwayDestination, _departureQueue);
+        if (reading.AtRunwayHold && reading.Position >= 2) _departureQueue = true;
         _queueReadingForSummary = reading;
         LogQueue(reading, endAheadM);
 
@@ -2133,6 +2144,8 @@ internal sealed class TrackedGroundAircraft
     /// </summary>
     public bool StopHeldWhileOpening;
     public QueueMoverState Mover       = QueueMoverState.Initial;
+    /// <summary>Queued on the route ahead at the last evaluation (<c>GroundTrafficLogic.QualifiesForQueue</c>): still queued while it moves up.</summary>
+    public bool QueueMember;
     // One-shot per episode: re-armed when the aircraft leaves the route / stops converging.
     public bool RouteAlertArmed        = true;
     public bool ConflictAlertArmed     = true;

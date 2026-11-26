@@ -55,8 +55,9 @@ internal static partial class GroundTrafficLogic
     /// <param name="GsKts">Its ground speed.</param>
     /// <param name="DirectionTrue">The way it points/moves (the motion model's effective direction).</param>
     /// <param name="RouteBearingDeg">True bearing of the route segment it projects onto, in route order.</param>
+    /// <param name="WasQueued">It qualified at the previous evaluation: a queued aircraft moving up is still queued.</param>
     public readonly record struct QueueCandidate(
-        double AheadM, double LateralM, double GsKts, double DirectionTrue, double RouteBearingDeg);
+        double AheadM, double LateralM, double GsKts, double DirectionTrue, double RouteBearingDeg, bool WasQueued = false);
 
     /// <summary>The pilot's own queue, whether anything holds beyond it, and how far ahead its head is.</summary>
     /// <param name="Count">Aircraft in the contiguous line the pilot is in.</param>
@@ -78,12 +79,17 @@ internal static partial class GroundTrafficLogic
     /// Is this aircraft queued on the route ahead? On the route (≤ 30 m), 10–1,500 m ahead, stopped
     /// or creeping (≤ 6 kt), and pointing along the route (±35°) — which leaves out crossing traffic,
     /// head-on creepers, pushbacks moving tail-first, and aircraft parked nose-in beside the route.
+    /// <para>An aircraft that WAS queued stays queued while it moves up the line at any taxi speed
+    /// (<paramref name="c"/>.WasQueued): it is still ahead of the pilot for the runway. Counted only while
+    /// at ≤ 6 kt, a line of five moving up one place at 8 kt read "Number 5, 4, 3, 2, 1" in ninety seconds
+    /// with four aircraft still ahead (OMDB, 2026-11-26). An aircraft never seen stopped on the route is
+    /// traffic taxiing ahead, not a queue.</para>
     /// </summary>
     public static bool QualifiesForQueue(QueueCandidate c)
         => !double.IsNaN(c.AheadM)
            && c.LateralM <= QueueLateralMaxM
            && c.AheadM >= QueueMinAheadM && c.AheadM <= QueueScanM
-           && c.GsKts <= QueueTrafficMaxGs
+           && (c.GsKts <= QueueTrafficMaxGs || (c.WasQueued && c.GsKts <= MaxTaxiGsKts))
            && Math.Abs(AngleDiff(c.DirectionTrue, c.RouteBearingDeg)) <= QueueAlignMaxDeg;
 
     /// <summary>
@@ -113,10 +119,20 @@ internal static partial class GroundTrafficLogic
     /// queue" only when the route ends at the takeoff runway AND the head of the pilot's own line is
     /// within <see cref="QueueAtRunwayHoldM"/> of that end (R10/R13).
     /// </summary>
+    /// <param name="inDepartureQueue">
+    /// The pilot's line has already stood at the runway hold on this route. Every queued aircraft ahead
+    /// then departs before the pilot, however far the line has moved up while the pilot sat: the 250 m
+    /// link from the pilot to its tail no longer decides who is ahead (it read "Number 1" to a pilot
+    /// 300 m behind four aircraft), and the line stays the departure queue while its head is between the
+    /// hold and the next aircraft reaching it.
+    /// </param>
     public static QueueReading ReadQueue(IEnumerable<QueueCandidate> candidates,
-        double? routeEndAheadM, bool routeEndsAtTakeoffRunway)
+        double? routeEndAheadM, bool routeEndsAtTakeoffRunway, bool inDepartureQueue = false)
     {
-        var cluster = QueueAheadOf(candidates.Where(QualifiesForQueue).Select(c => c.AheadM));
+        var ahead = candidates.Where(QualifiesForQueue).Select(c => c.AheadM).Where(d => d >= 0).ToList();
+        if (inDepartureQueue && routeEndsAtTakeoffRunway)
+            return new QueueReading(ahead.Count + 1, AtRunwayHold: true, MoreBeyond: false);
+        var cluster = QueueAheadOf(ahead);
         bool atHold = routeEndsAtTakeoffRunway
                       && routeEndAheadM is double end
                       && end - cluster.HeadAheadM <= QueueAtRunwayHoldM;

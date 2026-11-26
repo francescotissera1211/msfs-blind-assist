@@ -603,3 +603,85 @@ public class GroundTrafficQueueWordingTests
         Assert.Contains("Number 1 in the", h.Monitor.GetNearestTrafficSummary());
     }
 }
+
+public class GroundTrafficLiveQueueTests
+{
+    // OMDB, 2026-11-26, live: five aircraft queued on M for runway 30R, the pilot joins at the back, and
+    // the line moves up one aircraft at a time at 8 kt while the one at the hold departs.
+    private static (GroundTrafficHarness H, List<SimConnect.AiTrafficDataEventArgs> Line) Queue()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), 1000, departure: true) };
+        var line = new List<SimConnect.AiTrafficDataEventArgs>();
+        double[] at = { 960, 850, 740, 625, 500 };                    // the head 40 m short of the route end
+        for (int i = 0; i < at.Length; i++)
+        {
+            var ac = Ac((uint)(i + 1), at[i], 0, 0, "Delta", "DAL" + (i + 1));
+            line.Add(ac);
+            h.Sim.Traffic.Add(ac);
+        }
+        return (h, line);
+    }
+
+    [Fact]
+    public void Joining_a_line_of_five_only_the_last_aircraft_is_called_on_the_route()
+    {
+        var (h, _) = Queue();
+        double east = 0;
+        for (int s = 0; s < 75; s++) { east += 12 * 0.514444; h.Sim.Position = Own(Math.Min(east, 330), east < 330 ? 12 : 0); h.Tick(); }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(h.Said.All.Count(m => m.Contains("on your route", StringComparison.Ordinal)) == 1, said);
+        Assert.True(h.Said.All.Any(m => m.StartsWith("Number 6 in the departure queue", StringComparison.Ordinal)), said);
+    }
+
+    [Fact]
+    public void While_the_line_moves_up_the_pilot_s_number_does_not_fall()
+    {
+        var (h, line) = Queue();
+        h.Sim.Position = Own(330, 0);
+        h.Tick(10);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Number 6 in the departure queue", StringComparison.Ordinal));
+        h.Said.All.Clear();
+
+        // The head departs: it rolls onto the runway and away.
+        h.Sim.Traffic.Remove(line[0]);
+        h.Tick(6);
+        // Then each aircraft moves up to the place ahead of it at 8 kt, one after the other.
+        for (int i = 1; i < line.Count; i++)
+        {
+            var ac = line[i];
+            double target = i == 1 ? 960 : line[i - 1].Longitude / M - 110;
+            while (ac.Longitude / M < target)
+            {
+                ac.Longitude += 8 * 0.514444 * M;
+                ac.GroundSpeedKnots = 8;
+                h.Tick();
+            }
+            ac.GroundSpeedKnots = 0;
+            h.Tick(3);
+        }
+        h.Tick(6);
+
+        string said = string.Join(" | ", h.Transcript);
+        // Four aircraft are ahead the whole time: "Number 5", once, and never 4, 3, 2 or 1.
+        Assert.Contains(h.Said.All, m => m.StartsWith("Number 5 in the departure queue", StringComparison.Ordinal));
+        Assert.True(!h.Said.All.Any(m => m.StartsWith("Number 4", StringComparison.Ordinal) || m.StartsWith("Number 3", StringComparison.Ordinal)
+            || m.StartsWith("Number 2", StringComparison.Ordinal) || m.StartsWith("Number 1", StringComparison.Ordinal)), said);
+        Assert.True(!h.Said.All.Any(m => m.Contains("in the queue", StringComparison.Ordinal)), said);
+    }
+
+    [Fact]
+    public void An_aircraft_merely_taxiing_ahead_on_the_route_is_still_not_a_queue()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), 3000, departure: true) };
+        var leader = Ac(1, 200, 0, 12, "Delta", "DAL1");
+        h.Sim.Traffic.Add(leader);
+        double east = 0;
+        for (int s = 0; s < 40; s++)
+        {
+            east += 12 * 0.514444; leader.Longitude += 12 * 0.514444 * M;
+            h.Sim.Position = Own(east, 12);
+            h.Tick();
+        }
+        Assert.DoesNotContain(h.Said.All, m => m.Contains("queue", StringComparison.Ordinal));
+    }
+}
