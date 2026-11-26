@@ -25,7 +25,7 @@ public class GroundTrafficSpeedMatrixTests
 
     [Theory]
     [MemberData(nameof(OwnSpeeds))]
-    public void Closing_on_a_stopped_aircraft_Stop_comes_seven_seconds_before_a_100_ft_gap(double ownKts)
+    public void Closing_on_a_stopped_aircraft_Stop_comes_its_lead_before_a_100_ft_gap(double ownKts)
     {
         // An A320 stopped on the route 900 m ahead of an A320: nose 17.3 m ahead of the own point, its
         // tail 20.3 m behind its own, so the gap is the distance between the two points less 37.6 m.
@@ -48,7 +48,7 @@ public class GroundTrafficSpeedMatrixTests
             }
         }
         double fps = ownKts * 1.6878;
-        double secondsToTouch = stopGapFt / fps, boundaryFt = 100 + 7 * fps;
+        double secondsToTouch = stopGapFt / fps, boundaryFt = 100 + GroundTrafficLogic.ZoneLeadFt(ownKts, 7.0);
         _out.WriteLine(FormattableString.Invariant(
             $"own {ownKts,2} kt: Slow down at {slowGapFt,4:0} ft ({slowGapFt * 0.3048,3:0} m), Stop at {stopGapFt,4:0} ft ({stopGapFt * 0.3048,3:0} m) = {secondsToTouch:0.0} s from touching; rule {boundaryFt:0} ft"));
 
@@ -59,6 +59,30 @@ public class GroundTrafficSpeedMatrixTests
         Assert.InRange(stopGapFt, boundaryFt - 2.0 * fps - 1.0, boundaryFt + 1.0);
         // Which always leaves five seconds and more before the two would touch.
         Assert.True(secondsToTouch >= 5.0, $"{secondsToTouch:0.0} s");
+    }
+
+    [Theory]
+    [MemberData(nameof(OwnSpeeds))]
+    public void A_pilot_who_takes_two_seconds_and_brakes_gently_stops_short(double ownKts)
+    {
+        // The pilot hears "Stop", keeps rolling for two seconds, then brakes at 1 m/s2. With a flat seven
+        // seconds of lead this pilot hit the aircraft ahead from 30 kt and stopped 10 m short from 25.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        h.Sim.Traffic.Add(Ac(1, 1200, 0, 0, "Delta", "DAL1"));
+        double east = 0, mps = ownKts * Kt; int reacting = -1;
+        for (int s = 0; s < 600 && mps > 0; s++)
+        {
+            if (reacting < 0 && h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) reacting = 0;
+            if (reacting >= 0 && ++reacting > 2) mps = Math.Max(0.0, mps - GroundTrafficLogic.GentleBrakingMps2);
+            east += mps;
+            h.Sim.Position = Own(east, mps / Kt);
+            h.Tick();
+        }
+        double gapM = 1200 - east - 37.6;
+        _out.WriteLine(FormattableString.Invariant($"own {ownKts,2} kt: stopped with {gapM:0} m of clear space"));
+        Assert.True(reacting >= 0, "no Stop: " + string.Join(" | ", h.Transcript));
+        Assert.True(gapM >= 20.0, FormattableString.Invariant($"{gapM:0.0} m"));
     }
 
     [Theory]

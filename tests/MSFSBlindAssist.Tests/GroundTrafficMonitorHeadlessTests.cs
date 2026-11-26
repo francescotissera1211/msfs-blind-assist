@@ -99,16 +99,17 @@ public class GroundTrafficMonitorHeadlessTests
     [Fact]
     public void On_the_fast_landing_exit_a_caution_waits_but_a_stop_does_not()
     {
-        // 40 kt: the Caution band ends 400 + 473 = 873 ft out, the Warning band 250 + 473 = 723 ft.
+        // 40 kt, in feet of gap (the harness's reference widebodies: centre distance less 200 ft): the lead is
+        // 541 ft, so "Stop" for an aircraft in the way is given inside 641 ft and "Slow down" inside 741 ft.
         var caution = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
         caution.Monitor.LandingExitWarningsOnlyCheck = () => true;
-        caution.Sim.Traffic.Add(Ac(1, 240, 0, 0, "British Airways", "BAW1"));   // 787 ft: Caution band
+        caution.Sim.Traffic.Add(Ac(1, 275, 0, 0, "British Airways", "BAW1"));   // a 702 ft gap: Caution band
         caution.Tick(3);
         Assert.Empty(caution.Said.All);
 
         var stop = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
         stop.Monitor.LandingExitWarningsOnlyCheck = () => true;
-        stop.Sim.Traffic.Add(Ac(1, 100, 0, 0, "British Airways", "BAW1"));      // 328 ft: Warning band
+        stop.Sim.Traffic.Add(Ac(1, 100, 0, 0, "British Airways", "BAW1"));      // a 128 ft gap: Warning band
         stop.Tick(3);
         Assert.Contains(stop.Said.All, m => m.StartsWith("Stop,"));
     }
@@ -120,7 +121,7 @@ public class GroundTrafficMonitorHeadlessTests
         bool fast = true;
         var h = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
         h.Monitor.LandingExitWarningsOnlyCheck = () => fast;
-        h.Sim.Traffic.Add(Ac(1, 240, 0, 0, "British Airways", "BAW1"));
+        h.Sim.Traffic.Add(Ac(1, 275, 0, 0, "British Airways", "BAW1"));
         h.Tick(3);
         Assert.Empty(h.Said.All);
 

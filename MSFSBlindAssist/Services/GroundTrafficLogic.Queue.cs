@@ -24,7 +24,7 @@ internal static partial class GroundTrafficLogic
     public const double QueueLateralMaxM = 30.0;
     public const double QueueMinAheadM = 10.0;
     /// <summary>How far along the route the queue looks (not where one queue ends — that is the gap).</summary>
-    public const double QueueScanM = 1500.0;
+    public const double QueueScanM = 3000.0;
     /// <summary>Faster than this an aircraft is taxiing, not queued.</summary>
     public const double QueueTrafficMaxGs = 6.0;
     /// <summary>A queued aircraft points along the route, within this of the route's direction (R12).</summary>

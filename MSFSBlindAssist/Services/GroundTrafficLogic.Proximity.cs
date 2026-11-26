@@ -162,6 +162,32 @@ internal static partial class GroundTrafficLogic
            || (stopHeld && trafficGsKts >= MovingTrafficKts && openingMps > -HeldStopReleaseClosingMps
                && distFt > StopHoldFloorFt);
 
+    /// <summary>A pilot told to stop takes this long (seconds) to hear it and start braking.</summary>
+    public const double StopReactionSec = 3.0;
+    /// <summary>Braking a pilot applies without throwing the cabin forward, m/s².</summary>
+    public const double GentleBrakingMps2 = 1.0;
+
+    /// <summary>
+    /// The distance (feet) added to every zone boundary at <paramref name="ownGsKts"/>, so that a pilot who
+    /// acts on the callout is stopped AT the boundary and not past it: <paramref name="linearSec"/> seconds
+    /// of travel, or the distance a <see cref="StopReactionSec"/> reaction and braking at
+    /// <see cref="GentleBrakingMps2"/> take, whichever is more. Braking distance grows with the SQUARE of
+    /// the speed: the seven seconds alone are generous at 10 kt (36 m against 29) and short from about
+    /// 16 kt up (at 30 kt 108 m against 165). Every pilot brakes differently; this is the gentle one, and
+    /// a pilot who brakes harder simply stops with more room. The braking term is that of
+    /// <see cref="GentleBrakingMaxKts"/> at most: faster than a taxi (a landing exit at 45 kt) nobody is
+    /// braking gently, and gentle braking from there would put "Stop" 370 m out.
+    /// </summary>
+    public static double ZoneLeadFt(double ownGsKts, double linearSec)
+    {
+        double v = Math.Max(0.0, ownGsKts) * 0.514444, braking = Math.Min(v, GentleBrakingMaxKts * 0.514444);
+        double stoppingM = braking * StopReactionSec + braking * braking / (2.0 * GentleBrakingMps2);
+        return Math.Max(v * linearSec, stoppingM) * FeetPerMetre;
+    }
+
+    /// <summary>The fastest taxi the gentle-braking lead is worked out for (knots).</summary>
+    public const double GentleBrakingMaxKts = 30.0;
+
     /// <summary>
     /// Is the aircraft "Stop" was said for out of the way? Either it is no longer in the arc the pilot
     /// travels into (it has gone by, or the pilot has passed it), or it is MOVING, the gap to it is

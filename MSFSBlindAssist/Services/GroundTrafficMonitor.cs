@@ -51,7 +51,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double ZONE_LEAD_KTSFPS = 1.6878; // ft/s per knot
 
     /// <summary>The speed lead added to every zone boundary at <paramref name="ownGsKts"/>: the evaluation's and the fast poll's.</summary>
-    private static double ZoneLeadFt(double ownGsKts) => ownGsKts * ZONE_LEAD_KTSFPS * ZONE_LEAD_SEC;
+    private static double ZoneLeadFt(double ownGsKts) => GroundTrafficLogic.ZoneLeadFt(ownGsKts, ZONE_LEAD_SEC);
 
     // Minimum own GS before a caution-zone alert becomes "Slow down" rather than an awareness ping.
     private const double SLOW_DOWN_GS_KTS = 2.0;

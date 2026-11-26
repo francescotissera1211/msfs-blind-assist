@@ -73,7 +73,7 @@ public class QueueReadingTests
     [Theory]
     [InlineData(31, 100, 0, 0)]    // beside the route
     [InlineData(5, 9, 0, 0)]       // not really ahead
-    [InlineData(5, 1501, 0, 0)]    // beyond the scan
+    [InlineData(5, 3001, 0, 0)]    // beyond the scan
     [InlineData(5, 100, 6.1, 0)]   // taxiing, not queued
     [InlineData(5, 100, 0, 90)]    // crossing the route / parked nose-in
     [InlineData(5, 100, 3, 180)]   // head-on, or a pushback moving tail-first
@@ -103,7 +103,7 @@ public class QueueReadingTests
     [InlineData(true, 700, 20, false, false, false)]    // beyond 2,000 ft, nothing else asks
     [InlineData(true, 500, 80, false, false, false)]    // taking off / landing traffic
     [InlineData(true, 700, 20, false, true, true)]      // queue scan
-    [InlineData(true, 1600, 20, false, true, false)]    // beyond the queue scan
+    [InlineData(true, 3100, 20, false, true, false)]    // beyond the queue scan
     [InlineData(true, 700, 80, false, true, false)]     // queue scan still wants taxi speeds
     [InlineData(true, 4000, 140, true, false, true)]    // runway watch: anything on the ground to 5 km
     [InlineData(true, 6000, 0, true, false, false)]
@@ -117,7 +117,7 @@ public class QueueReadingTests
     public void The_sweep_radius_covers_what_the_intake_keeps_and_no_more()
     {
         Assert.Equal(16612u, GroundTrafficLogic.SweepRadiusMeters(true, false));
-        Assert.Equal(2000u, GroundTrafficLogic.SweepRadiusMeters(false, true));
+        Assert.Equal(3500u, GroundTrafficLogic.SweepRadiusMeters(false, true));
         Assert.Equal(1000u, GroundTrafficLogic.SweepRadiusMeters(false, false));
         Assert.True(GroundTrafficLogic.SweepRadiusMeters(true, true) >= GroundTrafficLogic.RunwayWatchAirRangeM);
         Assert.True(GroundTrafficLogic.SweepRadiusMeters(false, true) >= GroundTrafficLogic.QueueScanM);

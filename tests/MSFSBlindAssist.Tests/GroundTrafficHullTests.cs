@@ -779,3 +779,24 @@ public class GroundTrafficClearTests
         Assert.True(!h.Said.All.Any(m => m.StartsWith("Clear of", StringComparison.Ordinal)), said);
     }
 }
+
+public class GroundTrafficLongQueueTests
+{
+    [Theory]
+    [InlineData(20, 70.0, "Number 21 in the departure queue.")]     // 1,400 m of aircraft
+    [InlineData(25, 70.0, "Number 26 in the departure queue.")]     // 1,750 m: a Cross the Pond evening
+    [InlineData(35, 80.0, "Number 36 in the departure queue.")]     // 2,800 m, as far as the queue looks
+    [InlineData(20, 70.0, "Number 21 in the queue.")]               // a line on the way, kilometres short of the runway
+    public void A_line_of_twenty_and_more_is_counted(int aircraft, double spacingM, string expected)
+    {
+        bool atHold = expected.Contains("departure", StringComparison.Ordinal);
+        double firstAt = 100, last = firstAt + (aircraft - 1) * spacingM;
+        // At the hold the route ends 40 m beyond the head of the line; otherwise it runs on for kilometres.
+        double end = atHold ? last + 40 : last + 4000;
+        var h = new GroundTrafficHarness { Context = RouteContext(East(end), end, departure: true) };
+        for (int i = 0; i < aircraft; i++) h.Sim.Traffic.Add(Ac((uint)(i + 1), firstAt + i * spacingM, 0, 0, "Delta", "DAL" + i));
+        h.Sim.Position = Own(0, 0);
+        h.Tick(12);
+        Assert.True(h.Said.All.Contains(expected), string.Join(" | ", h.Transcript));
+    }
+}
