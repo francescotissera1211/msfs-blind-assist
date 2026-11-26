@@ -370,6 +370,30 @@ public class GroundTrafficGapSpeechTests
     }
 
     [Fact]
+    public void The_summary_s_nearest_aircraft_are_the_nearest_by_gap()
+    {
+        // OMDB, 2026-11-26, five aircraft spawned round a parked A350: the summary listed a Citation 67 m
+        // away (45 m clear) and left out the 777 whose nose was 25 m from the tail, 100 m centre to centre.
+        var h = new GroundTrafficHarness();
+        h.UseRealSizes("B77W", 212.6);
+        h.Sim.Position = Own(0, 0);
+        h.Sim.Traffic.Add(Typed(1, -100, "Emirates", "A388", ""));                       // behind: 27 m clear
+        var twin = Typed(2, 0, "", "BE58", "BE58"); twin.Latitude = -70 * M;             // to the right: 32 m
+        h.Sim.Traffic.Add(twin);
+        var far = Typed(3, 0, "Qantas", "A388", ""); far.Latitude = 150 * M;             // to the left: 78 m
+        h.Sim.Traffic.Add(far);
+        var farther = Typed(4, 0, "", "BE58", "BE58"); farther.Latitude = -120 * M;     // 82 m, nearer by centre than the Qantas
+        h.Sim.Traffic.Add(farther);
+        h.Tick(3);
+        string summary = h.Monitor.GetNearestTrafficSummary();
+        int a380 = summary.IndexOf("Emirates A380, behind", StringComparison.Ordinal),
+            be58 = summary.IndexOf("BE58, to the right", StringComparison.Ordinal),
+            qantas = summary.IndexOf("Qantas A380, to the left", StringComparison.Ordinal);
+        Assert.True(a380 >= 0 && be58 > a380 && qantas > be58, summary);
+        Assert.StartsWith("3 aircraft nearby.", summary);
+    }
+
+    [Fact]
     public void A_light_twin_75_metres_ahead_is_no_longer_Stop()
     {
         // ground_traffic.log, 2026-10-08: "Stop, BE58 very close, ahead and to the right, 75 metres." A Baron
@@ -461,5 +485,86 @@ public class GroundTrafficConvergingGapTests
             h.Tick();
         }
         Assert.Equal(expectConverging, h.Said.All.Any(m => m.Contains("converging")));
+    }
+}
+
+public class GroundTrafficPushbackTests
+{
+    // The own aircraft, nose east, moved along its own axis one simulated second at a time.
+    private static void Roll(GroundTrafficHarness h, ref double eastM, double kts, int seconds)
+    {
+        for (int s = 0; s < seconds; s++)
+        {
+            eastM += kts * 0.514444;
+            h.Sim.Position = Own(eastM, Math.Abs(kts));
+            h.Tick();
+        }
+    }
+
+    private static GroundTrafficHarness Stand(out double eastM)
+    {
+        // A route loaded at the stand: it leads away ahead of the nose, as a route does before a pushback.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.UseRealSizes("B77W", 212.6);
+        eastM = 0;
+        h.Sim.Position = Own(0, 0);
+        return h;
+    }
+
+    [Fact]
+    public void Pushed_back_toward_an_aircraft_behind_the_pilot_is_told_to_slow_down_and_to_stop()
+    {
+        // OMDB, 2026-11-26: an A350 pushed back 53 m toward a 777 stopped across the taxilane behind its
+        // stand, from 59 m of clear space to 25, and nothing was said. "Slow down" and "Stop" were given
+        // only for the arc ahead of the NOSE, and the aircraft was taken to be moving nose-first.
+        var h = Stand(out double east);
+        var behind = Ac(1, -150, 0, 0, "Delta", "DAL1");          // 150 m behind, centre to centre: 93 m clear
+        behind.AircraftType = "A320";
+        h.Sim.Traffic.Add(behind);
+        Roll(h, ref east, -3.0, 70);                               // a tug's 3 kt, tail-first
+
+        string said = string.Join(" | ", h.Transcript);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Slow down, Delta A320 behind", StringComparison.Ordinal));
+        string stop = Assert.Single(h.Said.All, m => m.StartsWith("Stop, Delta A320 very close, behind", StringComparison.Ordinal));
+        // "Stop" is given with the 50 ft of gap it is given with nose-first, plus the lead 3 kt earns.
+        Assert.True(stop.EndsWith("50 feet.", StringComparison.Ordinal) || stop.EndsWith("75 feet.", StringComparison.Ordinal), said);
+    }
+
+    [Fact]
+    public void Parked_the_aircraft_behind_draws_no_Stop_and_no_Slow_down()
+    {
+        var h = Stand(out double east);
+        var behind = Ac(1, -60, 0, 0, "Delta", "DAL1");            // 3 m clear of the tail
+        behind.AircraftType = "A320";
+        h.Sim.Traffic.Add(behind);
+        Roll(h, ref east, 0.0, 12);
+        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Stop", StringComparison.Ordinal) || m.StartsWith("Slow down", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pushed_back_away_from_the_aircraft_off_the_nose_it_is_not_Stop()
+    {
+        // Nose-in at a stand with an aircraft parked 20 m off the nose: backing away from it opens the gap.
+        var h = Stand(out double east);
+        var ahead = Ac(1, 34.0 + 20.3 + 20.0, 0, 0, "Delta", "DAL1");   // own nose 34.0, its tail 20.3, 20 m between
+        ahead.AircraftType = "A320";
+        h.Sim.Traffic.Add(ahead);
+        Roll(h, ref east, 0.0, 4);
+        h.Said.All.Clear();
+        Roll(h, ref east, -3.0, 30);
+        Assert.True(!h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal) || m.StartsWith("Slow down", StringComparison.Ordinal)), string.Join(" | ", h.Transcript));
+    }
+
+    [Fact]
+    public void Rolling_forward_again_the_arc_is_ahead_of_the_nose_again()
+    {
+        var h = Stand(out double east);
+        var ahead = Ac(1, 300, 0, 0, "Delta", "DAL1");
+        ahead.AircraftType = "A320";
+        h.Sim.Traffic.Add(ahead);
+        Roll(h, ref east, -3.0, 20);                               // pushed back 31 m
+        Roll(h, ref east, 0.0, 8);
+        Roll(h, ref east, 10.0, 60);                               // then taxi out toward it
+        Assert.Contains(h.Said.All, m => m.StartsWith("Stop, Delta A320 very close, ahead", StringComparison.Ordinal));
     }
 }

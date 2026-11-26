@@ -162,6 +162,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     private double _ownLat, _ownLon, _ownHeadingTrue, _ownGS, _ownAltFt;
     private bool _positionValid;
 
+    // The own aircraft's recent positions and when the current one was taken: its direction of travel
+    // when it moves tail-first (OwnDirection).
+    private readonly List<PositionFix> _ownHistory = new();
+    private DateTime _ownFixUtc;
+
     // The own aircraft's outline, and what it was resolved from (OwnHull).
     private AircraftHull _ownHull = AircraftHull.Default;
     private (string Title, string IcaoType, double WingSpanFt) _ownHullKey;
@@ -360,15 +365,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (pos == null) return;
         var p = pos.Value;
         double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
-        lock (_lock)
-        {
-            _ownLat = p.Latitude;
-            _ownLon = p.Longitude;
-            _ownHeadingTrue = hdgTrue;
-            _ownGS = p.GroundSpeedKnots;
-            _ownAltFt = p.Altitude;
-            _positionValid = true;
-        }
+        lock (_lock) StoreOwnPosition(p.Latitude, p.Longitude, hdgTrue, p.GroundSpeedKnots, p.Altitude);
 
         // Decide the watch BEFORE requesting the sweep, so the intake keeps the airborne/far runway
         // aircraft this very sweep returns.
@@ -760,12 +757,14 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         var fresh = now.AddMilliseconds(-FRESH_MS);
         var ownHull = OwnHull();
+        double ownDirection = OwnDirection();
         var list = new List<(double, double, double)>();
         foreach (var ac in _tracked.Values)
         {
             if (!ac.OnGround || ac.LastSeenTime < fresh) continue;
             double gapFt = GapFt(ownHull, _ownLat, _ownLon, _ownHeadingTrue, ac);
-            double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
+            // Relative to the direction of travel: pushed back, what matters is behind the tail.
+            double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - ownDirection);
             list.Add((gapFt, ac.GS, rel));
         }
         return list;
@@ -944,6 +943,36 @@ public sealed class GroundTrafficMonitor : IDisposable
             $"ev=data-quality id={ac.ObjectId} name=\"{Q(ac.Name)}\" reportedGs={ac.GS:0.0} derivedGs={derivedKts:0.0} onGround={(ac.OnGround ? 1 : 0)}");
     }
 
+    // Caller holds _lock. The previous position goes into the own track before the new one replaces it.
+    private void StoreOwnPosition(double lat, double lon, double headingTrue, double gsKts, double altFt)
+    {
+        var now = _utcNow();
+        if (_positionValid && now > _ownFixUtc)
+            GroundTrafficLogic.AddToHistory(_ownHistory, new PositionFix(_ownLat, _ownLon, _ownFixUtc));
+        _ownLat = lat;
+        _ownLon = lon;
+        _ownHeadingTrue = headingTrue;
+        _ownGS = gsKts;
+        _ownAltFt = altFt;
+        _ownFixUtc = now;
+        _positionValid = true;
+    }
+
+    /// <summary>
+    /// The direction the own aircraft is travelling: its nose heading, unless its track shows it moving
+    /// tail-first (a pushback, a tug), when it is the track (<see cref="GroundTrafficLogic.EffectiveDirection"/>,
+    /// the rule a traffic aircraft's own pushback is read by). The simulator gives the monitor only a
+    /// heading and an unsigned ground speed: read nose-first, an aircraft pushed back toward traffic was
+    /// "moving away" from it, and what it was backing into lay outside the arc "Slow down" and "Stop"
+    /// are given for. Caller holds _lock.
+    /// </summary>
+    private double OwnDirection()
+    {
+        var cur = new PositionFix(_ownLat, _ownLon, _ownFixUtc);
+        const double min = GroundTrafficLogic.OwnReversingMinMoveM;
+        return GroundTrafficLogic.EffectiveDirection(_ownHeadingTrue, _ownGS, GroundTrafficLogic.TrackAnchor(_ownHistory, cur, min), cur, min);
+    }
+
     // Caller holds _lock.
     private static PositionFix CurrentFix(TrackedGroundAircraft ac) => new(ac.Lat, ac.Lon, ac.LastSeenTime, ac.AltitudeFt);
 
@@ -1070,7 +1099,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     private void EvaluateProximity(GroundTrafficRouteContext? ctx, bool useMetres, DateTime now, List<TrafficCallout> candidates)
     {
         double ownLat = _ownLat, ownLon = _ownLon, ownHdg = _ownHeadingTrue, ownGS = _ownGS;
-        var (ownVx, ownVy) = GroundTrafficLogic.Velocity(ownHdg, ownGS);
+        // Where the aircraft is GOING, which is not where its nose points while it is pushed back: the
+        // closing speeds, the closest approach and the arc "Slow down" and "Stop" are given for all follow
+        // the direction of travel. What is SPOKEN stays relative to the nose ("behind", "to the left").
+        double ownDir = OwnDirection();
+        bool reversing = ownDir != ownHdg;
+        var (ownVx, ownVy) = GroundTrafficLogic.Velocity(ownDir, ownGS);
         var ownHull = OwnHull();
 
         // Own aircraft's place on its route (null when off it or no route).
@@ -1122,8 +1156,9 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ? GroundTrafficLogic.ClassifyAlongRoute(direction, ac.GS, p4.SegmentBearingDeg)
                 : null;
             double gapFt = GapFt(ownHull, ownLat, ownLon, ownHdg, ac);
+            double relTravel = reversing ? RelativeDirection.Normalize360(rel + ownHdg - ownDir) : rel;
             views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion,
-                openingMps, gapFt));
+                openingMps, gapFt, relTravel));
         }
 
         // Speed-based zone boundaries, in feet of gap.
@@ -1159,7 +1194,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.ConflictAlertArmed = true;
             if (conflict && ac.ConflictAlertArmed && !v.OnRouteAhead
                 && ac.CurrentZone < GroundZone.Caution
-                && GroundTrafficLogic.ConvergingAllowed(v.Rel, ownGS))
+                && GroundTrafficLogic.ConvergingAllowed(v.RelTravel, ownGS))
             {
                 int secs = Math.Max(5, (int)(Math.Round(v.Tcpa / 5.0) * 5));
                 candidates.Add(new TrafficCallout(TrafficCalloutKind.Converging, v.GapFt,
@@ -1252,7 +1287,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             // as every other withheld escalation — never a WARNING (PR #247 integration review Q5): recorded,
             // "Stop" for an aircraft very close behind the pilot was swallowed for good once the pilot turned
             // to face it, since Warning was no longer an escalation.
-            bool inForwardArc = v.Rel <= GroundTrafficLogic.ForwardArcDeg || v.Rel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;
+            // "Forward" is the direction of travel: pushed back, it is the arc behind the tail.
+            bool inForwardArc = v.RelTravel <= GroundTrafficLogic.ForwardArcDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;
             if (!inForwardArc && newZone >= GroundZone.Caution)
             {
                 ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
@@ -1264,7 +1300,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             // parked aircraft's straight-line closest approach assumes the pilot keeps going straight, which
             // the route may not (PR #247 author's fix). Traffic merely beside the route drops to an awareness
             // ping — it can still escalate later if it becomes a threat.
-            if (haveRoute && newZone >= GroundZone.Caution
+            // Pushed back, the aircraft is not following its route, which lies ahead of the nose: there is no
+            // route to judge by, and what is in the way is in the way.
+            if (haveRoute && !reversing && newZone >= GroundZone.Caution
                 && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.GapFt <= WARNING_GAP_FT))
                 newZone = GroundZone.Awareness;
 
@@ -1822,12 +1860,15 @@ public sealed class GroundTrafficMonitor : IDisposable
         var sb = new System.Text.StringBuilder();
         lock (_lock)
         {
+            // The nearest are the nearest by GAP ([TRF-12]): a widebody 100 m behind, centre to centre, has
+            // its nose 25 m from the tail and comes before a light jet 65 m away with 45 m of clear space.
+            var ownHull = OwnHull();
             var list = _tracked.Values
                 .Where(ac => ac.OnGround && ac.LastSeenTime >= fresh)
-                .Select(ac => (d: NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET,
+                .Where(ac => NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET <= GroundTrafficLogic.TrackRangeFt)
+                .Select(ac => (d: GapFt(ownHull, ownLat, ownLon, hdgTrue, ac),
                                ac,
                                rel: RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - hdgTrue)))
-                .Where(t => t.d <= GroundTrafficLogic.TrackRangeFt)
                 .OrderBy(t => t.d)
                 .Take(SUMMARY_MAX_AIRCRAFT)
                 .ToList();
@@ -1837,10 +1878,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             else
             {
                 sb.Append(list.Count == 1 ? "1 aircraft nearby. " : $"{list.Count} aircraft nearby. ");
-                var ownHull = OwnHull();
-                foreach (var (_, ac, rel) in list)
+                foreach (var (distFt, ac, rel) in list)
                 {
-                    double distFt = GapFt(ownHull, ownLat, ownLon, hdgTrue, ac);
                     double direction = Direction(ac);
                     var motion = GroundTrafficLogic.ClassifyMotion(hdgTrue, direction, ac.GS, rel);
                     string name = Capitalise(GroundTrafficLogic.SpokenNameWithCallsign(ac.Airline, ac.Callsign, ac.RawType));
@@ -1887,15 +1926,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
 
             double hdgTrue = RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
-            lock (_lock)
-            {
-                _ownLat = position.Latitude;
-                _ownLon = position.Longitude;
-                _ownHeadingTrue = hdgTrue;
-                _ownGS = position.GroundSpeedKnots;
-                _ownAltFt = position.Altitude;
-                _positionValid = true;
-            }
+            lock (_lock) StoreOwnPosition(position.Latitude, position.Longitude, hdgTrue, position.GroundSpeedKnots, position.Altitude);
 
             // Defer the announcement until a sweep of ours completes. The poll is suppressed while
             // taxi guidance is idle, so this request is often the ONLY thing populating the
@@ -2024,7 +2055,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
         TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
-        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt);
+        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt, double RelTravel);
 
     public void Dispose()
     {

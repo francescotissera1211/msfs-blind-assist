@@ -60,6 +60,13 @@ internal static partial class GroundTrafficLogic
     public const double ReversingMaxGapSec = 5.0;
     public const double ReversingMinGsKts = 0.5;
     public const double ReversingAngleDeg = 120.0;
+    /// <summary>
+    /// The track baseline for the pilot's OWN aircraft may be this near (metres): its position is the
+    /// simulator's own, exact to millimetres, where a traffic aircraft's arrives in sweeps that can be
+    /// milliseconds or seconds apart. One second of a tug's 3 kt is 1.5 m, so the first second of a
+    /// pushback already reads as one.
+    /// </summary>
+    public const double OwnReversingMinMoveM = 1.0;
     public const double AlongRouteMaxDeg = 45.0;
     public const double TowardRouteMinDeg = 135.0;
 
@@ -73,13 +80,14 @@ internal static partial class GroundTrafficLogic
     /// without this a pushback toward the pilot reads as "same direction" and its closest approach is
     /// predicted back into the stand.
     /// </summary>
-    public static double EffectiveDirection(double headingTrue, double gsKts, PositionFix? previous, PositionFix current)
+    public static double EffectiveDirection(double headingTrue, double gsKts, PositionFix? previous, PositionFix current,
+        double minMoveM = ReversingMinMoveM)
     {
         if (previous is not { } p || gsKts < ReversingMinGsKts) return headingTrue;
         double dt = (current.Utc - p.Utc).TotalSeconds;
         if (dt <= 0.0 || dt > ReversingMaxGapSec) return headingTrue;
         var (dx, dy) = ToLocal(p.Lat, p.Lon, current.Lat, current.Lon);
-        if (Math.Sqrt(dx * dx + dy * dy) < ReversingMinMoveM) return headingTrue;
+        if (Math.Sqrt(dx * dx + dy * dy) < minMoveM) return headingTrue;
         double track = LocalBearingDeg(dx, dy);
         return Math.Abs(AngleDiff(track, headingTrue)) > ReversingAngleDeg ? track : headingTrue;
     }
@@ -144,7 +152,8 @@ internal static partial class GroundTrafficLogic
     /// <see cref="ReversingMinMoveM"/> from <paramref name="current"/> and no more than
     /// <see cref="ReversingMaxGapSec"/> older than it; null when none qualifies (the nose is then used).
     /// </summary>
-    public static PositionFix? TrackAnchor(IReadOnlyList<PositionFix> history, PositionFix current)
+    public static PositionFix? TrackAnchor(IReadOnlyList<PositionFix> history, PositionFix current,
+        double minMoveM = ReversingMinMoveM)
     {
         for (int i = history.Count - 1; i >= 0; i--)
         {
@@ -153,7 +162,7 @@ internal static partial class GroundTrafficLogic
             if (dt <= 0.0) continue;
             if (dt > ReversingMaxGapSec) break;
             var (dx, dy) = ToLocal(h.Lat, h.Lon, current.Lat, current.Lon);
-            if (Math.Sqrt(dx * dx + dy * dy) >= ReversingMinMoveM) return h;
+            if (Math.Sqrt(dx * dx + dy * dy) >= minMoveM) return h;
         }
         return null;
     }
