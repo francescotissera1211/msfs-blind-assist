@@ -395,3 +395,17 @@ public class GroundTrafficGapSpeechTests
         Assert.Contains(h.Said.All, m => m.StartsWith("Stop, traffic very close, ahead, 50 feet", StringComparison.Ordinal));
     }
 }
+
+public class AiTrafficTypeTests
+{
+    // What the TCAS window and the ground-traffic callouts are handed as an aircraft's type.
+    [Theory]
+    [InlineData("$$:Boeing", "$$:Triple 7", "AIGAIM_Emirates Boeing 777-300ER - Fwd Dome", "B77W")]
+    [InlineData("$$:Airbus", "$$:A320", "AIGAIM_IndiGo Airbus A320-200neo - PW", "A320")]
+    [InlineData("ATCCONN", "B77W.mdl", "", "B77W")]
+    [InlineData("TT:ATCCOM.ATC_NAME AIRBUS.0.text", "A320", "FSLTL_FAIB_A20N_Aircalin", "A20N")]
+    // A type no table knows keeps its ATC type, without AIG's marker.
+    [InlineData("$$:Generic", "$$:", "Generic Airliner Twin Engines Asobo 00", "Generic")]
+    public void A_traffic_aircraft_s_type_is_the_one_its_title_names(string atcType, string atcModel, string title, string expected)
+        => Assert.Equal(expected, SimConnect.SimConnectManager.ResolveAiAircraftType(atcType, atcModel, title));
+}

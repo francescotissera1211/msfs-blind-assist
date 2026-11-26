@@ -1529,7 +1529,7 @@ public partial class SimConnectManager
             GroundSpeedKnots = raw.GroundSpeedKnots,
             OnGround         = raw.SimOnGround >= 0.5,
             Callsign         = raw.AtcId?.Trim() ?? "",
-            AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel),
+            AircraftType     = ResolveAiAircraftType(raw.AtcType, raw.AtcModel, raw.Title),
             FromAirport      = raw.FromAirport?.Trim() ?? "",
             ToAirport        = raw.ToAirport?.Trim() ?? "",
             Airline          = raw.AtcAirline?.Trim() ?? "",
@@ -1545,11 +1545,18 @@ public partial class SimConnectManager
     /// vPilot/FSLTL-injected VATSIM traffic often has ATC TYPE = "ATCCONN" (a
     /// multiplayer placeholder); in that case ATC MODEL is a better source since
     /// FSLTL names its models with the ICAO designator (e.g. "B77W", "A20N").
+    /// <para>First of all, though, the ICAO type the model's TITLE names
+    /// (<see cref="MSFSBlindAssist.Services.GroundTrafficAircraftSizes.ResolveIcao"/>): AIG's ATC type and model are a maker
+    /// and a family ("$$:Boeing", "$$:Triple 7"), which the TCAS window and the ground-traffic
+    /// callouts both showed as they came, while its title says "Boeing 777-300ER".</para>
     /// </summary>
-    private static string ResolveAiAircraftType(string? atcType, string? atcModel)
+    internal static string ResolveAiAircraftType(string? atcType, string? atcModel, string? title)
     {
-        string type  = atcType?.Trim()  ?? "";
-        string model = atcModel?.Trim() ?? "";
+        string icao = MSFSBlindAssist.Services.GroundTrafficAircraftSizes.ResolveIcao(atcType, atcModel, title);
+        if (icao.Length > 0) return icao;
+
+        string type  = StripAigMarker(atcType);
+        string model = StripAigMarker(atcModel);
 
         // If type is meaningful and not a known placeholder or file-path, use it.
         if (!string.IsNullOrEmpty(type) &&
@@ -1567,6 +1574,13 @@ public partial class SimConnectManager
         // Fall back to the model name — the TcasForm.ShortenAircraftType parser
         // handles FSLTL-style names like "B77W FSLTL" or "Airbus A320 Neo".
         return model;
+    }
+
+    // AIG prefixes its ATC strings with "$$:" (the sim's "do not localise" marker): never part of a name.
+    private static string StripAigMarker(string? value)
+    {
+        string s = value?.Trim() ?? "";
+        return s.StartsWith("$$:", StringComparison.Ordinal) ? s[3..].Trim() : s;
     }
 
     private void SimConnect_OnRecvException(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
