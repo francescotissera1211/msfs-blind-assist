@@ -137,41 +137,8 @@ internal static partial class GroundTrafficLogic
         return best == double.MaxValue ? Math.Sqrt(rx * rx + ry * ry) : best;
     }
 
-    /// <summary>How far along the route, either side of an aircraft's own place on it, its outline is looked for.</summary>
-    public const double RouteClearanceReachM = 150.0;
-
-    /// <summary>
-    /// The clear space in metres between an aircraft's outline and the strip the own aircraft's wings sweep
-    /// as it follows the route: the least distance from the outline to the route line, less the own half
-    /// span. Negative when the outline lies inside the strip. The aircraft's reported point is
-    /// <paramref name="lat"/>, <paramref name="lon"/>, <paramref name="routeMetres"/> its place along the
-    /// route (<see cref="ProjectOntoRoute"/>): only the route within <see cref="RouteClearanceReachM"/> of
-    /// that place is measured against.
-    /// </summary>
-    public static double RouteClearanceM(IReadOnlyList<GroundTrafficRoutePoint> route, AircraftHull hull,
-        double headingTrueDeg, double lat, double lon, double routeMetres, double ownHalfSpanM)
-    {
-        if (route.Count < 2) return double.MaxValue;
-        double refLat = route[0].Lat, refLon = route[0].Lon;
-        var (px, py) = ToLocal(refLat, refLon, lat, lon);
-        var placed = Place(hull, headingTrueDeg, px, py);
-        double best = double.MaxValue;
-        for (int i = 0; i + 1 < route.Count; i++)
-        {
-            if (route[i + 1].RouteMetres < routeMetres - RouteClearanceReachM || route[i].RouteMetres > routeMetres + RouteClearanceReachM) continue;
-            var (ax, ay) = ToLocal(refLat, refLon, route[i].Lat, route[i].Lon);
-            var (bx, by) = ToLocal(refLat, refLon, route[i + 1].Lat, route[i + 1].Lon);
-            foreach (var s in placed)
-            {
-                double d = SegmentDistance(ax, ay, bx, by, s.X1, s.Z1, s.X2, s.Z2);
-                if (d < best) best = d;
-            }
-        }
-        return best == double.MaxValue ? double.MaxValue : best - ownHalfSpanM;
-    }
-
     // A hull's segments in the local east/north frame: (X1, Z1) is then (east, north).
-    private static AircraftHull.Segment[] Place(AircraftHull hull, double headingTrueDeg, double east, double north)
+    internal static AircraftHull.Segment[] Place(AircraftHull hull, double headingTrueDeg, double east, double north)
     {
         double h = headingTrueDeg * Math.PI / 180.0, sin = Math.Sin(h), cos = Math.Cos(h);
         var placed = new AircraftHull.Segment[hull.Segments.Count];
