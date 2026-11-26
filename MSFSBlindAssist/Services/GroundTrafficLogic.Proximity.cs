@@ -215,8 +215,11 @@ internal static partial class GroundTrafficLogic
 
     /// <summary>Traffic at or above this ground speed is MOVING: its straight-line track predicts something.</summary>
     public const double MovingTrafficKts = 3.0;
-    /// <summary>A predicted closest approach under this makes moving traffic a route threat (<see cref="IsRouteThreat"/>).</summary>
-    public const double ThreatDcpaM = 60.0;
+    /// <summary>
+    /// A predicted closest approach under this makes moving traffic a route threat (<see cref="IsRouteThreat"/>):
+    /// metres of GAP between the two outlines at that moment ([TRF-12]; it was 60 m between the reported points).
+    /// </summary>
+    public const double ThreatDcpaM = 30.0;
     /// <summary>That closest approach must come within this many seconds (<see cref="IsRouteThreat"/>).</summary>
     public const double ThreatMaxTcpaSec = 30.0;
 

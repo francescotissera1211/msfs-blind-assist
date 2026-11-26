@@ -66,8 +66,11 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // Converging (closest point of approach). "Moving" traffic is GroundTrafficLogic.MovingTrafficKts; the
     // route threat test's own closest-approach limits live with it (GroundTrafficLogic.IsRouteThreat).
-    private const double CONFLICT_DCPA_M = 45.0;
-    private const double CONFLICT_REARM_DCPA_M = 90.0;
+    // The distance at closest approach is the GAP the two outlines would have then ([TRF-12]), each on
+    // its present track and heading: 15 and 60 m of gap where the two reported points had to pass within
+    // 45 and 90 m, which for the reference widebodies was one half-length or half-span less.
+    private const double CONFLICT_DCPA_M = 15.0;
+    private const double CONFLICT_REARM_DCPA_M = 60.0;
     private const double CONFLICT_MIN_TCPA_S = 5.0;
     private const double CONFLICT_MAX_TCPA_S = 40.0;
 
@@ -1108,7 +1111,11 @@ public sealed class GroundTrafficMonitor : IDisposable
             double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - ownHdg);
             var (rx, ry) = GroundTrafficLogic.ToLocal(ownLat, ownLon, ac.Lat, ac.Lon);
             var (tvx, tvy) = GroundTrafficLogic.Velocity(direction, ac.GS);
-            var (tcpa, dcpa) = GroundTrafficLogic.ClosestApproach(rx, ry, tvx - ownVx, tvy - ownVy);
+            var (tcpa, _) = GroundTrafficLogic.ClosestApproach(rx, ry, tvx - ownVx, tvy - ownVy);
+            // What matters at closest approach is the gap between the two outlines there, not between
+            // the two reported points.
+            double dcpa = GroundTrafficLogic.HullGapM(ownHull, ownHdg, ac.Hull, ac.HeadingTrue,
+                rx + (tvx - ownVx) * tcpa, ry + (tvy - ownVy) * tcpa);
             double openingMps = GroundTrafficLogic.OpeningSpeedMps(rx, ry, tvx - ownVx, tvy - ownVy);
             var motion = GroundTrafficLogic.ClassifyMotion(ownHdg, direction, ac.GS, rel);
             bool onRouteAhead = proj is { } p2 && p2.LateralMetres <= ON_ROUTE_LATERAL_M && aheadM >= ROUTE_ALERT_MIN_AHEAD_M;

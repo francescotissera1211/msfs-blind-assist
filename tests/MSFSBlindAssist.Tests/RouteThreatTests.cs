@@ -33,10 +33,10 @@ public class RouteThreatTests
             trafficGsKts: trafficGs, veryClose: false));
 
     [Theory]
-    [InlineData(59.9, 30.0, true)]
-    [InlineData(60.0, 10.0, false)]   // passes 60 m clear
+    [InlineData(29.9, 30.0, true)]
+    [InlineData(30.0, 10.0, false)]   // the two outlines pass with 30 m between them
     [InlineData(10.0, 30.1, false)]   // too far off to be the next thing to act on
-    public void The_closest_approach_limits_are_unchanged(double dcpa, double tcpa, bool expected)
+    public void The_closest_approach_limits_are_a_30_metre_gap_within_30_seconds(double dcpa, double tcpa, bool expected)
         => Assert.Equal(expected, GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: dcpa, tcpaSec: tcpa,
             trafficGsKts: 10.0, veryClose: false));
 

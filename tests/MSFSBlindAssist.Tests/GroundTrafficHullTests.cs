@@ -445,3 +445,38 @@ public class OutlineWideningTests
         Assert.Same(outline, outline.WidenedTo(15.0));     // never narrowed
     }
 }
+
+public class GroundTrafficConvergingGapTests
+{
+    private static SimConnect.AiTrafficDataEventArgs Crosser(double eastM, double northM, string type, double gsKts)
+    {
+        var ac = Ac(1, eastM, northM, gsKts, "Delta", "DAL1", headingDeg: 0);
+        ac.AircraftType = type;
+        return ac;
+    }
+
+    // An aircraft crossing from the right whose reported point passes 46 m from the own one. A light twin
+    // then has about 30 m of clear space to an A320; an A380, with a 40 m half-span, has under 15 m.
+    // Measured between reported points both were "converging" (46 m is inside the old 60 m).
+    [Theory]
+    [InlineData("BE58", false)]
+    [InlineData("A388", true)]
+    public void Converging_is_judged_on_the_gap_the_two_outlines_will_have(string type, bool expectConverging)
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        // Own aircraft rolls east at 10 kt; the crosser heads north at 10 kt.
+        var crosser = Crosser(165, -100, type, 10);
+        h.Sim.Traffic.Add(crosser);
+        double ownM = 0, north = -100;
+        for (int s = 0; s < 9; s++)
+        {
+            ownM += 10 * 0.514444;
+            north += 10 * 0.514444;
+            crosser.Latitude = north * M;
+            h.Sim.Position = Own(ownM, 10);
+            h.Tick();
+        }
+        Assert.Equal(expectConverging, h.Said.All.Any(m => m.Contains("converging")));
+    }
+}
