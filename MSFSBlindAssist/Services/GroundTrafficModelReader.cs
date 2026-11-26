@@ -527,13 +527,9 @@ public static partial class GroundTrafficModelReader
         // Both sides reach far out, but never at the same station: a rotor standing still, its blades
         // wherever they stopped. The narrower side would cut every blade off, so such a model takes the
         // WIDER side, the blades and their mirror image, which is where they are once the rotor turns.
-        bool stoppedRotor = false;
-        if (bestStart >= 0)
-        {
-            float widest = 0f;
-            for (int i = bestStart; i <= bestEnd; i++) widest = Math.Max(widest, width[i]);
-            stoppedRotor = widest < StoppedRotorShare * Math.Min(reachRight, reachLeft);
-        }
+        float widest = 0f;
+        for (int i = Math.Max(0, bestStart); i <= bestEnd; i++) widest = Math.Max(widest, width[i]);
+        bool stoppedRotor = reachRight > 0f && reachLeft > 0f && widest < StoppedRotorShare * Math.Min(reachRight, reachLeft);
         if (stoppedRotor)
         {
             for (int i = 0; i < n; i++) width[i] = Math.Max(cells.Right[i], cells.Left[i]);
