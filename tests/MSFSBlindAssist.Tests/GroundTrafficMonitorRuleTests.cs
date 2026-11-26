@@ -87,6 +87,8 @@ public class GroundTrafficMonitorRuleTests
             "t=6 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
             "t=6 Lufthansa A320 on your route, taxiway A, 300 feet ahead, stopped.",
             "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 175 feet.",
+            // The crossing aircraft "Stop" was said for has gone on its way.
+            "t=28 Clear of Delta A320.",
         }, h.Transcript);
     }
 
@@ -126,6 +128,7 @@ public class GroundTrafficMonitorRuleTests
             "t=6 Lufthansa A320 on your route, taxiway A, 950 feet ahead, coming toward you.",
             "t=21 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
             "t=25 [INT] Stop, Lufthansa A320 very close, ahead, 150 feet.",
+            "t=29 Clear of Delta A320.",
         }, h.Transcript);
     }
 

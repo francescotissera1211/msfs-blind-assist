@@ -163,6 +163,21 @@ internal static partial class GroundTrafficLogic
                && distFt > StopHoldFloorFt);
 
     /// <summary>
+    /// Is the aircraft "Stop" was said for out of the way? Either it is no longer in the arc the pilot
+    /// travels into (it has gone by, or the pilot has passed it), or it is MOVING, the gap to it is
+    /// opening at <see cref="MovingAwayMinOpeningMps"/> or more and is beyond the "Slow down" distance
+    /// (<paramref name="cautionGapFt"/>). Never for a stopped aircraft still in that arc, however far
+    /// back the pilot stopped: at 30 kt "Stop" comes with 120 m to go, and the aircraft ahead is no
+    /// clearer for the pilot having braked early.
+    /// </summary>
+    public static bool IsClearOf(bool inArcOfTravel, double trafficGsKts, double openingMps, double gapFt, double cautionGapFt)
+        => !inArcOfTravel
+           || (trafficGsKts >= MovingTrafficKts && openingMps >= MovingAwayMinOpeningMps && gapFt > cautionGapFt);
+
+    /// <summary>"Clear of …" waits this long after its "Stop": never the two in one breath.</summary>
+    public const double ClearMinSecondsAfterStop = 3.0;
+
+    /// <summary>
     /// After a zone callout was withheld as moving away (<see cref="IsMovingAwayOrHeld"/>): is a "Stop" held
     /// now? Yes when what was withheld is a Warning ESCALATION (<paramref name="newZone"/> Warning, above
     /// <paramref name="currentZone"/> — left unrecorded by <see cref="ZoneToRecordWhenWithheld"/>); no once

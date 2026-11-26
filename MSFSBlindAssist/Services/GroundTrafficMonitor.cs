@@ -756,6 +756,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             foreach (var ac in _tracked.Values)
             {
                 ac.QueueMember = false;
+                ac.StopSpokenUtc = null;
                 ac.Mover = QueueMoverState.Initial;
                 SetStopHeld(ac, false, "gate");
             }
@@ -1284,6 +1285,22 @@ public sealed class GroundTrafficMonitor : IDisposable
                 SetStopHeld(ac, false, v.GapFt <= GroundTrafficLogic.StopHoldFloorFt ? "close"
                     : ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
 
+            // ── "Clear of …": the aircraft "Stop" was said for is out of the way ──
+            // Every "Stop" is answered once: by this, or by "… ahead is moving" for the aircraft ahead in a
+            // line. Until 2026-11 a pilot stopped for crossing traffic, or pushed back toward an aircraft
+            // that then taxied on, heard nothing more and had to ask (Alt+G) whether it had gone.
+            if (ac.StopSpokenUtc is { } stopUtc)
+            {
+                bool inArc = v.RelTravel <= GroundTrafficLogic.ForwardArcDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;
+                // Not while it is dead ahead within the queue watch's reach: there "… ahead is moving" is
+                // its answer, and the two said the same thing three seconds apart.
+                if ((now - stopUtc).TotalSeconds >= GroundTrafficLogic.ClearMinSecondsAfterStop
+                    && !GroundTrafficLogic.IsInQueueCone(v.GapFt, v.Rel)
+                    && GroundTrafficLogic.IsClearOf(inArc, ac.GS, v.OpeningMps, v.GapFt, cautGapFt))
+                    candidates.Add(new TrafficCallout(TrafficCalloutKind.Clear, v.GapFt, $"Clear of {ac.Name}.",
+                        () => { ac.StopSpokenUtc = null; ac.LastAlertTime = now; }));
+            }
+
             GroundZone newZone;
             if (v.GapFt > awareGapFt)        newZone = GroundZone.None;
             else if (v.GapFt <= warnGapFt)   newZone = GroundZone.Warning;
@@ -1374,6 +1391,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     ac.LastSpokenZone = zone;
                     ac.LastSpokenZoneDistFt = zoneDistFt;
                     ac.LastAlertTime = now;
+                    if (zone == GroundZone.Warning) ac.StopSpokenUtc = now;
                 }));
         }
 
@@ -1421,6 +1439,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 $"{Capitalise(ac.Name)} ahead is moving.",
                 () =>
                 {
+                    ac.StopSpokenUtc = null;            // "ahead is moving" is this aircraft's answer to "Stop"
                     ac.Mover = QueueMovementPolicy.MarkAnnounced(ac.Mover);
                     if (QueueMovementPolicy.ShouldArmNudge(along, dist, gap))
                     {
@@ -2146,6 +2165,8 @@ internal sealed class TrackedGroundAircraft
     public QueueMoverState Mover       = QueueMoverState.Initial;
     /// <summary>Queued on the route ahead at the last evaluation (<c>GroundTrafficLogic.QualifiesForQueue</c>): still queued while it moves up.</summary>
     public bool QueueMember;
+    /// <summary>When "Stop" was last said for it and not yet answered by "Clear of …" or "… ahead is moving"; null otherwise.</summary>
+    public DateTime? StopSpokenUtc;
     // One-shot per episode: re-armed when the aircraft leaves the route / stops converging.
     public bool RouteAlertArmed        = true;
     public bool ConflictAlertArmed     = true;

@@ -685,3 +685,97 @@ public class GroundTrafficLiveQueueTests
         Assert.DoesNotContain(h.Said.All, m => m.Contains("queue", StringComparison.Ordinal));
     }
 }
+
+public class GroundTrafficClearTests
+{
+    private const double Kt = 0.514444;
+
+    [Fact]
+    public void Stopped_for_crossing_traffic_the_pilot_is_told_when_it_has_gone()
+    {
+        // OMDB, 2026-11-26, live: "converging from the right", "Slow down", "Stop", "Stop" as an A320
+        // crossed 15 m off the nose, and then nothing: the pilot had to ask whether it had gone.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        var crosser = Ac(1, 10 * Kt * 40, -12 * Kt * 40, 12, "Delta", "DAL1", headingDeg: 0);
+        h.Sim.Traffic.Add(crosser);
+        double east = 0, north = -12 * Kt * 40, ownKts = 10;
+        for (int s = 0; s < 90; s++)
+        {
+            if (h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) ownKts = 0;     // the pilot obeys
+            east += ownKts * Kt; north += 12 * Kt;
+            crosser.Latitude = north * M;
+            h.Sim.Position = Own(east, ownKts);
+            h.Tick();
+        }
+        string said = string.Join(" | ", h.Transcript);
+        int stop = h.Said.All.FindLastIndex(m => m.StartsWith("Stop", StringComparison.Ordinal));
+        int clear = h.Said.All.FindIndex(m => m == "Clear of Delta A320.");
+        Assert.True(stop >= 0 && clear > stop, said);
+        Assert.True(h.Said.All.Count(m => m.StartsWith("Clear of", StringComparison.Ordinal)) == 1, said);
+    }
+
+    [Fact]
+    public void Stopped_early_behind_an_aircraft_that_stays_there_it_is_not_clear()
+    {
+        // At 30 kt "Stop" comes with 120 m to go. The pilot who brakes at once stops 90 m back, outside
+        // the "Slow down" distance: the aircraft ahead is still ahead.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        h.Sim.Traffic.Add(Ac(1, 900, 0, 0, "Delta", "DAL1"));
+        double east = 0, ownKts = 30;
+        for (int s = 0; s < 120; s++)
+        {
+            if (h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) ownKts = Math.Max(0, ownKts - 12);
+            east += ownKts * Kt;
+            h.Sim.Position = Own(east, ownKts);
+            h.Tick();
+        }
+        Assert.Contains(h.Said.All, m => m.StartsWith("Stop", StringComparison.Ordinal));
+        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Clear of", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Pushed_back_toward_an_aircraft_that_then_taxies_away_the_pilot_hears_it_is_clear()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.UseRealSizes("B77W", 212.6);
+        var behind = Ac(1, -150, 0, 0, "Delta", "DAL1", headingDeg: 0);     // across the taxilane behind the stand
+        behind.AircraftType = "A320";
+        h.Sim.Traffic.Add(behind);
+        double east = 0, north = 0, ownKts = -3;
+        for (int s = 0; s < 140; s++)
+        {
+            bool stopped = h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal));
+            if (stopped) ownKts = 0;
+            east += ownKts * Kt;
+            if (stopped && s > 70) { north += 12 * Kt; behind.Latitude = north * M; behind.GroundSpeedKnots = 12; }   // it taxies on
+            h.Sim.Position = Own(east, Math.Abs(ownKts));
+            h.Tick();
+        }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(h.Said.All.Any(m => m.StartsWith("Stop, Delta A320 very close, behind", StringComparison.Ordinal)), said);
+        Assert.True(h.Said.All.Any(m => m == "Clear of Delta A320."), said);
+    }
+
+    [Fact]
+    public void The_aircraft_ahead_in_a_line_is_answered_by_ahead_is_moving_alone()
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(2000), 2000, departure: true) };
+        h.UseRealSizes("A320", 117.5);
+        var leader = Ac(1, 600, 0, 0, "Delta", "DAL1");
+        h.Sim.Traffic.Add(leader);
+        double east = 0, lead = 600, ownKts = 12;
+        for (int s = 0; s < 160; s++)
+        {
+            if (h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) ownKts = 0;
+            east += ownKts * Kt;
+            if (s > 90) { lead += 10 * Kt; leader.Longitude = lead * M; leader.GroundSpeedKnots = 10; }
+            h.Sim.Position = Own(east, ownKts);
+            h.Tick();
+        }
+        string said = string.Join(" | ", h.Transcript);
+        Assert.True(h.Said.All.Any(m => m == "Delta A320 ahead is moving."), said);
+        Assert.True(!h.Said.All.Any(m => m.StartsWith("Clear of", StringComparison.Ordinal)), said);
+    }
+}

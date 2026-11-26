@@ -9,6 +9,7 @@ public enum TrafficCalloutKind
     Converging,     // "… converging from the left, about 20 seconds."
     OnRoute,        // "… on your route, taxiway B, 800 feet ahead, …"
     Awareness,      // "Delta A320, ahead and to the left, 500 feet, stopped."
+    Clear,          // "Clear of Delta A320."  the aircraft "Stop" was said for is out of the way
     QueueMoving,    // "Delta A320 ahead is moving."
     MoveUp,         // "Move up. …"
     RunwayInfo,     // runway status / changes at a hold
@@ -106,6 +107,7 @@ public static class TrafficSpeechPolicy
         TrafficCalloutKind.Converging => 40,
         TrafficCalloutKind.OnRoute => 30,
         TrafficCalloutKind.Awareness => 20,
+        TrafficCalloutKind.Clear => 15,
         TrafficCalloutKind.QueueMoving => 10,
         TrafficCalloutKind.MoveUp => 5,
         _ => 0,
