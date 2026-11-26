@@ -188,7 +188,7 @@ public partial class MainForm
                 // and it clears the spot cache without touching the readonly provider, so it
                 // could not fix a database switch even if something did call it.
                 var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider(), BuildGateDataSource);
-                tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
+                tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver, groundTrafficMonitor);
             }
             tcasForm.ShowForm();
         }

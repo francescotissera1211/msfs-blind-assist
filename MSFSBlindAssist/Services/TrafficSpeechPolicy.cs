@@ -6,6 +6,7 @@ public enum TrafficCalloutKind
     Warning,        // "Stop, … very close"                       — interrupts
     RunwayCritical, // new runway occupant / short final / landing while ON the runway — interrupts
     Caution,        // "Slow down, …"                              — interrupts
+    Watched,        // the aircraft the pilot asked about: "Watching …", "… has stopped", "Clear of …: …, moving away."
     Converging,     // "… converging from the left, about 20 seconds."
     OnRoute,        // "… on your route, taxiway B, 800 feet ahead, …"
     Awareness,      // "Delta A320, ahead and to the left, 500 feet, stopped."
@@ -72,6 +73,18 @@ public static class TrafficSpeechPolicy
     public static bool SpeaksOnFastLandingExit(TrafficCalloutKind kind)
         => kind is TrafficCalloutKind.Warning or TrafficCalloutKind.RunwayCritical or TrafficCalloutKind.RunwayInfo;
 
+    /// <summary>
+    /// What may be spoken while taxi guidance is not engaged and the monitor runs only for a pushback or
+    /// for an aircraft the pilot asked to be told about (<c>GroundTrafficMonitor.IdleCheck</c>): the safety callouts,
+    /// their answer, converging traffic and the lines about that aircraft. Never an awareness ping, a
+    /// route line or the queue: with no route there is none, and a pilot parked on a stand does not want
+    /// every neighbour read out.
+    /// </summary>
+    public static bool SpeaksWhileIdle(TrafficCalloutKind kind)
+        => kind is TrafficCalloutKind.Warning or TrafficCalloutKind.Caution or TrafficCalloutKind.Clear
+            or TrafficCalloutKind.Converging or TrafficCalloutKind.Watched
+            or TrafficCalloutKind.RunwayCritical or TrafficCalloutKind.RunwayInfo;
+
     public static SpeechPlan Plan(IReadOnlyList<TrafficCallout> candidates, DateTime nowUtc,
         DateTime lastAlertLineUtc, bool announcerSuppressed,
         TrafficCalloutKind? lastInterruptKind = null, DateTime lastInterruptUtc = default)
@@ -104,6 +117,7 @@ public static class TrafficSpeechPolicy
         TrafficCalloutKind.Warning => 100,
         TrafficCalloutKind.RunwayCritical => 90,
         TrafficCalloutKind.Caution => 80,
+        TrafficCalloutKind.Watched => 50,
         TrafficCalloutKind.Converging => 40,
         TrafficCalloutKind.OnRoute => 30,
         TrafficCalloutKind.Awareness => 20,

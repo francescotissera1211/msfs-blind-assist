@@ -436,6 +436,8 @@ The lists show the traffic at the moment the window opened. While the window is 
 
 If a tracked aircraft has gone out of range, R reads its last known position followed by *"last known"*. If it has not been seen yet, you hear *"UAL123, not yet in range"*. With nothing tracked, R says *"No tracked aircraft. Add aircraft to track list from the TCAS window."* To stop tracking, choose **Remove from track list** from the same menu.
 
+For an aircraft in the On Ground list the same menu has **Tell me when it has passed**: BA then tells you when that aircraft has gone by, for a clearance that waits for it. See [Waiting for an Aircraft to Pass, and Pushback](ground-traffic.md#traffic-passed).
+
 This is useful for following a friend on a network, or keeping track of the aircraft ahead of you in an approach sequence.
 
 <div class="callout note" role="note" markdown="1">

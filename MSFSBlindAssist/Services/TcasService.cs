@@ -28,6 +28,12 @@ public class TcasService : IDisposable
 
     public event EventHandler? TrafficUpdated;
 
+    /// <summary>
+    /// What the installed aircraft packages declare (type designators, airline names), shared with the
+    /// ground-traffic monitor: unset, traffic is named from what the simulator reports alone.
+    /// </summary>
+    public GroundTrafficModelCatalog? Models { get; set; }
+
     public TcasService(SimConnectManager simConnect)
     {
         _simConnect = simConnect;
@@ -95,6 +101,15 @@ public class TcasService : IDisposable
             ? VatsimPilotDataService.GetAircraftType(e.Callsign)
             : e.AircraftType;
 
+        // Named as the ground-traffic callouts name it ([TRF-16]): the type its title names, else the one
+        // its own package declares; the airline its model gives, else the one the installed liveries name
+        // for the code its package declares or its callsign begins with (every IVAO model, a plain livery).
+        var declared = Models?.Declared(e.Title) ?? ("", "");
+        string namedType = GroundTrafficLogic.NamingType(aircraftType, e.AtcModel, e.Title, declared.Icao);
+        if (namedType.Length > 0) aircraftType = namedType;
+        string airline = GroundTrafficLogic.SpokenAirline(e.Airline, declared.AirlineCode, e.Callsign,
+            Models != null ? Models.AirlineName : null);
+
         // SimConnect AI TRAFFIC FROMAIRPORT/TOAIRPORT are only populated for
         // scheduled AI traffic.  For VATSIM traffic, fall back to the live feed
         // which has departure/arrival from each pilot's filed flight plan.
@@ -120,7 +135,7 @@ public class TcasService : IDisposable
             OnGround         = effectivelyOnGround,
             FromAirport      = fromAirport,
             ToAirport        = toAirport,
-            Airline          = e.Airline,
+            Airline          = airline,
             DistanceNm       = distNm,
             AltitudeDiffFt   = altDiff,
             RelativeBearing  = relBearing,

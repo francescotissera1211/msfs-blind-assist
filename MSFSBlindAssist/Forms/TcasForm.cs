@@ -28,6 +28,7 @@ public class TcasForm : Form
     private readonly TcasService           _tcas;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly GateResolver          _gateResolver;
+    private readonly GroundTrafficMonitor? _groundTraffic;
 
     private GroupBox _airborneGroup = null!;
     private GroupBox _groundGroup   = null!;
@@ -38,6 +39,8 @@ public class TcasForm : Form
     private ContextMenuStrip  _ctxMenu        = null!;
     private ToolStripMenuItem _addMenuItem    = null!;
     private ToolStripMenuItem _removeMenuItem = null!;
+    private ToolStripMenuItem _passedMenuItem = null!;
+    private ToolStripMenuItem _stopMenuItem   = null!;
 
     // Wrapper so ListBox.Items stores the TcasTraffic alongside its display text.
     private sealed record AircraftItem(TcasTraffic Traffic, string DisplayText)
@@ -45,11 +48,17 @@ public class TcasForm : Form
         public override string ToString() => DisplayText;
     }
 
-    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, GateResolver gateResolver)
+    /// <param name="groundTraffic">
+    /// The ground-traffic monitor, for the menu's "Tell me when it has passed" on an aircraft on the ground;
+    /// null (the tests) leaves it out.
+    /// </param>
+    public TcasForm(TcasService tcas, ScreenReaderAnnouncer announcer, GateResolver gateResolver,
+        GroundTrafficMonitor? groundTraffic = null)
     {
-        _tcas         = tcas;
-        _announcer    = announcer;
-        _gateResolver = gateResolver;
+        _tcas          = tcas;
+        _announcer     = announcer;
+        _gateResolver  = gateResolver;
+        _groundTraffic = groundTraffic;
         BuildUI();
 
         FormClosed += (_, _) => _tcas.Stop();
@@ -87,9 +96,22 @@ public class TcasForm : Form
         _addMenuItem.Click    += ContextMenu_AddToTrackList;
         _removeMenuItem.Click += ContextMenu_RemoveFromTrackList;
 
+        // What a controller leaves to the pilot's eyes, for an aircraft on the ground: "after the A321
+        // passing behind, push approved". The ground-traffic monitor does the telling.
+        _passedMenuItem = new ToolStripMenuItem("Tell me when it has passed");
+        _stopMenuItem   = new ToolStripMenuItem("Stop watching");
+        _passedMenuItem.Click += (_, _) => WatchUntilPassed();
+        _stopMenuItem.Click   += (_, _) => { if (_groundTraffic?.StopWatching() != true) _announcer.AnnounceImmediate("Nothing to stop."); };
+
         _ctxMenu = new ContextMenuStrip();
         _ctxMenu.Items.Add(_addMenuItem);
         _ctxMenu.Items.Add(_removeMenuItem);
+        if (_groundTraffic != null)
+        {
+            _ctxMenu.Items.Add(new ToolStripSeparator());
+            _ctxMenu.Items.Add(_passedMenuItem);
+            _ctxMenu.Items.Add(_stopMenuItem);
+        }
         _ctxMenu.Opening += ContextMenu_Opening;
 
         // ── Airborne section ──────────────────────────────────────────────────
@@ -214,7 +236,7 @@ public class TcasForm : Form
         string id   = string.IsNullOrEmpty(t.Callsign)
             ? $"unknown {t.ObjectId}"
             : FormatCallsign(t.Callsign);
-        string type = ShortenAircraftType(t.AircraftType);
+        string type = GroundTrafficLogic.ListedType(t.AircraftType);
 
         var parts = new List<string>
         {
@@ -339,6 +361,10 @@ public class TcasForm : Form
     private void ContextMenu_Opening(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         var t = GetFocusedTraffic();
+        uint? watched = _groundTraffic?.WatchedObjectId;
+        // "Stop watching" is offered whatever is selected: it ends what was asked, of any aircraft.
+        _stopMenuItem.Visible   = watched != null;
+        _passedMenuItem.Enabled = t is { OnGround: true } && watched != t.ObjectId;
         if (t == null)
         {
             _addMenuItem.Enabled    = false;
@@ -348,6 +374,17 @@ public class TcasForm : Form
         bool tracked = _tcas.IsTracked(TrafficKey(t));
         _addMenuItem.Enabled    = !tracked;
         _removeMenuItem.Enabled = tracked;
+    }
+
+    // "Tell me when it has passed" for the selected aircraft. Nothing is said here: the monitor's own
+    // first line ("Watching Speedbird A320: behind and to the left, 150 metres, ...") is the confirmation,
+    // with what a screen reader cannot say, within a second or two.
+    private void WatchUntilPassed()
+    {
+        var t = GetFocusedTraffic();
+        if (t == null || _groundTraffic == null) { _announcer.AnnounceImmediate("No aircraft selected."); return; }
+        if (!t.OnGround) { _announcer.AnnounceImmediate("Only an aircraft on the ground can be watched."); return; }
+        _groundTraffic.WatchUntilPassed(t.ObjectId, FormatCallsign(TrafficKey(t)));
     }
 
     private void ContextMenu_AddToTrackList(object? sender, EventArgs e)
@@ -368,8 +405,13 @@ public class TcasForm : Form
         _announcer.AnnounceImmediate($"{FormatCallsign(key)} removed from track list.");
     }
 
+    // The aircraft selected in the list the menu was opened on (or that has the focus): each list keeps
+    // its own selection, and the airborne list's must not answer for a menu opened on the ground list.
     private TcasTraffic? GetFocusedTraffic()
     {
+        var source = _ctxMenu.SourceControl as ListBox
+                     ?? (_groundList.Focused ? _groundList : _airborneList.Focused ? _airborneList : null);
+        if (source?.SelectedItem is AircraftItem chosen) return chosen.Traffic;
         foreach (var list in new[] { _airborneList, _groundList })
         {
             if (list.SelectedItem is AircraftItem item)

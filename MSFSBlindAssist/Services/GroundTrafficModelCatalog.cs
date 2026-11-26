@@ -81,9 +81,16 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         title = title.Trim();
         if (_byTitle.TryGetValue(title, out var known)) return known;
         if (_unknownUntil.TryGetValue(title, out var until) && _utcNow() < until) return null;
+        Enqueue(title);
+        return null;
+    }
+
+    // Hands the worker a title to settle (or IndexOnly), starting it on the first one. Never blocks.
+    private void Enqueue(string title)
+    {
         lock (_lock)
         {
-            if (_disposed || !_queued.Add(title)) return null;
+            if (_disposed || !_queued.Add(title)) return;
             if (_worker == null)
             {
                 _worker = new Thread(Work) { IsBackground = true, Name = "GroundTrafficModelCatalog", Priority = ThreadPriority.BelowNormal };
@@ -91,7 +98,16 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             }
         }
         try { _queue.Add(title); } catch (InvalidOperationException) { /* disposed meanwhile */ }
-        return null;
+    }
+
+    // Asks the worker to read the packages without measuring anything: what they DECLARE is wanted by
+    // callers that never ask for an outline (the traffic window names airborne traffic too).
+    private const string IndexOnly = "\u0001index";
+    private int _indexAsked;
+    private void AskForIndex()
+    {
+        if (_disposed || _index != null || Interlocked.Exchange(ref _indexAsked, 1) == 1) return;
+        Enqueue(IndexOnly);
     }
 
     /// <summary>
@@ -104,11 +120,12 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     /// <summary>
     /// What the package that owns <paramref name="title"/> declares for it in its aircraft.cfg: its ICAO
     /// type designator and its livery's airline code. Empty strings for a title no package declares, and
-    /// until the packages have been read (they are read when the first traffic title is asked for).
+    /// until the packages have been read (asking here has them read, in the background).
     /// </summary>
     public (string Icao, string AirlineCode) Declared(string? title)
     {
         var index = _index;
+        if (index == null) AskForIndex();
         return index != null && !string.IsNullOrWhiteSpace(title) && index.TryGetValue(title.Trim(), out var model)
             ? (model.Icao, model.AirlineCode) : ("", "");
     }
@@ -163,6 +180,7 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             }
             _indexedUtc = now;
         }
+        if (title == IndexOnly) return;
         if (!index.TryGetValue(title, out var model))
         {
             _unknownUntil[title] = now.AddMinutes(ReindexMinutes);

@@ -28,6 +28,23 @@ internal static partial class GroundTrafficLogic
         return icao;
     }
 
+    private static readonly Regex RxWord = new(@"[A-Za-z]{3,}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// A type as a LIST shows it (the traffic window): its spoken name where the designator is opaque
+    /// ("E55P" → "Phenom 300", "DH8D" → "Dash 8", "B38M" → "737 MAX"), the designator itself where it
+    /// already reads as what it is and says more than the family name does ("B738", "A20N", "MD82",
+    /// "CRJ9"): a list is read at leisure, and the variant is worth keeping there. "" for no type.
+    /// </summary>
+    public static string ListedType(string? rawType)
+    {
+        string designator = Forms.TcasForm.ShortenAircraftType(rawType ?? "");
+        string spoken = SpokenType(rawType);
+        if (spoken.Length == 0 || designator.Length == 0) return spoken.Length > 0 ? spoken : designator;
+        bool namesIt = RxWord.IsMatch(spoken) && !designator.StartsWith(spoken, StringComparison.OrdinalIgnoreCase);
+        return namesIt ? spoken : designator;
+    }
+
     /// <summary>
     /// The type a traffic aircraft is NAMED by, from everything known about it, best first: the type its
     /// title or its ATC strings name (<see cref="GroundTrafficAircraftSizes.ResolveIcao"/>); the designator

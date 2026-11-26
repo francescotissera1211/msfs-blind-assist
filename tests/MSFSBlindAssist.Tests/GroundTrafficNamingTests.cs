@@ -91,6 +91,32 @@ public class GroundTrafficNamingTests : IDisposable
         string received, string atcModel, string title, string declared, string spoken)
         => Assert.Equal(spoken, GroundTrafficLogic.SpokenType(GroundTrafficLogic.NamingType(received, atcModel, title, declared)));
 
+    // ── In a list ────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("E55P", "Phenom 300")] [InlineData("GLEX", "Global Express")] [InlineData("C56X", "Citation Excel")]
+    [InlineData("DH8D", "Dash 8")] [InlineData("AT76", "ATR 72")] [InlineData("E190", "Embraer 190")] [InlineData("C172", "Cessna 172")]
+    [InlineData("B38M", "737 MAX")] [InlineData("Generic", "airliner")]
+    // The designator already reads as what it is, and keeps the variant the family name drops.
+    [InlineData("B738", "B738")] [InlineData("A20N", "A20N")] [InlineData("A359", "A359")] [InlineData("MD82", "MD82")]
+    [InlineData("CRJ9", "CRJ9")] [InlineData("TBM9", "TBM9")] [InlineData("C130", "C130")] [InlineData("DC10", "DC10")]
+    [InlineData("XY12", "XY12")] [InlineData("ZZZZ", "ZZZZ")] [InlineData("", "")]
+    public void A_list_shows_the_name_of_an_opaque_designator_and_keeps_one_that_reads_as_itself(string raw, string listed)
+        => Assert.Equal(listed, GroundTrafficLogic.ListedType(raw));
+
+    [Fact]
+    public void The_traffic_window_shows_the_airline_and_the_named_type()
+    {
+        var traffic = new MSFSBlindAssist.Models.TcasTraffic
+        {
+            ObjectId = 7, Callsign = "LXJ379", Airline = "Flexjet", AircraftType = "E55P", OnGround = false,
+            DistanceNm = 4.2, AltitudeDiffFt = 2000, RelativeBearing = 60, GroundSpeedKnots = 310, AltitudeFt = 14500, HeadingMagnetic = 145,
+        };
+        string line = MSFSBlindAssist.Forms.TcasForm.BuildItemText(traffic, null);
+        Assert.Contains(" — Flexjet — type Phenom 300 — ", line);
+        Assert.StartsWith("LXJ 379 — ", line);
+    }
+
     // ── The airline ──────────────────────────────────────────────────────────────────────────────
 
     private static string Known(string code) => code switch { "RYR" => "Ryanair", "BAW" => "Speedbird", _ => "" };
@@ -162,10 +188,15 @@ public class GroundTrafficNamingTests : IDisposable
     {
         using var catalog = InstalledCatalog();
         Assert.Equal(0, catalog.IndexVersion);
-        Assert.Equal(("", ""), catalog.Declared("TORRYR"));
         Assert.Equal("", catalog.AirlineName("RYR"));
 
-        catalog.TryGet("TORRYR");                       // the first traffic title asked for has the packages read
+        // Asking what a title declares has the packages read in the background, with nothing measured:
+        // the traffic window names airborne traffic, for which no outline is ever asked.
+        Assert.Equal(("", ""), catalog.Declared("TORRYR"));
+        Assert.True(SpinWait.SpinUntil(() => catalog.IndexVersion == 1, 10_000));
+        Assert.False(catalog.IsSettled("TORRYR"));
+
+        catalog.TryGet("TORRYR");
         Assert.True(SpinWait.SpinUntil(() => catalog.IsSettled("TORRYR"), 10_000));
 
         Assert.Equal(1, catalog.IndexVersion);

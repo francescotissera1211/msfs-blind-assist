@@ -38,7 +38,7 @@ The traffic BA can see is the traffic the simulator shows you: AI traffic, and o
 
 ## When Ground Traffic Speaks {#traffic-when}
 
-The automatic callouts run while **taxi guidance is running**: from the moment you start guidance until you stop it, including after you arrive and while holding short. When you have no taxi guidance running at all, the automatic callouts stay quiet. The summary on Output Alt+G always works on the ground, whatever else is happening.
+The automatic callouts run while **taxi guidance is running**: from the moment you start guidance until you stop it, including after you arrive and while holding short. When you have no taxi guidance running at all, the automatic callouts stay quiet, with two exceptions: while you are being pushed back you still hear *"Slow down"* and *"Stop"* for what is behind you, and an aircraft you have asked BA to watch is still reported. See [Waiting for an Aircraft to Pass, and Pushback](#traffic-passed). The summary on Output Alt+G always works on the ground, whatever else is happening.
 
 There are a few deliberate quiet times:
 
@@ -98,6 +98,8 @@ An aircraft is nearby. There is nothing to do except keep it in mind. The last p
 
 The direction words are the same ones [Look Around](knowing-where-you-are.md#where-look-around) uses. Awareness callouts are given for traffic in any direction, including behind you.
 
+An aircraft parked on a stand is not called out at all while it is out of your way, just as a sighted pilot taxies past a row of parked aircraft without a thought. You hear about it only if it is in your way, and it is always in the Alt+G summary.
+
 ### Slow down {#traffic-slow-down}
 
 *"Slow down, Delta A320 ahead, 180 feet."*
@@ -114,7 +116,7 @@ An aircraft is very close. **Stop now**, then find out what is happening: press 
 
 - **Only traffic in the way you are moving can make you slow down or stop.** *"Slow down"* and *"Stop"* are given only for aircraft within about 120 degrees either side of your direction of travel: your nose when you taxi forward, your tail while you are being pushed back. So during a pushback you are told to slow down and to stop for an aircraft behind you, described as *"behind"*, and not for one off your nose that you are backing away from. An aircraft outside that arc gets at most an awareness callout. If you then turn to face a very close aircraft, you do hear *"Stop"*.
 - **Every *"Stop"* is answered.** When the aircraft you were told to stop for is out of your way, you hear *"Clear of Delta A320."* It has gone past, or it is moving off and the space to it is opening beyond the *"Slow down"* distance. For crossing traffic you gave way to, or an aircraft that taxied on behind you during a pushback, that is your cue that it has gone; you still follow ATC's instructions about when to move. You do not hear it for an aircraft that is still stopped in front of you, however far back you stopped. For the aircraft directly ahead of you in a line the answer is *"... ahead is moving"* instead.
-- ***"Stop"* comes early enough to stop in time.** For an aircraft in your way (ahead on your route, or straight ahead of the way you are moving, which is behind you during a pushback) it is given early enough for you to hear it, react and brake gently, and still be stopped with 100 feet (30 metres) of clear space, the room pilots leave behind a jet. That is seven seconds of travel at low speed and more as you go faster, because braking distance grows quickly with speed: at 5 knots it comes with about 50 metres to go, at 10 knots with 65, at 15 knots with 85, at 20 knots with 115, at 25 knots with 150, at 30 knots with 195. If you brake harder than gently, you simply stop with more room. An aircraft that is itself coming at you, such as one taxiing toward you along your taxiway, uses up the space as well, so *"Slow down"* and *"Stop"* come earlier still, by seven seconds of its own speed toward you: with both of you at 10 knots, *"Stop"* comes with about 100 metres between you. An aircraft you are following needs less room than a parked one, because if it brakes it still rolls on as it slows: behind an aircraft taxiing at your own speed, *"Stop"* comes only inside 30 metres plus three seconds of travel (about 55 metres at 15 knots), so following it at a normal distance is quiet. The distance you hear is the clear space at that moment, which is why *"very close"* can come with 60 metres at taxi speed.
+- ***"Stop"* comes early enough to stop in time.** For an aircraft in your way (ahead on your route, or straight ahead of the way you are moving, which is behind you during a pushback) it is given early enough for you to hear it, react and brake gently, and still be stopped with 100 feet (30 metres) of clear space, the room pilots leave behind a jet. That is seven seconds of travel at low speed and more as you go faster, because braking distance grows quickly with speed: at 5 knots it comes with about 50 metres to go, at 10 knots with 65, at 15 knots with 85, at 20 knots with 115, at 25 knots with 150, at 30 knots with 195. If you brake harder than gently, you simply stop with more room. An aircraft that is itself coming at you, such as one taxiing toward you along your taxiway, uses up the space as well, so *"Slow down"* and *"Stop"* come earlier still, by seven seconds of its own speed toward you: with both of you at 10 knots, *"Stop"* comes with about 100 metres between you. An aircraft taxiing ahead of you needs less room than a parked one, because if it brakes it still rolls on as it slows: behind an aircraft taxiing at your own speed, *"Stop"* comes only inside 30 metres plus three seconds of travel (about 55 metres at 15 knots), so following it at a normal distance is quiet. The distance you hear is the clear space at that moment, which is why *"very close"* can come with 60 metres at taxi speed.
 - **Passing beside an aircraft is normal.** Airports put aircraft close together: on parallel taxiways two large aircraft pass with about 11 metres between their wingtips, and on the stands the next aircraft is 7.5 metres away. BA does not tell you to slow down or stop for an aircraft that is beside your path and stays there: one parked on a stand you taxi past, one stopped or moving on the parallel taxiway (which you hear as *"opposite direction"* or *"same direction"*, never *"head-on"* or *"converging"*), one holding short of your taxiway with its nose clear of your wing, or the one on the next stand while you are pushed back. It is in your way when the clear space between it and the strip your wings pass over is less than aircraft are meant to pass with: 5 metres for a large aircraft, 3 metres for one the size of an A320 or 737, 2 metres for a light aircraft. Then you hear *"Slow down"* and *"Stop"* as for any aircraft in your way.
 - **Traffic moving away is not a threat.** If an aircraft is pulling away from you, for example the one ahead moving off in the queue, BA does not tell you to stop for it. If it stops again while still close, or you start closing on it, you hear *"Stop"* then. Whatever the speeds say, BA always warns you once the gap is down to about 200 feet.
 - **No nagging.** Each zone is announced when you enter it, not again and again. If you back off and then close in again, BA speaks again only for a more serious zone, or once 15 seconds have passed. There is one exception: after a *"Stop"*, if you creep another 50 feet or so closer, you hear *"Stop"* again.
@@ -176,6 +178,30 @@ A gap has opened in front of you and you have not moved. This is only a prompt f
 - you must be stopped, on your route, with taxi guidance running, and not on a runway;
 - it is never given while anything else is within about 50 feet ahead of you, and it waits while the departing aircraft is still that close;
 - it is given at most three times, 20 seconds apart, and stops as soon as you start moving.
+
+## Waiting for an Aircraft to Pass, and Pushback {#traffic-passed}
+
+Some clearances wait for one particular aircraft: *"after the A321 passing behind, push approved"*, or *"give way to the 737 from your right, then taxi"*. It is the pilot who has to pick out that aircraft and judge when it has gone by. BA can watch it for you. It only tells you what you would see: it does not decide when you may move.
+
+### Tell me when it has passed {#traffic-passed-how}
+
+1. Open the TCAS Traffic window (see [TCAS Traffic](takeoff-climb-and-cruise.md#tcas)) and go to the On Ground list.
+2. Arrow to the aircraft. Its line gives its callsign, its airline and type, where it is and, if it is parked, its stand.
+3. Press the Applications key (or Shift+F10) and choose **Tell me when it has passed**.
+
+Within a second or two BA answers with where the aircraft is and what it is doing. You can close the window; BA carries on. This works with or without taxi guidance running. You hear:
+
+- *"Watching Speedbird A320: behind and to the left, 150 metres, crossing left to right."*
+- *"Speedbird A320 has stopped, behind, 70 metres."* It has stopped before passing you. It has not gone, so wait. When it moves again you hear *"Speedbird A320 is moving, behind, 70 metres."*
+- *"Clear of Speedbird A320: behind and to the right, 130 metres, moving away."* It has passed: it is moving away and is at least 60 metres (200 feet) further from you than the nearest it came. BA then stops watching it.
+
+*"Clear of"* tells you where that one aircraft is. It is not a clearance, and it says nothing about any other traffic: check the summary on Output Alt+G before you move. While BA watches an aircraft, the summary begins with it and its speed.
+
+BA watches one aircraft at a time, so choosing another replaces the first. To end it yourself, open the same menu and choose **Stop watching**. The watch also ends, and BA says so, if the aircraft goes out of range (about 600 metres) or takes off.
+
+### Pushed back {#traffic-pushback}
+
+While a tug pushes you back, the way you are moving is behind you, so that is where BA looks: *"Slow down, Delta A320 behind, 70 metres"*, *"Stop, Delta A320 very close, behind, 35 metres"*. You hear these whether or not you have loaded a taxi route. The aircraft on the stands either side of you are not in your way and are not called. During a pushback BA says nothing about the queue.
 
 ## The Runway Watch {#traffic-runway-watch}
 
@@ -281,6 +307,8 @@ Taxiing is busy, and taxi guidance has a lot to say. To keep the important thing
 | *"Delta A320 converging from the left, about 20 seconds."* | A moving aircraft will come close | Be ready to stop and give way |
 | *"Number 3 in the departure queue."* | Two aircraft are ahead of you in the line | Wait your turn |
 | *"Delta A320 ahead is moving."* | The aircraft in front has moved off | Get ready to follow |
+| *"Delta A320 has stopped, behind, 70 metres."* | The aircraft you asked BA to watch has stopped | Wait; it has not gone |
+| *"Clear of Delta A320: behind and to the right, 130 metres, moving away."* | The aircraft you were waiting for has passed | Check Alt+G, then carry out your clearance |
 | *"Move up. 400 feet to the traffic ahead."* | A gap has opened | Move up if cleared and safe |
 | *"Runway 27L: no traffic seen on the runway or on final."* | BA saw no traffic there | Still wait for your clearance |
 | *"Delta A320 short final runway 27L, 1.8 miles."* | An aircraft is about to land | Do not enter the runway; query any clearance |

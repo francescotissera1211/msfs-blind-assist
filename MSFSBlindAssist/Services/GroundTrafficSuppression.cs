@@ -41,6 +41,14 @@ public static class GroundTrafficSuppression
     }
 
     /// <summary>
+    /// Is <see cref="Suppress"/> holding the callouts back for ONE reason, taxi guidance not being engaged?
+    /// That reason alone yields to a pushback and to an aircraft the pilot asked to be told about
+    /// (<c>GroundTrafficMonitor.IdleCheck</c>): the takeoff roll and the landing rollout yield to nothing.
+    /// </summary>
+    public static bool IdleOnly(bool takeoffAssistActive, TaxiGuidanceState state)
+        => !takeoffAssistActive && state == TaxiGuidanceState.Inactive;
+
+    /// <summary>
     /// On the landing exit above taxi speed, speak only what must interrupt anything
     /// (<see cref="TrafficSpeechPolicy.SpeaksOnFastLandingExit"/>): "Stop", a runway event while on a
     /// runway, and the runway watch's own status - queued while vacating, so it never talks over the exit

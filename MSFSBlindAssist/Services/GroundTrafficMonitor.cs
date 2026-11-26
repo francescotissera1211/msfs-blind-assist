@@ -123,6 +123,21 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>The taxi route in progress (route ahead, runways, hold facts), or null.</summary>
     public Func<GroundTrafficRouteContext?>? RouteContextProvider { get; set; }
 
+    /// <summary>
+    /// True when <see cref="SuppressCheck"/> holds the callouts back only because taxi guidance is not
+    /// engaged (<see cref="GroundTrafficSuppression.IdleOnly"/>). Then, and only then, the monitor still
+    /// runs for a pushback and for an aircraft the pilot asked to be told about, speaking only
+    /// <see cref="TrafficSpeechPolicy.SpeaksWhileIdle"/> lines.
+    /// </summary>
+    public Func<bool>? IdleCheck { get; set; }
+
+    /// <summary>
+    /// The airport's parking stands (centre and radius in metres), by ICAO: an aircraft standing on one is
+    /// PARKED, and earns no awareness line. Called at most once per airport; unset, no aircraft is taken
+    /// as parked.
+    /// </summary>
+    public Func<string, IReadOnlyList<(double Lat, double Lon, double RadiusM)>>? StandSupplier { get; set; }
+
     /// <summary>Takeoff assist's runway and airport while it is active, else null (the line-up wait).</summary>
     public Func<(string RunwayId, string AirportIcao)?>? TakeoffRunwayProvider { get; set; }
 
@@ -174,6 +189,17 @@ public sealed class GroundTrafficMonitor : IDisposable
     private DateTime _ownFixUtc;
     // The own aircraft last moved tail-first (OwnDirection): held while it is stopped.
     private bool _ownReversed;
+    // When it last MOVED tail-first: a pushback is in progress for PushbackHoldSec after that.
+    private DateTime _ownReversedMoveUtc = DateTime.MinValue;
+
+    // The one aircraft the pilot asked to be told about (WatchUntilPassed), or null.
+    private TrafficWatch? _watched;
+    // The monitor runs only for a pushback or the watched aircraft, with taxi guidance not engaged.
+    private bool _idleMode;
+
+    // The stands of the airport the route is at (StandSupplier), fetched once per airport.
+    private string _standsIcao = "";
+    private IReadOnlyList<(double Lat, double Lon, double RadiusM)> _stands = Array.Empty<(double, double, double)>();
 
     // The own aircraft's outline, and what it was resolved from (OwnHull).
     private AircraftHull _ownHull = AircraftHull.Default;
@@ -344,7 +370,19 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private bool Live() => (_sim.LastKnownOnGround ?? false) && _sim.IsConnected;
 
-    private bool ProximityGateOpen() => SuppressCheck?.Invoke() != true;
+    private bool ProximityGateOpen()
+    {
+        if (SuppressCheck?.Invoke() != true) { _idleMode = false; return true; }
+        // Taxi guidance not being engaged is the one reason that yields: to a pushback (the pilot has no
+        // route yet and is moved toward whatever is behind) and to an aircraft the pilot asked about.
+        bool idle = IdleCheck?.Invoke() == true;
+        lock (_lock) _idleMode = idle && (_watched != null || PushbackInProgress(_utcNow()));
+        return _idleMode;
+    }
+
+    // Caller holds _lock.
+    private bool PushbackInProgress(DateTime now)
+        => _ownReversed && (now - _ownReversedMoveUtc).TotalSeconds <= GroundTrafficLogic.PushbackHoldSec;
 
     private bool WatchGateOpen() => RunwayWatchSuppressCheck != null
         ? RunwayWatchSuppressCheck() != true
@@ -356,6 +394,17 @@ public sealed class GroundTrafficMonitor : IDisposable
     private void OnTick(object? sender, EventArgs e)
     {
         bool live = Live();
+        // The own position is kept current, and the own track with it, whenever the aircraft is on the
+        // ground: a pushback has to be noticed while every gate is still closed (no route, no guidance).
+        var pos = live ? _sim.LastKnownPosition : null;
+        if (live) _sim.RequestAircraftPosition();
+        if (pos is { } own)
+            lock (_lock)
+            {
+                StoreOwnPosition(own.Latitude, own.Longitude,
+                    RelativeDirection.Normalize360(own.HeadingMagnetic + own.MagneticVariation), own.GroundSpeedKnots, own.Altitude);
+                OwnDirection();
+            }
         bool proximity = live && ProximityGateOpen();
         bool watchGate = live && WatchGateOpen();
         LogGates(proximity, watchGate);
@@ -372,14 +421,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             return;
         }
 
-        // Proactively refresh own position so distances stay accurate even when no other guidance
-        // system is streaming it.
-        var pos = _sim.LastKnownPosition;
-        _sim.RequestAircraftPosition();
         if (pos == null) return;
         var p = pos.Value;
-        double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
-        lock (_lock) StoreOwnPosition(p.Latitude, p.Longitude, hdgTrue, p.GroundSpeedKnots, p.Altitude);
 
         // Decide the watch BEFORE requesting the sweep, so the intake keeps the airborne/far runway
         // aircraft this very sweep returns.
@@ -402,9 +445,10 @@ public sealed class GroundTrafficMonitor : IDisposable
                            && (now - _sweepRequestedUtc).TotalMilliseconds < SWEEP_STALE_MS;
         bool fast;
         lock (_lock)
-            fast = GroundTrafficLogic.NeedsFastPoll(watch.IsActive,
-                _ownGS <= QueueMovementPolicy.OwnQueueGsKts, _ownGS, CAUTION_GAP_FT + ZoneLeadFt(_ownGS),
-                GroundGeometryForPoll(now));
+            fast = _watched != null         // the aircraft the pilot asked about is read every second
+                || GroundTrafficLogic.NeedsFastPoll(watch.IsActive,
+                    _ownGS <= QueueMovementPolicy.OwnQueueGsKts, _ownGS, CAUTION_GAP_FT + ZoneLeadFt(_ownGS),
+                    GroundGeometryForPoll(now));
         if (!outstanding && (fast || _tickCount % SLOW_POLL_EVERY_TICKS == 0))
         {
             _cycle = new Cycle(ctx, watch, proximity, watchGate);
@@ -761,6 +805,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _nudge = NudgeState.Disarmed;
         _nudgeLeaderId = null;
         lock (_lock)
+        {
             foreach (var ac in _tracked.Values)
             {
                 ac.QueueMember = false;
@@ -768,6 +813,9 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.Mover = QueueMoverState.Initial;
                 SetStopHeld(ac, false, "gate");
             }
+            // The takeoff roll, the landing rollout: whatever the pilot asked about is behind them now.
+            if (_watched != null) { _log.Info($"ev=watched end id={_watched.ObjectId} reason=gate"); _watched = null; }
+        }
     }
 
     // Caller holds _lock.
@@ -1003,6 +1051,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (moving)
         {
             bool reversed = direction != _ownHeadingTrue;
+            if (reversed) _ownReversedMoveUtc = _ownFixUtc;
             if (reversed != _ownReversed)
             {
                 _ownReversed = reversed;
@@ -1081,6 +1130,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (runwayWatch && watch.IsActive) EvaluateRunwayWatch(ctx, watch, useMetres, now, candidates);
         }
         FilterForFastLandingExit(candidates);
+        if (_idleMode) candidates.RemoveAll(c => !TrafficSpeechPolicy.SpeaksWhileIdle(c.Kind));
         Speak(candidates, now);
     }
 
@@ -1249,6 +1299,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // hid the stopped aircraft beyond it — and head-on traffic is never queued behind it (PR #247
         // integration review Q3).
         double? firstOnRouteM = GroundTrafficLogic.FirstOnRouteAheadM(views.Select(v => (v.OnRouteAhead, v.AheadM, v.RouteMotion)));
+        // The aircraft "Slow down" or "Stop" is due for in this evaluation (EvaluateWatched).
+        var alarmed = new HashSet<uint>();
 
         foreach (var v in views)
         {
@@ -1282,7 +1334,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (v.OnRouteAhead && !behindFirst && ac.RouteAlertArmed && !pullingAway
                 && v.AheadM <= ROUTE_ALERT_MAX_AHEAD_M
                 && (ownGS >= SLOW_DOWN_GS_KTS || comingAtUs)
-                && ac.CurrentZone < GroundZone.Caution)
+                && ac.CurrentZone < GroundZone.Caution
+                && ac.ObjectId != _watched?.ObjectId)        // the aircraft the pilot asked about has its own lines
             {
                 string taxiway = v.Proj!.Value.Taxiway;
                 string on = string.IsNullOrWhiteSpace(taxiway) ? "" : $", taxiway {taxiway}";
@@ -1456,9 +1509,18 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
             else
             {
+                // An aircraft parked on a stand is scenery to a taxiing pilot, as it is to one who can see
+                // it: no awareness line (it is in the Alt+G summary, and it is "Slow down" and "Stop" above
+                // the moment it is in the way). The aircraft the pilot asked about has its own lines.
+                if (ParkedOnStand(ac, ctx) || ac.ObjectId == _watched?.ObjectId)
+                {
+                    ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
+                    continue;
+                }
                 kind = TrafficCalloutKind.Awareness;
                 announcement = $"{name}, {dir}, {distStr}{motionPart}.";
             }
+            if (kind != TrafficCalloutKind.Awareness) alarmed.Add(ac.ObjectId);
             var zone = newZone;
             double zoneDistFt = v.GapFt;
             candidates.Add(new TrafficCallout(kind, v.GapFt, announcement,
@@ -1472,8 +1534,143 @@ public sealed class GroundTrafficMonitor : IDisposable
                 }));
         }
 
+        EvaluateWatched(views, alarmed, useMetres, candidates);
+
         // Pushed back, the pilot is not in a line: nothing is read or said about a queue.
         if (!reversing) EvaluateQueuePosition(ctx, queueCandidates, haveRoute, ownRouteM, ownGS, candidates);
+    }
+
+    // ── The aircraft the pilot asked about ───────────────────────────────────────
+
+    /// <summary>What is kept about the one aircraft the pilot asked to be told about. Under _lock.</summary>
+    private sealed class TrafficWatch
+    {
+        public uint ObjectId;
+        /// <summary>What the traffic window called it, for a line about an aircraft the monitor never saw.</summary>
+        public string Label = "";
+        /// <summary>Its opening line has been spoken: everything else follows it.</summary>
+        public bool Announced;
+        /// <summary>Evaluations in a row without it.</summary>
+        public int Missing;
+        /// <summary>It was moving when the pilot was last told, null before the opening line.</summary>
+        public bool? Moving;
+        /// <summary>The nearest it has been since the pilot asked (feet of gap).</summary>
+        public double MinGapFt = double.MaxValue;
+    }
+
+    /// <summary>The aircraft the pilot asked about (its SimConnect object id), or null.</summary>
+    public uint? WatchedObjectId
+    {
+        get { lock (_lock) return _watched?.ObjectId; }
+    }
+
+    /// <summary>
+    /// "After the A321 passing behind, push approved": the pilot is told when this aircraft has PASSED
+    /// (<see cref="GroundTrafficLogic.HasPassed"/>), and if it stops or moves on meanwhile; then the watch
+    /// ends. Its opening line ("Watching …") is spoken by the next evaluation that sees it. Replaces
+    /// whatever was asked before. <paramref name="label"/> is what the traffic window called it.
+    /// </summary>
+    public void WatchUntilPassed(uint objectId, string label)
+    {
+        lock (_lock) _watched = new TrafficWatch { ObjectId = objectId, Label = label ?? "" };
+        _log.Info($"ev=watched start id={objectId} label=\"{Q(label ?? "")}\"");
+    }
+
+    /// <summary>Ends what the pilot asked for, saying so. False (and nothing said) when nothing was asked.</summary>
+    public bool StopWatching()
+    {
+        string text;
+        lock (_lock)
+        {
+            if (_watched is not { } w) return false;
+            text = $"Stopped watching {(_tracked.TryGetValue(w.ObjectId, out var ac) ? ac.Name : w.Label)}.";
+            _watched = null;
+            _log.Info($"ev=watched end id={w.ObjectId} reason=pilot");
+        }
+        _announcer.AnnounceImmediate(text);
+        return true;
+    }
+
+    // Caller holds _lock. One line at most is spoken per evaluation (the alert slot); the others are
+    // judged again at the next one, since nothing is recorded until a line is spoken.
+    private void EvaluateWatched(List<TrafficView> views, HashSet<uint> alarmed, bool useMetres, List<TrafficCallout> candidates)
+    {
+        if (_watched is not { } w) return;
+        void End(string reason) { if (ReferenceEquals(_watched, w)) _watched = null; _log.Info($"ev=watched end id={w.ObjectId} reason={reason}"); }
+        void Say(string text, Action onEmitted, double gapFt = 0.0)
+            => candidates.Add(new TrafficCallout(TrafficCalloutKind.Watched, gapFt, text, onEmitted));
+
+        var v = views.FirstOrDefault(x => x.Ac.ObjectId == w.ObjectId);
+        if (v == null)
+        {
+            _tracked.TryGetValue(w.ObjectId, out var known);
+            w.Missing++;
+            string? why = known is { OnGround: false } ? "it is airborne"
+                : known != null && known.GS > GroundTrafficLogic.MaxTaxiGsKts ? "it is on a runway roll"
+                : w.Missing >= GroundTrafficLogic.WatchLostEvaluations ? (w.Announced ? "out of range" : "not found on the ground nearby")
+                : null;
+            if (why == null) return;
+            string who = known?.Name is { Length: > 0 } n ? n : w.Label;
+            Say(w.Announced ? $"No longer watching {who}: {why}." : $"Cannot watch {who}: {why}.", () => End("lost"));
+            return;
+        }
+        w.Missing = 0;
+
+        var ac = v.Ac;
+        string name = Capitalise(ac.Name), dir = GroundTrafficLogic.DescribeDirection(v.Rel), dist = FormatDistance(v.GapFt, useMetres);
+        // Moving, with a little hysteresis: it stops below 1 kt and has moved off at MovingTrafficKts.
+        bool moving = w.Moving == true ? ac.GS >= 1.0 : ac.GS >= GroundTrafficLogic.MovingTrafficKts;
+        w.MinGapFt = Math.Min(w.MinGapFt, v.GapFt);
+
+        if (!w.Announced)
+        {
+            Say($"Watching {ac.Name}: {dir}, {dist}, {GroundTrafficLogic.DescribeMotion(v.Motion)}.",
+                () => { w.Announced = true; w.Moving = moving; }, v.GapFt);
+            return;
+        }
+
+        // It has stopped (it has NOT gone), it is moving again. "Stop" and "… ahead is moving" already say
+        // so when they are due for it: then the change is only recorded.
+        if (w.Moving == true && !moving)
+        {
+            if (alarmed.Contains(ac.ObjectId)) w.Moving = false;
+            else Say($"{name} has stopped, {dir}, {dist}.", () => w.Moving = false, v.GapFt);
+        }
+        else if (w.Moving == false && moving)
+        {
+            if (GroundTrafficLogic.IsInQueueCone(v.GapFt, v.Rel)) w.Moving = true;
+            else Say($"{name} is moving, {dir}, {dist}.", () => w.Moving = true, v.GapFt);
+        }
+
+        if (GroundTrafficLogic.HasPassed(v.GapFt, w.MinGapFt, ac.GS, v.OpeningMps))
+            Say($"Clear of {ac.Name}: {dir}, {dist}, moving away.", () => { ac.StopSpokenUtc = null; End("passed"); }, v.GapFt);
+    }
+
+    // Caller holds _lock. Standing on a stand of the route's airport (StandSupplier): looked up again only when it has moved.
+    private bool ParkedOnStand(TrackedGroundAircraft ac, GroundTrafficRouteContext? ctx)
+    {
+        if (StandSupplier == null || ctx == null || string.IsNullOrWhiteSpace(ctx.AirportIcao)) return false;
+        if (ac.GS >= 1.0) { ac.StandCheckLat = double.NaN; return false; }
+        if (!string.Equals(ctx.AirportIcao, _standsIcao, StringComparison.OrdinalIgnoreCase))
+        {
+            _standsIcao = ctx.AirportIcao;
+            try { _stands = StandSupplier(ctx.AirportIcao) ?? Array.Empty<(double, double, double)>(); }
+            catch (Exception ex) { _stands = Array.Empty<(double, double, double)>(); _log.Warn($"ev=stands icao={ctx.AirportIcao} error=\"{Q(ex.Message)}\""); }
+            _log.Info($"ev=stands icao={ctx.AirportIcao} count={_stands.Count}");
+            foreach (var other in _tracked.Values) other.StandCheckLat = double.NaN;
+        }
+        if (ac.StandCheckLat == ac.Lat && ac.StandCheckLon == ac.Lon) return ac.OnStand;
+        ac.StandCheckLat = ac.Lat;
+        ac.StandCheckLon = ac.Lon;
+        ac.OnStand = false;
+        foreach (var (lat, lon, radiusM) in _stands)
+        {
+            var (dx, dy) = GroundTrafficLogic.ToLocal(lat, lon, ac.Lat, ac.Lon);
+            if (!GroundTrafficLogic.IsOnStand(Math.Sqrt(dx * dx + dy * dy), radiusM)) continue;
+            ac.OnStand = true;
+            break;
+        }
+        return ac.OnStand;
     }
 
     /// <summary>
@@ -1994,6 +2191,14 @@ public sealed class GroundTrafficMonitor : IDisposable
                 sb.Append("No ground traffic nearby.");
             else
             {
+                // The aircraft the pilot asked about comes first, with its speed.
+                if (_watched is { Announced: true } w && _tracked.TryGetValue(w.ObjectId, out var asked) && asked.OnGround)
+                {
+                    double askedRel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(ownLat, ownLon, asked.Lat, asked.Lon) - hdgTrue);
+                    string doing = asked.GS < 1.0 ? "stopped" : FormattableString.Invariant($"{Math.Round(asked.GS):0} knots");
+                    sb.Append($"Watching {asked.Name}: " +
+                              $"{GroundTrafficLogic.DescribeDirection(askedRel)}, {FormatDistance(GapFt(ownHull, ownLat, ownLon, hdgTrue, asked), useMetres)}, {doing}. ");
+                }
                 sb.Append(list.Count == 1 ? "1 aircraft nearby. " : $"{list.Count} aircraft nearby. ");
                 foreach (var (distFt, ac, rel) in list)
                 {
@@ -2211,6 +2416,9 @@ internal sealed class TrackedGroundAircraft
     public string Airline = "";
     public string RawType = "";
     public string Name = "";      // spoken name: "Delta A320", "DAL 123, A320", "A320", "traffic"
+    /// <summary>Where it stood when it was last looked for on a stand (<c>GroundTrafficMonitor.ParkedOnStand</c>), and the answer.</summary>
+    public double StandCheckLat = double.NaN, StandCheckLon = double.NaN;
+    public bool OnStand;
     /// <summary><c>GroundTrafficModelCatalog.IndexVersion</c> as it was when <see cref="Name"/> was built.</summary>
     public int NameDeclaredVersion;
     public bool NameHasType;

@@ -935,6 +935,18 @@ public partial class MainForm : Form
                 takeoffAssistManager.IsActive,
                 taxiGuidanceManager.State,
                 simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // With taxi guidance not engaged (and no takeoff roll) the monitor still runs for a pushback and
+        // for an aircraft the pilot asked to be told about in the traffic window, and for nothing else.
+        groundTrafficMonitor.IdleCheck = () =>
+            GroundTrafficSuppression.IdleOnly(takeoffAssistManager.IsActive, taxiGuidanceManager.State);
+        // The airport's stands: an aircraft parked on one is not called out to a taxiing pilot.
+        groundTrafficMonitor.StandSupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            if (provider == null || string.IsNullOrWhiteSpace(icao)) return Array.Empty<(double, double, double)>();
+            // A navdata stand's radius is in feet (ParkingSpot.Radius).
+            return provider.GetParkingSpots(icao).Select(s => (s.Latitude, s.Longitude, s.Radius * 0.3048)).ToList();
+        };
         // On the landing exit above taxi speed only "Stop", runway events on a runway and the runway
         // watch's status are spoken - never "Slow down" over the exit guidance (KMEM 36L 2026-09-26).
         groundTrafficMonitor.LandingExitWarningsOnlyCheck = () =>
@@ -1073,7 +1085,11 @@ public partial class MainForm : Form
         waypointTracker = new MSFSBlindAssist.Navigation.WaypointTracker();
 
         // Initialize TCAS service (polls for AI/multiplayer traffic via SimConnect)
-        tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager);
+        tcasService = new MSFSBlindAssist.Services.TcasService(simConnectManager)
+        {
+            // Traffic in the window is named as the ground callouts name it: one catalog for both.
+            Models = groundTrafficMonitor.ModelOutlines,
+        };
 
         // ActiveSky weather-update announcer. Constructed always (so the settings
         // dialog can start it live via ApplyRuntimeSettings), but STARTED only when
