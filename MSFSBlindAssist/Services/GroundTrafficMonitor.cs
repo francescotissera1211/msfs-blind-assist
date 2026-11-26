@@ -886,6 +886,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             $"ev=size id={ac.ObjectId} name=\"{Q(ac.Name)}\" src={ac.Hull.Source} icao={ac.Hull.Icao} nose={ac.Hull.NoseM:0.0} tail={ac.Hull.TailM:0.0} halfSpan={ac.Hull.HalfSpanM:0.0} title=\"{Q(e.Title)}\"");
     }
 
+    /// <summary>The own aircraft's outline as the rules see it (tests).</summary>
+    internal AircraftHull OwnHullForHarness() { lock (_lock) return OwnHull(); }
+
     /// <summary>The own aircraft's outline, resolved again when its title, type or wing span changes and until its model is measured.</summary>
     private AircraftHull OwnHull()
     {

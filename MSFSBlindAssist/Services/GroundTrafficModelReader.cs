@@ -261,19 +261,22 @@ public static partial class GroundTrafficModelReader
                            + (bytes > PreferredMaxBufferBytes ? 4 : 0) + (skinned ? 2 : 0);
                 candidates.Add((rank, i, doc, lods[i]));
             }
+            // A part with no airframe of its own (a modular aircraft's common model) still says where the
+            // parts attached to it go: its nodes are kept from the best level that could be read.
+            Dictionary<string, double[]>? nodesOnly = null;
             foreach (var c in candidates.OrderBy(c => c.Rank).ThenBy(c => c.Order))
             {
                 try
                 {
                     var gltf = new Gltf(c.Doc.RootElement, Path.GetDirectoryName(c.Path) ?? "");
                     var found = gltf.WorldParts(NotAirframe(), GearAnimation(), root, out var nodeWorlds);
-                    if (found.Count == 0) continue;
+                    if (found.Count == 0) { nodesOnly ??= nodeWorlds; continue; }
                     meshes.AddRange(found);
                     return nodeWorlds;
                 }
                 catch (Exception) { /* this level cannot be read: the next */ }
             }
-            return null;
+            return nodesOnly;
         }
         finally { foreach (var c in candidates) c.Doc.Dispose(); }
     }
@@ -736,42 +739,109 @@ public static partial class GroundTrafficModelReader
             if (x0 <= x1) trace(_dir, name, x0, x1, z0, z1);
         }
 
+        private static int AsoboInt(JsonElement asobo, string name, int fallback)
+            => asobo.ValueKind == JsonValueKind.Object && asobo.TryGetProperty(name, out var v) && v.TryGetInt32(out int n) ? n : fallback;
+
         private void AddMesh(List<Part> parts, JsonElement mesh, double[] world)
         {
             if (!mesh.TryGetProperty("primitives", out var primitives)) return;
+            // The primitives of one mesh (one per material) usually share a vertex and an index accessor.
+            var positions = new Dictionary<int, double[]?>();
+            var indexLists = new Dictionary<int, double[]?>();
             foreach (var primitive in primitives.EnumerateArray())
             {
                 if (!primitive.TryGetProperty("attributes", out var attributes)
                     || !attributes.TryGetProperty("POSITION", out var positionEl)) continue;
-                double[]? p = ReadAccessor(positionEl.GetInt32(), 3);
-                if (p == null || p.Length == 0) continue;
-                var xz = new double[p.Length / 3 * 2];
-                double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
-                for (int i = 0, o = 0; i + 2 < p.Length; i += 3, o += 2)
+                int positionIndex = positionEl.GetInt32();
+                if (!positions.TryGetValue(positionIndex, out double[]? xz))
                 {
-                    double x = xz[o] = world[0] * p[i] + world[1] * p[i + 1] + world[2] * p[i + 2] + world[3];
-                    double z = xz[o + 1] = world[8] * p[i] + world[9] * p[i + 1] + world[10] * p[i + 2] + world[11];
+                    double[]? p = ReadAccessor(positionIndex, 3);
+                    if (p != null && p.Length > 0)
+                    {
+                        xz = new double[p.Length / 3 * 2];
+                        for (int i = 0, o = 0; i + 2 < p.Length; i += 3, o += 2)
+                        {
+                            xz[o] = world[0] * p[i] + world[1] * p[i + 1] + world[2] * p[i + 2] + world[3];
+                            xz[o + 1] = world[8] * p[i] + world[9] * p[i + 1] + world[10] * p[i + 2] + world[11];
+                        }
+                    }
+                    positions[positionIndex] = xz;
+                }
+                if (xz == null) continue;
+                int vertices = xz.Length / 2;
+
+                // MSFS packs a mesh's materials into shared accessors and says in extras.ASOBO_primitive
+                // which slice is this primitive's: PrimitiveCount triangles from index StartIndex, each
+                // index counted from vertex BaseVertexIndex. The MSFS 2020 exporter (AIG, FSLTL, IVAO)
+                // writes StartIndex alone, with indices from vertex 0; the 2024 one (iniBuilds, PMDG, Fenix)
+                // writes both. Read without them, a later slice is drawn with the first slice's vertices.
+                JsonElement asobo = default;
+                if (primitive.TryGetProperty("extras", out var extras) && extras.ValueKind == JsonValueKind.Object)
+                    extras.TryGetProperty("ASOBO_primitive", out asobo);
+                int startIndex = Math.Max(0, AsoboInt(asobo, "StartIndex", 0));
+                int baseVertex = Math.Max(0, AsoboInt(asobo, "BaseVertexIndex", 0));
+                int primitiveCount = AsoboInt(asobo, "PrimitiveCount", -1);
+
+                int mode = primitive.TryGetProperty("mode", out var modeEl) ? modeEl.GetInt32() : 4;
+                int[]? triangles = null;
+                // The vertices this primitive is made of: [first, first + count).
+                int first = baseVertex, count = Math.Max(0, AsoboInt(asobo, "VertexCount", vertices - baseVertex));
+                if (mode == 4)
+                {
+                    double[]? raw = null;
+                    if (primitive.TryGetProperty("indices", out var indicesEl))
+                    {
+                        int indicesIndex = indicesEl.GetInt32();
+                        if (!indexLists.TryGetValue(indicesIndex, out raw)) indexLists[indicesIndex] = raw = ReadAccessor(indicesIndex, 1);
+                    }
+                    if (raw != null)
+                    {
+                        int from = Math.Min(startIndex, raw.Length);
+                        int n = primitiveCount >= 0 ? (int)Math.Min((long)primitiveCount * 3, raw.Length - from) : raw.Length - from;
+                        triangles = new int[n];
+                        for (int i = 0; i < n; i++) triangles[i] = (int)raw[from + i] + baseVertex;
+                    }
+                    else
+                    {
+                        int n = primitiveCount >= 0 ? (int)Math.Min((long)primitiveCount * 3, Math.Max(0, vertices - baseVertex - startIndex)) : (vertices - baseVertex - startIndex) / 3 * 3;
+                        triangles = new int[Math.Max(0, n)];
+                        for (int i = 0; i < triangles.Length; i++) triangles[i] = baseVertex + startIndex + i;
+                    }
+                }
+
+                // A handful of vertices spread wide both ways is a helper, never airframe: the plane, box
+                // or single triangle an add-on hangs on a part to hold its level of detail (100 m across
+                // on the iniBuilds A350's wings and the PMDG 777F, under any name). No wing is 40 m both
+                // across and along. Counted over the vertices this primitive itself draws.
+                double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
+                int used = 0;
+                void Take(int v)
+                {
+                    double x = xz[v * 2], z = xz[v * 2 + 1];
                     if (x < x0) x0 = x;
                     if (x > x1) x1 = x;
                     if (z < z0) z0 = z;
                     if (z > z1) z1 = z;
                 }
-                // A handful of vertices spread wide both ways is a helper, never airframe: the plane, box
-                // or single triangle an add-on hangs on a part to hold its level of detail (100 m across
-                // on the iniBuilds A350's wings and the PMDG 777F, under any name). No wing is 40 m both
-                // across and along.
-                if (xz.Length / 2 <= HelperMaxVertices && x1 - x0 > HelperMinSpreadM && z1 - z0 > HelperMinSpreadM) continue;
-                int mode = primitive.TryGetProperty("mode", out var modeEl) ? modeEl.GetInt32() : 4;
-                int[]? triangles = null;
-                if (mode == 4)
+                if (triangles != null)
                 {
-                    if (primitive.TryGetProperty("indices", out var indicesEl) && ReadAccessor(indicesEl.GetInt32(), 1) is { } raw)
-                        triangles = Array.ConvertAll(raw, v => (int)v);
-                    else
-                    {
-                        triangles = new int[xz.Length / 2 / 3 * 3];
-                        for (int i = 0; i < triangles.Length; i++) triangles[i] = i;
-                    }
+                    var seen = new HashSet<int>();
+                    foreach (int v in triangles)
+                        if ((uint)v < (uint)vertices && (seen.Count > HelperMaxVertices || seen.Add(v))) Take(v);
+                    used = seen.Count;
+                }
+                else
+                {
+                    for (int v = Math.Min(first, vertices); v < Math.Min((long)first + count, vertices); v++, used++) Take(v);
+                }
+                if (used == 0) continue;
+                if (used <= HelperMaxVertices && x1 - x0 > HelperMinSpreadM && z1 - z0 > HelperMinSpreadM) continue;
+
+                if (triangles == null && (first != 0 || count < vertices))
+                {
+                    // Points only, and a slice of the shared vertices: keep just that slice.
+                    int end = (int)Math.Min((long)first + count, vertices);
+                    xz = xz.AsSpan(first * 2, Math.Max(0, end - first) * 2).ToArray();
                 }
                 parts.Add(new Part(xz, triangles));
             }

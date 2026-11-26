@@ -163,8 +163,8 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         return parts[0].Lods[0] + "|" + parts.Count + " parts|" + Convert.ToHexString(hash, 0, 12);
     }
 
-    // What the packages folders hold, cheaply: every package folder's name and date. A package installed,
-    // removed or updated changes it; nothing inside a package is read.
+    // What the packages folders hold, cheaply: every package folder's name and date, and the date of its
+    // aircraft folder. A package installed, removed or updated changes it; no file inside one is read.
     internal static string PackagesStamp(string packagesRoot)
     {
         var all = new System.Text.StringBuilder();
@@ -172,7 +172,15 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             foreach (string package in SafeDirectories(folder))
             {
                 all.Append(package).Append('|');
-                try { all.Append(Directory.GetLastWriteTimeUtc(package).Ticks); } catch (Exception) { }
+                try
+                {
+                    all.Append(Directory.GetLastWriteTimeUtc(package).Ticks);
+                    // A traffic library's manager adds a livery as a new folder here, which leaves the
+                    // package folder's own date alone.
+                    string airplanes = Path.Combine(package, "SimObjects", "Airplanes");
+                    if (Directory.Exists(airplanes)) all.Append('|').Append(Directory.GetLastWriteTimeUtc(airplanes).Ticks);
+                }
+                catch (Exception) { }
                 all.Append('\n');
             }
         return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(all.ToString())));
