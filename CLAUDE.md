@@ -18,7 +18,7 @@ The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Pr
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and `tools/LayoutBundle`; the other 17 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester`, `tools/ChangelogBuilder`, `tools/GuideBuilder` and `tools/LayoutBundle`; the other 18 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 

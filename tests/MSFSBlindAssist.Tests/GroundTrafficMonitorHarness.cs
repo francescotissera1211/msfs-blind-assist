@@ -47,7 +47,21 @@ internal sealed class GroundTrafficHarness
         Monitor = new GroundTrafficMonitor(Said, Sim, startTimers: false, () => Now)
         {
             RouteContextProvider = () => Context,
+            // The scenarios' distances are for the reference widebody on both sides: every gap in line is
+            // the centre distance less 200 ft. A test of real sizes turns this off (UseRealSizes).
+            SizeAllTrafficAsReference = true,
         };
+    }
+
+    /// <summary>
+    /// Sizes traffic by its own type and title from here on, and the own aircraft as given (its ICAO type
+    /// and wing span in feet; the default is the reference widebody).
+    /// </summary>
+    public void UseRealSizes(string ownIcaoType = "", double ownWingSpanFt = 0.0, GroundTrafficModelCatalog? models = null)
+    {
+        Monitor.SizeAllTrafficAsReference = false;
+        Monitor.ModelOutlines = models;
+        if (ownIcaoType.Length > 0) Monitor.OwnAircraftProvider = () => ("", ownIcaoType, ownWingSpanFt);
     }
 
     /// <summary><paramref name="seconds"/> simulated seconds, each a tick followed by the answer to the sweep it requested.</summary>

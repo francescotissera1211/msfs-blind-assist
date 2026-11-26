@@ -919,6 +919,13 @@ public partial class MainForm : Form
         // second while something can change an answer, every three seconds otherwise; gates on
         // LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
+        // Every distance it speaks is between the two aircraft's nearest points, so it needs each
+        // one's outline: measured from the installed models (kept between runs beside the scenery
+        // index), and the pilot's own aircraft named by its title, type and reported wing span.
+        groundTrafficMonitor.ModelOutlines = new GroundTrafficModelCatalog(
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MSFSBlindAssist", "traffic-models"));
+        groundTrafficMonitor.OwnAircraftProvider = () =>
+            (simConnectManager.CurrentAircraftTitle, simConnectManager.CurrentAircraftIcaoType, simConnectManager.AircraftWingSpan);
         // Suppress proximity/route/queue callouts in three contexts: during the takeoff roll (pilot's
         // hands are on rudder + throttle, can't act on a callout — keyed on takeoff assist), when Taxi
         // Guidance is not engaged, and during a landing rollout that is still rolling. The rule lives in

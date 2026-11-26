@@ -717,6 +717,9 @@ public partial class SimConnectManager
         public string AtcAirline;
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string TrafficState;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Title;
+        public double WingSpanFt;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1497,6 +1500,12 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
+    /// <summary>The raw ATC MODEL: for AIG traffic only a family ("$$:Triple 7"), which is why sizing reads <see cref="Title"/> first.</summary>
+    public string AtcModel         { get; set; } = "";
+    /// <summary>The model's <c>[FLTSIM.N] title</c>: names the installed model, so the ground-traffic monitor can measure it.</summary>
+    public string Title            { get; set; } = "";
+    /// <summary>The wing span the model's flight model declares, feet; not to be trusted on its own (15.5 m for most IVAO models).</summary>
+    public double WingSpanFt       { get; set; }
 }
 
 /// <summary>A ground-traffic sweep completed; <see cref="RequestId"/> is the id it was requested under.</summary>

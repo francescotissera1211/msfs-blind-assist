@@ -50,9 +50,10 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=3 [INT] Stop, British Airways A320 very close, ahead, 100 feet.",
-            "t=3 British Airways A320 on your route, taxiway A, 100 feet ahead, stopped.",
-            "t=6 [INT] Stop, Lufthansa A320 very close, ahead, 200 feet.",
+            // Distances are gaps between reference widebodies (61 m each): 30 m and 60 m centre to centre overlap.
+            "t=3 [INT] Stop, British Airways A320 very close, ahead, 0 feet.",
+            "t=3 British Airways A320 on your route, taxiway A, 0 feet ahead, stopped.",
+            "t=6 [INT] Stop, Lufthansa A320 very close, ahead, 0 feet.",
         }, h.Transcript);
     }
 
@@ -81,11 +82,11 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=3 [INT] Stop, Delta A320 very close, ahead, 300 feet.",
-            "t=3 Delta A320 on your route, taxiway A, 300 feet ahead, crossing.",
-            "t=6 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
-            "t=6 Lufthansa A320 on your route, taxiway A, 500 feet ahead, stopped.",
-            "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 400 feet.",
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 125 feet.",
+            "t=3 Delta A320 on your route, taxiway A, 100 feet ahead, crossing.",
+            "t=6 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 300 feet ahead, stopped.",
+            "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 175 feet.",
         }, h.Transcript);
     }
 
@@ -95,7 +96,7 @@ public class GroundTrafficMonitorRuleTests
         // PR #247 integration review P4: rolling at 10 kt, an aircraft crossing the route 120 m ahead (north at
         // 6 kt) and another coming head-on along the route from 420 m at 15 kt. Neither hides anything: the
         // crossing one does not occupy the route, and head-on traffic is never queued behind the first. The
-        // head-on aircraft's "coming toward you" is spoken at 1,100 feet, not held until 500 feet — the
+        // head-on aircraft's "coming toward you" is spoken at 950 feet (nose to nose), not held until 300 feet — the
         // transcript the monitor gave before the author's first-on-the-route rule was ported.
         var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
         var crosser = Ac(1, 120, -40, 6, "Delta", "DAL1", headingDeg: 0);
@@ -117,11 +118,14 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=3 [INT] Stop, Delta A320 very close, ahead, 350 feet.",
+            // The crosser is side-on: its nearest part is its fuselage, further off than a tail would be, so
+            // it is "Slow down" for a second before "Stop".
+            "t=3 [INT] Slow down, Delta A320 ahead, 175 feet.",
             "t=3 Delta A320 converging from ahead, about 20 seconds.",
-            "t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.",
-            "t=21 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
-            "t=24 [INT] Stop, Lufthansa A320 very close, ahead, 350 feet.",
+            "t=4 [INT] Stop, Delta A320 very close, ahead, 150 feet.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 950 feet ahead, coming toward you.",
+            "t=21 [INT] Slow down, Lufthansa A320 ahead, 300 feet.",
+            "t=25 [INT] Stop, Lufthansa A320 very close, ahead, 150 feet.",
         }, h.Transcript);
     }
 
@@ -131,7 +135,7 @@ public class GroundTrafficMonitorRuleTests
         // A real first this time: an aircraft stopped 150 m ahead, 25 m off the centreline — inside the 30 m
         // on-route band, so it is the first, though it does not block the taxiway. Beyond it, one comes head-on
         // along the route from 420 m at 15 kt while the pilot rolls at 10 kt. Head-on traffic is never queued
-        // behind the first, so it keeps its own "coming toward you" — at 1,100 feet, on the alert line after
+        // behind the first, so it keeps its own "coming toward you" — at 950 feet (nose to nose), on the alert line after
         // the first's own (one alert line per 3 s) — instead of nothing until "Stop".
         var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
         h.Sim.Traffic.Add(Ac(1, 150, 25, 0, "British Airways", "BAW1"));
@@ -147,7 +151,7 @@ public class GroundTrafficMonitorRuleTests
             h.Tick();
         }
 
-        Assert.Contains("t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.", h.Transcript);
+        Assert.Contains("t=6 Lufthansa A320 on your route, taxiway A, 950 feet ahead, coming toward you.", h.Transcript);
     }
 
     // ── A "Stop" withheld while traffic moves away is not swallowed ─────────────────────────────────
@@ -350,10 +354,11 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=18 British Airways A320, ahead, 700 feet, stopped.",
-            "t=40 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+            "t=18 British Airways A320, ahead, 500 feet, stopped.",
+            "t=40 [INT] Stop, British Airways A320 very close, ahead, 50 feet.",
         }, h.Transcript);
-        // Within one second's travel at 12 kt (about 20 ft) of the 250 ft line.
+        // Within one second's travel at 12 kt (about 20 ft) of the 250 ft line: centre to centre, which for
+        // these two reference widebodies in line is the 50 ft gap the pilot hears.
         Assert.InRange(gapFtAtStop, 250 - 12 * Kt * GroundTrafficLogic.FeetPerMetre, 250);
     }
 
@@ -375,7 +380,8 @@ public class GroundTrafficMonitorRuleTests
         h.Sim.Position = Own(500, 3, headingDeg: 270);       // turned to face it
         h.Tick(3);
 
-        Assert.Equal(new[] { "t=4 [INT] Stop, British Airways A320 very close, ahead, 175 feet." }, h.Transcript);
+        // 50 m centre to centre: two reference widebodies (61 m each) overlap.
+        Assert.Equal(new[] { "t=4 [INT] Stop, British Airways A320 very close, ahead, 0 feet." }, h.Transcript);
     }
 
     // ── "Stop" is never withheld on a first Warning ──────────────────────────────────────────────────
@@ -793,7 +799,7 @@ public class GroundTrafficMonitorRuleTests
     public void A_second_Stop_withheld_by_the_protect_window_interrupts_when_it_ends_and_no_Slow_down_cuts_it_off()
     {
         // Rolling east at 6 kt. KLM, stopped on the route 170 m ahead, opens with its "on your route" line at t=3.
-        // British Airways appears 240 ft dead ahead on the route at t=5 ("Stop"), Lufthansa 290 ft ahead and 40 m
+        // British Airways appears 240 ft dead ahead on the route at t=5 ("Stop"), Lufthansa 210 ft ahead and 40 m
         // left of the route at t=6, Delta 440 ft ahead and 45 m right of it at t=8 (a "Slow down"), and the pilot
         // stops from t=9. Air France, taxiing away 1,000 ft behind and never spoken, keeps the sweep at 1 s.
         // Lufthansa's "Stop" is withheld until British Airways' window ends and interrupts at t=8, where Delta's
@@ -822,9 +828,9 @@ public class GroundTrafficMonitorRuleTests
                 britishAirways.Longitude = (ownM + 240 * Ft) * M;
                 h.Sim.Traffic.Add(britishAirways);
             }
-            if (s == 6)                                                    // 290 ft, 40 m left of the route
+            if (s == 6)                                                    // 210 ft, 40 m left of the route
             {
-                lufthansa.Longitude = (ownM + Math.Sqrt(Math.Pow(290 * Ft, 2) - 40 * 40)) * M;
+                lufthansa.Longitude = (ownM + Math.Sqrt(Math.Pow(210 * Ft, 2) - 40 * 40)) * M;
                 h.Sim.Traffic.Add(lufthansa);
             }
             if (s == 8)                                                    // 440 ft, 45 m right of the route
@@ -838,10 +844,10 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=3 KLM A320 on your route, taxiway A, 550 feet ahead, stopped.",
-            "t=5 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
-            "t=8 [INT] Stop, Lufthansa A320 very close, ahead and to the left, 250 feet.",
-            "t=9 Delta A320, ahead, 450 feet, stopped.",
+            "t=3 KLM A320 on your route, taxiway A, 350 feet ahead, stopped.",
+            "t=5 [INT] Stop, British Airways A320 very close, ahead, 50 feet.",
+            "t=8 [INT] Stop, Lufthansa A320 very close, ahead and to the left, 50 feet.",
+            "t=9 Delta A320, ahead, 250 feet, stopped.",
         }, h.Transcript);
     }
 
@@ -874,7 +880,7 @@ public class GroundTrafficMonitorRuleTests
         h.Sim.Traffic.Add(Ac(1, 3000 - 240 * Ft, RunwayNorthM, 0, "British Airways", "BAW1", headingDeg: 270));
         h.Sim.Traffic.Add(Ac(2, Threshold27EastM + 1852, RunwayNorthM, 140, "Delta", "DAL2", headingDeg: 270,
             onGround: false, altitudeFt: 300));                               // 1.0 nm final to 27
-        var lufthansa = Ac(3, 3000 - 200 * Ft, RunwayNorthM + 30, 0, "Lufthansa", "DLH3", headingDeg: 270);
+        var lufthansa = Ac(3, 3000 - 150 * Ft, RunwayNorthM + 30, 0, "Lufthansa", "DLH3", headingDeg: 270);
         for (int s = 1; s <= 10; s++)
         {
             if (s == 4) h.Sim.Traffic.Add(lufthansa);
@@ -883,9 +889,9 @@ public class GroundTrafficMonitorRuleTests
 
         Assert.Equal(new[]
         {
-            "t=1 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
-            "t=4 [INT] Stop, Lufthansa A320 very close, ahead and to the right, 200 feet.",
-            "t=7 [INT] Runway 27: British Airways A320 on the runway, stopped, ahead, 250 feet. "
+            "t=1 [INT] Stop, British Airways A320 very close, ahead, 50 feet.",
+            "t=4 [INT] Stop, Lufthansa A320 very close, ahead and to the right, 50 feet.",
+            "t=7 [INT] Runway 27: British Airways A320 on the runway, stopped, ahead, 50 feet. "
                 + "Delta A320 on final runway 27, 1.0 miles.",
         }, h.Transcript);
     }

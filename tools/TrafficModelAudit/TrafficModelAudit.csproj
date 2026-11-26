@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The app's own ground-traffic sizing code, linked so the audit measures with exactly what ships. -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficAircraftSizes.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficLogic.Hull.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficModelReader.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\GroundTrafficModelCatalog.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- Where the packages are, and which folders hold them. -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\AircraftCfgCatalog.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\MsfsPackageLayout.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- The app's logger: self-contained, and inert here (nothing initialises it). -->
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs" Link="Linked\Logging\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

@@ -233,6 +233,10 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC TOAIRPORT",   null, SIMCONNECT_DATATYPE.STRING8, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "ATC AIRLINE",         null,     SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "AI TRAFFIC STATE",    null,     SIMCONNECT_DATATYPE.STRING32, 0.0f, SIMCONNECT_UNUSED);
+        // The model's own title and wing span: what the ground-traffic monitor sizes an aircraft by
+        // (GroundTrafficModelCatalog measures the model the title names). The simulator has no length variable.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "TITLE",               null,     SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_AI_TRAFFIC, "WING SPAN",           "feet",   SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<AiTrafficData>(DATA_DEFINITIONS.DEF_AI_TRAFFIC);
 
         // Register visual guidance data (consolidated position + AGL + ground track)

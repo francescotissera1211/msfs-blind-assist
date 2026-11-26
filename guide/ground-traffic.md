@@ -64,19 +64,21 @@ In the Alt+G summary, BA also adds the callsign when the airline name hides it, 
 
 ## The Proximity Callouts {#traffic-proximity}
 
-BA measures the distance to each aircraft on the ground near you and uses three zones. The further out zones grow with your speed: BA adds roughly seven seconds of travel at your current ground speed, so that you have time to react and brake. At 15 knots that adds about 180 feet to each zone.
+BA measures the gap between you and each aircraft on the ground near you, and uses three zones. The further out zones grow with your speed: BA adds roughly seven seconds of travel at your current ground speed, so that you have time to react and brake. At 15 knots that adds about 180 feet to each zone.
 
 <div class="table-wrap" markdown="1">
 
 | Zone | Starts at (stopped) | What you hear |
 |---|---|---|
-| Awareness | About 600 feet | The aircraft's name, direction, distance and what it is doing |
-| Caution | About 400 feet | *"Slow down"*, with the aircraft's name, direction and distance |
-| Warning | About 250 feet | *"Stop"*, with the aircraft's name, *"very close"*, direction and distance |
+| Awareness | About 400 feet | The aircraft's name, direction, distance and what it is doing |
+| Caution | About 200 feet | *"Slow down"*, with the aircraft's name, direction and distance |
+| Warning | About 50 feet | *"Stop"*, with the aircraft's name, *"very close"*, direction and distance |
 
 </div>
 
-Distances are measured from the centre of your aircraft to the centre of the other one. With two large jets, the real gap between nose and tail is much smaller than the number you hear.
+Every distance is the real gap between the two aircraft: from the part of yours that is nearest to the part of the other that is nearest. Following an aircraft, that is your nose to its tail. Pushing back toward one, it is your tail to its nose. Passing one, it is wingtip to wingtip. So *"25 feet"* means 25 feet of clear space, whatever the two aircraft are.
+
+BA knows each aircraft's shape from the model the simulator is showing: it measures the traffic models installed on your PC (AIG, FSLTL, IVAO and others), each one once, the first time it appears. A new livery or a new traffic aircraft needs nothing from you. When a model cannot be measured, BA uses the published length and wing span of its type, and an aircraft it cannot identify at all is treated as a large widebody, the safe side. Your own aircraft is measured the same way when its model can be read; if not, BA uses its type's published length with the wing span the simulator reports.
 
 ### Awareness {#traffic-awareness}
 
@@ -94,13 +96,13 @@ The direction words are the same ones [Look Around](knowing-where-you-are.md#whe
 
 ### Slow down {#traffic-slow-down}
 
-*"Slow down, Delta A320 ahead, 380 feet."*
+*"Slow down, Delta A320 ahead, 180 feet."*
 
 You are closing on an aircraft. Reduce your speed and be ready to stop. You only hear this while you are moving at 2 knots or more; if you are stopped, the same aircraft gives an awareness callout instead.
 
 ### Stop {#traffic-stop}
 
-*"Stop, Delta A320 very close, ahead, 200 feet."*
+*"Stop, Delta A320 very close, ahead, 50 feet."*
 
 An aircraft is very close. **Stop now**, then find out what is happening: press Output Alt+G for the traffic around you, or ask ATC.
 
@@ -120,7 +122,7 @@ These two callouts need taxi guidance with a route, because they depend on knowi
 
 *"Delta A320 on your route, taxiway B, 800 feet ahead, stopped."*
 
-There is an aircraft on the path you are about to taxi, up to about 600 metres ahead. The taxiway is named when BA knows it. The distance is measured along your route, not in a straight line, so round a bend it tells you how far you will actually taxi before you reach it. The last word tells you what it is doing:
+There is an aircraft on the path you are about to taxi, up to about 600 metres ahead. The taxiway is named when BA knows it. The distance is measured along your route from your nose to the nearest part of that aircraft, not in a straight line, so round a bend it tells you how far you will actually taxi before you reach it. The last word tells you what it is doing:
 
 - *"stopped"*: it is sitting on your route. Expect to stop behind it, or to be given another way round.
 - *"same direction"*: it is going the same way as you. Keep your distance.
@@ -266,8 +268,8 @@ Taxiing is busy, and taxi guidance has a lot to say. To keep the important thing
 | You hear | It means | What to do |
 |---|---|---|
 | *"Delta A320, ahead and to the left, 500 feet, stopped."* | An aircraft is nearby | Be aware of it |
-| *"Slow down, Delta A320 ahead, 380 feet."* | You are closing on it | Slow down, be ready to stop |
-| *"Stop, Delta A320 very close, ahead, 200 feet."* | It is very close | Stop now |
+| *"Slow down, Delta A320 ahead, 180 feet."* | You are closing on it | Slow down, be ready to stop |
+| *"Stop, Delta A320 very close, ahead, 50 feet."* | It is very close | Stop now |
 | *"Delta A320 on your route, taxiway B, 800 feet ahead, stopped."* | It is on the path you are about to taxi | Expect to stop behind it or be rerouted |
 | *"Delta A320 converging from the left, about 20 seconds."* | A moving aircraft will come close | Be ready to stop and give way |
 | *"Number 3 in the departure queue."* | Two aircraft are ahead of you in the line | Wait your turn |

@@ -1533,6 +1533,9 @@ public partial class SimConnectManager
             FromAirport      = raw.FromAirport?.Trim() ?? "",
             ToAirport        = raw.ToAirport?.Trim() ?? "",
             Airline          = raw.AtcAirline?.Trim() ?? "",
+            AtcModel         = raw.AtcModel?.Trim() ?? "",
+            Title            = raw.Title?.Trim() ?? "",
+            WingSpanFt       = raw.WingSpanFt,
         };
         AiTrafficReceived?.Invoke(this, eventArgs);
     }

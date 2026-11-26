@@ -26,14 +26,21 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public sealed class GroundTrafficMonitor : IDisposable
 {
-    // Alert zone thresholds in feet — sized for widebody datum-to-datum measurement.
-    // SimConnect gives center-to-center distance; two 787s have ~203 ft of combined
-    // half-fuselage, so each threshold is the desired nose-to-tail gap plus ~200 ft.
+    // Alert zone thresholds in feet of GAP: the distance between the two aircraft's nearest points
+    // (GroundTrafficLogic.HullGapM over each one's AircraftHull), nose to tail, tail to nose or wingtip
+    // to wingtip, never centre to centre. Until 2026-11 the zones were centre distances of 600, 400 and
+    // 250 ft, "the wanted gap plus about 200 ft for two 787s' half-fuselages": right for two widebodies
+    // in line and wrong for everything else ("Stop, BE58 very close, 75 metres", with a Baron 9 m long).
+    // An aircraft of unknown size is still taken as that widebody (AircraftHull.Default).
     // These are the MINIMUM (stopped-aircraft) thresholds; a speed-based lead allowance is
     // added so the pilot is actually stopped at these distances. See ZONE_LEAD_SEC.
+    private const double AWARENESS_GAP_FT = 400.0;
+    private const double CAUTION_GAP_FT   = 200.0;
+    private const double WARNING_GAP_FT   = 50.0;
+    // The CENTRE distances the cadence and queue rules still read (GroundGeometryForPoll, the nudge's
+    // priority): the old zone figures, kept for what they were tuned as.
     private const double AWARENESS_FT = 600.0;
     private const double CAUTION_FT   = 400.0;
-    private const double WARNING_FT   = 250.0;
 
     // Lead time (seconds) added to each zone boundary for reaction + braking + poll lag:
     // effective boundary = fixed_ft + v × ktsToFps × ZONE_LEAD_SEC. Sized for the 3 s worst-case
@@ -115,6 +122,27 @@ public sealed class GroundTrafficMonitor : IDisposable
     public Func<(string RunwayId, string AirportIcao)?>? TakeoffRunwayProvider { get; set; }
 
     /// <summary>
+    /// The measured outlines of the installed aircraft models, by title (<see cref="GroundTrafficModelCatalog"/>).
+    /// Unset (the tests), or for a model it cannot measure, an aircraft is sized by its type
+    /// (<see cref="GroundTrafficAircraftSizes"/>). Disposed with the monitor.
+    /// </summary>
+    public GroundTrafficModelCatalog? ModelOutlines { get; set; }
+
+    /// <summary>
+    /// Sizes every traffic aircraft as the reference widebody (<see cref="AircraftHull.Default"/>) whatever
+    /// its type. For the headless scenario tests only: they were measured against that one size, in line,
+    /// where its gap is the old centre distance less 200 ft, so each still pins the rule it was written
+    /// for. Sizes have their own tests.
+    /// </summary>
+    internal bool SizeAllTrafficAsReference { get; set; }
+
+    /// <summary>
+    /// The pilot's own aircraft: its model title, its ICAO type and the wing span the simulator reports
+    /// (feet). Unset, the own aircraft is <see cref="AircraftHull.Default"/>.
+    /// </summary>
+    public Func<(string Title, string IcaoType, double WingSpanFt)>? OwnAircraftProvider { get; set; }
+
+    /// <summary>
     /// The airport's runway centerlines by ICAO, for a takeoff-assist runway with no taxi route (a
     /// departure that starts on the runway). Called at most once per airport; the result is cached.
     /// </summary>
@@ -134,6 +162,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Own-position snapshot (written on the UI thread, read under _lock)
     private double _ownLat, _ownLon, _ownHeadingTrue, _ownGS, _ownAltFt;
     private bool _positionValid;
+
+    // The own aircraft's outline, and what it was resolved from (OwnHull).
+    private AircraftHull _ownHull = AircraftHull.Default;
+    private (string Title, string IcaoType, double WingSpanFt) _ownHullKey;
+    private bool _ownHullResolved;
 
     // Intake gates, read by OnAiTrafficReceived under _lock
     private bool _runwayWatchActive;
@@ -775,7 +808,7 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         double magVar = pos?.MagneticVariation ?? 0.0;
         var now = _utcNow();
-        string? dataQuality = null;
+        string? dataQuality = null, sizeLog = null;
         lock (_lock)
         {
             if (!_tracked.TryGetValue(e.ObjectId, out var ac))
@@ -801,6 +834,10 @@ public sealed class GroundTrafficMonitor : IDisposable
                 string type = string.IsNullOrEmpty(e.AircraftType)
                     ? VatsimPilotDataService.GetAircraftType(e.Callsign)
                     : e.AircraftType;
+                // AIG's ATC type and model are a maker and a family ("$$:Boeing", "$$:Triple 7"), which
+                // spoke as "Emirates $$:Boeing": the type its title names is the one to say.
+                string icao = GroundTrafficAircraftSizes.ResolveIcao(type, e.AtcModel, e.Title);
+                if (icao.Length > 0) type = icao;
                 if (callsignChanged || GroundTrafficLogic.NameNeedsRefresh(ac.NameHasType, type))
                 {
                     ac.Callsign = e.Callsign;
@@ -810,10 +847,72 @@ public sealed class GroundTrafficMonitor : IDisposable
                     ac.NameHasType = GroundTrafficLogic.SpokenType(type).Length > 0;
                 }
             }
+            sizeLog = ResolveHull(ac, e);
             dataQuality = CheckDataQuality(ac, now);
             ac.LastSeenTime = now;
         }
+        if (sizeLog != null) _log.Info(sizeLog);
         if (dataQuality != null) _log.Info(dataQuality);
+    }
+
+    /// <summary>
+    /// The aircraft's outline: measured from its installed model when the catalog has it (asked on every
+    /// sample, since a model is measured in the background the first time it is seen), else from its type.
+    /// Returns the log line of a change, null when nothing changed. Caller holds _lock.
+    /// </summary>
+    private string? ResolveHull(TrackedGroundAircraft ac, AiTrafficDataEventArgs e)
+    {
+        if (SizeAllTrafficAsReference) return null;
+        var outline = ModelOutlines?.TryGet(e.Title);
+        if (outline != null)
+        {
+            if (ReferenceEquals(ac.Outline, outline)) return null;
+            ac.Outline = outline;
+            ac.Hull = AircraftHull.FromOutline(outline);
+        }
+        else
+        {
+            string type = string.IsNullOrEmpty(e.AircraftType) ? ac.RawType : e.AircraftType;
+            var key = (type, e.AtcModel, e.Title, e.WingSpanFt);
+            if (ac.Outline == null && ac.HullKey == key) return null;
+            ac.Outline = null;
+            ac.HullKey = key;
+            ac.Hull = AircraftHull.FromSize(GroundTrafficAircraftSizes.Resolve(type, e.AtcModel, e.Title, e.WingSpanFt * 0.3048));
+        }
+        return FormattableString.Invariant(
+            $"ev=size id={ac.ObjectId} name=\"{Q(ac.Name)}\" src={ac.Hull.Source} icao={ac.Hull.Icao} nose={ac.Hull.NoseM:0.0} tail={ac.Hull.TailM:0.0} halfSpan={ac.Hull.HalfSpanM:0.0} title=\"{Q(e.Title)}\"");
+    }
+
+    /// <summary>The own aircraft's outline, resolved again when its title, type or wing span changes and until its model is measured.</summary>
+    private AircraftHull OwnHull()
+    {
+        (string Title, string IcaoType, double WingSpanFt) key;
+        try { key = OwnAircraftProvider?.Invoke() ?? default; }
+        catch (Exception) { key = default; }
+        key = (key.Title ?? "", key.IcaoType ?? "", key.WingSpanFt);
+        if (_ownHullResolved && key == _ownHullKey && _ownHull.Source == AircraftHullSource.Model) return _ownHull;
+        var outline = key.Title.Length > 0 ? ModelOutlines?.TryGet(key.Title) : null;
+        if (outline == null && _ownHullResolved && key == _ownHullKey) return _ownHull;
+        var hull = outline != null
+            ? AircraftHull.FromOutline(outline)
+            : key == default ? AircraftHull.Default
+            : AircraftHull.FromSize(GroundTrafficAircraftSizes.ResolveOwn(key.IcaoType, key.Title, key.WingSpanFt * 0.3048));
+        _ownHullKey = key;
+        _ownHullResolved = true;
+        _ownHull = hull;
+        _log.Info(FormattableString.Invariant(
+            $"ev=own-size src={hull.Source} icao={hull.Icao} nose={hull.NoseM:0.0} tail={hull.TailM:0.0} halfSpan={hull.HalfSpanM:0.0} title=\"{Q(key.Title)}\""));
+        return hull;
+    }
+
+    /// <summary>
+    /// The gap to an aircraft in feet: between its nearest point and the own aircraft's
+    /// (<see cref="GroundTrafficLogic.HullGapM"/>). What every spoken distance and the zones read.
+    /// </summary>
+    private static double GapFt(AircraftHull ownHull, double ownLat, double ownLon, double ownHeadingTrue, TrackedGroundAircraft ac)
+    {
+        var (rx, ry) = GroundTrafficLogic.ToLocal(ownLat, ownLon, ac.Lat, ac.Lon);
+        return GroundTrafficLogic.HullGapM(ownHull, ownHeadingTrue, ac.Hull, ac.HeadingTrue, rx, ry) * FEET_PER_METRE;
     }
 
     /// <summary>
@@ -963,6 +1062,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         double ownLat = _ownLat, ownLon = _ownLon, ownHdg = _ownHeadingTrue, ownGS = _ownGS;
         var (ownVx, ownVy) = GroundTrafficLogic.Velocity(ownHdg, ownGS);
+        var ownHull = OwnHull();
 
         // Own aircraft's place on its route (null when off it or no route).
         var route = ctx?.RouteAhead ?? Array.Empty<GroundTrafficRoutePoint>();
@@ -1008,15 +1108,16 @@ public sealed class GroundTrafficMonitor : IDisposable
             RouteRelativeMotion? routeMotion = proj is { } p4
                 ? GroundTrafficLogic.ClassifyAlongRoute(direction, ac.GS, p4.SegmentBearingDeg)
                 : null;
+            double gapFt = GapFt(ownHull, ownLat, ownLon, ownHdg, ac);
             views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion,
-                openingMps));
+                openingMps, gapFt));
         }
 
-        // Speed-based zone boundaries.
+        // Speed-based zone boundaries, in feet of gap.
         double lead = ZoneLeadFt(ownGS);
-        double warnDistFt  = WARNING_FT  + lead;
-        double cautDistFt  = CAUTION_FT  + lead;
-        double awareDistFt = Math.Max(AWARENESS_FT, cautDistFt + 150.0);
+        double warnGapFt  = WARNING_GAP_FT  + lead;
+        double cautGapFt  = CAUTION_GAP_FT  + lead;
+        double awareGapFt = Math.Max(AWARENESS_GAP_FT, cautGapFt + 150.0);
 
         EvaluateQueueMovement(ctx, views, ownLat, ownLon, ownGS, useMetres, now, candidates);
 
@@ -1033,7 +1134,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             var ac = v.Ac;
             string name = Capitalise(ac.Name);
-            string distStr = FormatDistance(v.DistFt, useMetres);
+            string distStr = FormatDistance(v.GapFt, useMetres);
             string dir = GroundTrafficLogic.DescribeDirection(v.Rel);
             bool behindFirst = GroundTrafficLogic.IsQueuedBehindFirst(v.OnRouteAhead, v.AheadM, firstOnRouteM, v.RouteMotion);
 
@@ -1072,8 +1173,11 @@ public sealed class GroundTrafficMonitor : IDisposable
                     RouteRelativeMotion.Toward => "coming toward you",
                     _ => "crossing",
                 };
+                // Along the route, from the own nose to the part of it that faces back down the route.
+                double aheadGapM = Math.Max(0.0, v.AheadM - ownHull.NoseM
+                    - ac.Hull.ExtentToward(v.Proj!.Value.SegmentBearingDeg + 180.0 - ac.HeadingTrue));
                 candidates.Add(new TrafficCallout(TrafficCalloutKind.OnRoute, v.DistFt,
-                    $"{name} on your route{on}, {FormatDistance(v.AheadM * FEET_PER_METRE, useMetres)} ahead, {motion}.",
+                    $"{name} on your route{on}, {FormatDistance(aheadGapM * FEET_PER_METRE, useMetres)} ahead, {motion}.",
                     () => { ac.RouteAlertArmed = false; ac.LastAlertTime = now; }));
             }
 
@@ -1119,10 +1223,10 @@ public sealed class GroundTrafficMonitor : IDisposable
                     : ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
 
             GroundZone newZone;
-            if (v.DistFt > awareDistFt)        newZone = GroundZone.None;
-            else if (v.DistFt <= warnDistFt)   newZone = GroundZone.Warning;
-            else if (v.DistFt <= cautDistFt)   newZone = GroundZone.Caution;
-            else                               newZone = GroundZone.Awareness;
+            if (v.GapFt > awareGapFt)        newZone = GroundZone.None;
+            else if (v.GapFt <= warnGapFt)   newZone = GroundZone.Warning;
+            else if (v.GapFt <= cautGapFt)   newZone = GroundZone.Caution;
+            else                             newZone = GroundZone.Awareness;
 
             if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; SetStopHeld(ac, false, "far"); continue; }
 
@@ -1148,7 +1252,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             // the route may not (PR #247 author's fix). Traffic merely beside the route drops to an awareness
             // ping — it can still escalate later if it becomes a threat.
             if (haveRoute && newZone >= GroundZone.Caution
-                && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.DistFt <= WARNING_FT))
+                && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.GapFt <= WARNING_GAP_FT))
                 newZone = GroundZone.Awareness;
 
             // Moving away: nothing is said, and the zone is recorded by the same rule as any other withheld
@@ -1166,7 +1270,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 continue;
             }
             if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,
-                    ac.LastAlertTime, now, v.DistFt, ac.LastSpokenZoneDistFt))
+                    ac.LastAlertTime, now, v.GapFt, ac.LastSpokenZoneDistFt))
             {
                 // A withheld WARNING escalation is not recorded: it is judged again next evaluation, so
                 // "Stop" speaks once the aircraft has closed by EscalationReclosureFt or the window has
@@ -1197,7 +1301,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 announcement = $"{name}, {dir}, {distStr}{motionPart}.";
             }
             var zone = newZone;
-            double zoneDistFt = v.DistFt;
+            double zoneDistFt = v.GapFt;
             candidates.Add(new TrafficCallout(kind, v.DistFt, announcement,
                 () =>
                 {
@@ -1271,8 +1375,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         // The disarm rule leaves the leader out only while it is still moving (M3); the spoken text
         // names whichever aircraft is nearest ahead, the leader included (K1) — the traffic to close on —
         // and waits, armed, while that one is still within NudgeMinGapFt (N3).
+        // The rules read the centre distance they were tuned on; the pilot hears the gap.
         var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt,
-            nearestAhead?.DistFt, now, ft => FormatDistance(ft, useMetres));
+            nearestAhead?.DistFt, now, _ => FormatDistance(nearestAhead?.GapFt ?? 0.0, useMetres));
         switch (decision.Action)
         {
             case NudgeAction.Disarm:
@@ -1334,7 +1439,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// </summary>
     private sealed record RunwayStatus(string Designator, string Key, List<RunwayOccupant> Occupants, List<RunwayFinal> Finals,
         List<TrackedGroundAircraft> Pending);
-    private sealed record RunwayOccupant(TrackedGroundAircraft Ac, double DistFt, double Rel, TrafficMotion Motion);
+    private sealed record RunwayOccupant(TrackedGroundAircraft Ac, double DistFt, double Rel, TrafficMotion Motion, double GapFt);
     private sealed record RunwayFinal(TrackedGroundAircraft Ac, RunwayTrafficFix Fix);
 
     private static bool IsShortFinal(RunwayFinal f)
@@ -1457,7 +1562,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 candidates.Add(new TrafficCallout(
                     interrupts ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, o.DistFt,
                     $"{Capitalise(o.Ac.Name)} on runway {s.Designator}, {DescribeRunwayMovement(o)}, " +
-                    $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.DistFt, useMetres)}.",
+                    $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.GapFt, useMetres)}.",
                     () => { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; }));
             }
             foreach (var f in s.Finals)
@@ -1585,6 +1690,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (buckets.Count == 0) return result;
 
         var fresh = now.AddMilliseconds(-RUNWAY_FRESH_MS);
+        var ownHull = OwnHull();
         foreach (var ac in _tracked.Values)
         {
             if (ac.LastSeenTime < fresh) continue;
@@ -1602,7 +1708,8 @@ public sealed class GroundTrafficMonitor : IDisposable
                         double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
                         double direction = Direction(ac);
                         st.Occupants.Add(new RunwayOccupant(ac, distFt, rel,
-                            GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel)));
+                            GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel),
+                            GapFt(ownHull, _ownLat, _ownLon, _ownHeadingTrue, ac)));
                         break;
                     }
                     case RunwayTrafficKind.OnFinal:
@@ -1667,7 +1774,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (s.Occupants.Count == 0) sb.Append("no traffic seen on the runway. ");
             foreach (var o in s.Occupants)
                 sb.Append($"{Capitalise(o.Ac.Name)} on the runway, {DescribeRunwayMovement(o)}, " +
-                          $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.DistFt, useMetres)}. ");
+                          $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.GapFt, useMetres)}. ");
             if (s.Finals.Count == 0) sb.Append("No traffic seen on final.");
             foreach (var f in s.Finals)
                 sb.Append(DescribeFinal(f, shortWord: false)).Append(' ');
@@ -1718,8 +1825,10 @@ public sealed class GroundTrafficMonitor : IDisposable
             else
             {
                 sb.Append(list.Count == 1 ? "1 aircraft nearby. " : $"{list.Count} aircraft nearby. ");
-                foreach (var (distFt, ac, rel) in list)
+                var ownHull = OwnHull();
+                foreach (var (_, ac, rel) in list)
                 {
+                    double distFt = GapFt(ownHull, ownLat, ownLon, hdgTrue, ac);
                     double direction = Direction(ac);
                     var motion = GroundTrafficLogic.ClassifyMotion(hdgTrue, direction, ac.GS, rel);
                     string name = Capitalise(GroundTrafficLogic.SpokenNameWithCallsign(ac.Airline, ac.Callsign, ac.RawType));
@@ -1802,7 +1911,11 @@ public sealed class GroundTrafficMonitor : IDisposable
         _summaryPending = false;
         _summaryTimeout?.Stop();
         PruneStaleAircraft();
-        _announcer.AnnounceImmediate(GetNearestTrafficSummary());
+        string summary = GetNearestTrafficSummary();
+        _announcer.AnnounceImmediate(summary);
+        // The one ground-traffic line that does not go through Speak: logged the same way, so a
+        // distance the pilot questions can be read back.
+        _log.Info($"ev=speak kind=Summary interrupt=1 text=\"{Q(summary)}\"");
         return true;
     }
 
@@ -1899,7 +2012,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
         TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
-        RouteRelativeMotion? RouteMotion, double OpeningMps);
+        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt);
 
     public void Dispose()
     {
@@ -1910,6 +2023,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _summaryTimeout?.Stop();
         _summaryTimeout?.Dispose();
         _linger = null;
+        ModelOutlines?.Dispose();
     }
 }
 
@@ -1936,10 +2050,16 @@ internal sealed class TrackedGroundAircraft
     public string RawType = "";
     public string Name = "";      // spoken name: "Delta A320", "DAL 123, A320", "A320", "traffic"
     public bool NameHasType;
+    /// <summary>Its outline: what every distance to it is measured to (<c>GroundTrafficMonitor.ResolveHull</c>).</summary>
+    public AircraftHull Hull = AircraftHull.Default;
+    /// <summary>The measured model outline <see cref="Hull"/> was built from, null while it is sized by type.</summary>
+    public AircraftOutline? Outline;
+    /// <summary>What a type-sized <see cref="Hull"/> was resolved from.</summary>
+    public (string Type, string AtcModel, string Title, double WingSpanFt) HullKey;
     public GroundZone CurrentZone      = GroundZone.None;
     /// <summary>The zone of the last zone callout actually spoken for this aircraft.</summary>
     public GroundZone LastSpokenZone   = GroundZone.None;
-    /// <summary>The distance (feet) of that callout; NaN until one is spoken.</summary>
+    /// <summary>The gap (feet) of that callout; NaN until one is spoken.</summary>
     public double LastSpokenZoneDistFt = double.NaN;
     /// <summary>When any callout for this aircraft was last spoken.</summary>
     public DateTime LastAlertTime      = DateTime.MinValue;

@@ -113,6 +113,9 @@ public sealed class OwnAircraftFilter
     private static readonly HashSet<string> HelperObjectTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "Fenix Dummy Object", "FNXDUMMY",
+        // ApronLife's jetway helper: an invisible "airplane" it parks at a gate so the jetway docks
+        // (aircraft.cfg atc_type "ApronLife", atc_model "HELPER", no model at all).
+        "ApronLife",
     };
 
     /// <summary>
