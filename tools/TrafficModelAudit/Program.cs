@@ -30,14 +30,15 @@ var icaoByTitle = AircraftCfgCatalog.BuildMap();
 Console.WriteLine($"Index: {index.Count} titles in {clock.ElapsedMilliseconds} ms");
 
 // One row per model FILE: liveries share it.
-var models = new Dictionary<string, (List<string> Titles, IReadOnlyList<string> Lods, string Dir, string Suffix)>(StringComparer.OrdinalIgnoreCase);
+var models = new Dictionary<string, (List<string> Titles, IReadOnlyList<GroundTrafficModelReader.ModelPart> Parts, string Dir, string Suffix)>(StringComparer.OrdinalIgnoreCase);
 var noFile = new List<string>();
 foreach (var (title, model) in index)
 {
     if (only != null && model.AircraftDir.IndexOf(only, StringComparison.OrdinalIgnoreCase) < 0) continue;
-    var lods = GroundTrafficModelCatalog.LodPaths(model);
-    if (lods.Count == 0) { noFile.Add(title); continue; }
-    if (!models.TryGetValue(lods[0], out var row)) models[lods[0]] = row = (new List<string>(), lods, model.AircraftDir, model.ModelSuffix);
+    var parts = GroundTrafficModelCatalog.Parts(model);
+    if (parts.Count == 0) { noFile.Add(title); continue; }
+    string key = GroundTrafficModelCatalog.PartsKey(parts);
+    if (!models.TryGetValue(key, out var row)) models[key] = row = (new List<string>(), parts, model.AircraftDir, model.ModelSuffix);
     row.Titles.Add(title);
 }
 
@@ -52,20 +53,37 @@ var summary = new SortedDictionary<string, int[]>(StringComparer.OrdinalIgnoreCa
 int[] Count(string package) => summary.TryGetValue(package, out var c) ? c : summary[package] = new int[5];
 int measuredTitles = 0;
 clock.Restart();
-foreach (var (file, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
+foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
 {
-    string package = Package(file);
-    string label = $"{Path.GetFileName(row.Dir)}/{(row.Suffix.Length > 0 ? "model." + row.Suffix : "model")}";
+    string file = row.Parts[^1].Lods[0];
+    string package = Package(row.Dir);
+    string label = row.Parts.Count > 1
+        ? $"{Path.GetFileName(Path.GetDirectoryName(row.Dir))} ({row.Parts.Count} parts)"
+        : $"{Path.GetFileName(row.Dir)}/{(row.Suffix.Length > 0 ? "model." + row.Suffix : "model")}";
     string declared = icaoByTitle.TryGetValue(row.Titles[0].ToLowerInvariant(), out var d) ? d : "";
     var published = GroundTrafficAircraftSizes.Lookup(declared);
-    var outline = GroundTrafficModelReader.Measure(row.Lods);
+    var big = new List<string>();
+    if (args.Contains("--nodes"))
+        GroundTrafficModelReader.NodeTrace = (dir, node, x0, x1, z0, z1) =>
+        {
+            double ahead = double.TryParse(Environment.GetEnvironmentVariable("AUDIT_AHEAD"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : double.MaxValue;
+            if (z1 > ahead || Math.Max(Math.Max(Math.Abs(x0), Math.Abs(x1)), Math.Max(Math.Abs(z0), Math.Abs(z1))) > 40 || x1 - x0 > 66)
+                big.Add($"    node {Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar))}/{node} x[{x0:0},{x1:0}] z[{z0:0},{z1:0}]");
+        };
+    var outline = GroundTrafficModelReader.Measure(row.Parts, out string why);
+    GroundTrafficModelReader.NodeTrace = null;
+    foreach (string line in big.Distinct().Take(25)) Console.WriteLine(line);
     if (outline == null)
     {
         Count(package)[3]++;
-        Console.WriteLine($"UNREADABLE {package} {label} type={declared} titles={row.Titles.Count} file={Path.GetFileName(file)}");
+        Console.WriteLine($"UNREADABLE {package} {label} type={declared} titles={row.Titles.Count} file={Path.GetFileName(file)} why={why}");
+        if (args.Contains("--parts")) foreach (var part in row.Parts) Console.WriteLine($"    part parent={part.Parent} node={part.AttachNode} lods={part.Lods.Count} first={Path.GetFileName(part.Lods[0])}");
         continue;
     }
     measuredTitles += row.Titles.Count;
+    if (args.Contains("--profile"))
+        Console.WriteLine("    profile " + string.Join(" ", Enumerable.Range(0, outline.HalfWidths.Count).Where(i => i % 8 == 0)
+            .Select(i => $"{-outline.TailM + i * AircraftOutline.StationM:0}:{outline.HalfWidths[i]:0.0}")));
     double length = outline.LengthM, span = outline.HalfSpanM * 2.0;
     string measured = $"L {length:0.00} span {span:0.00} nose {outline.NoseM:0.0} tail {outline.TailM:0.0} corners {outline.Polygon.Count}";
     if (published is not { } p)

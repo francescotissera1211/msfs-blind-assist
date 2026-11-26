@@ -106,7 +106,9 @@ public sealed class AircraftOutline
 /// a node a gear, wheel or steering animation moves is left out, with everything under it
 /// (<see cref="GearAnimation"/>).</item>
 /// <item>Ground equipment drawn inside an aircraft model (IVAO's pushback tug, fuel truck and stairs,
-/// wheel chocks) is not airframe: <see cref="NotAirframe"/> names it.</item>
+/// wheel chocks) is not airframe: <see cref="NotAirframe"/> names it, with the "LOD friend" an add-on
+/// hangs on a part: one invisible triangle 150 m across, there only to hold a level of detail on screen;
+/// and with a light's glow, a billboard that can be 40 m wide (the PMDG 777's <c>LIGHT_left_strobe</c>).</item>
 /// <item>The silhouette is laterally SYMMETRIC: each station takes the narrower of its two sides, which
 /// drops a part parked on one side only, and only the one connected body is kept.</item>
 /// </list>
@@ -115,13 +117,23 @@ public sealed class AircraftOutline
 public static partial class GroundTrafficModelReader
 {
     /// <summary>A node whose name matches, and everything under it, is ground equipment, never airframe.</summary>
-    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal",
+    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|(^|_)gse(_|$)|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal|lod_?friend|^friend_|^lights?_|glow|halo|lens.?flare|cast.?shadow",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NotAirframe();
 
     /// <summary>An animation whose name matches moves landing gear: its nodes are left out of the outline.</summary>
     [GeneratedRegex(@"gear|wheel|tire|tyre|bogie|steer", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex GearAnimation();
+
+    /// <summary>
+    /// The audit's eyes (tools/TrafficModelAudit --nodes): called for every mesh node that goes into an
+    /// outline, with its file, its name and its extent in model space. Null in the app.
+    /// </summary>
+    internal static Action<string, string, double, double, double, double>? NodeTrace;
+
+    /// <summary>A mesh of at most this many vertices spread more than <see cref="HelperMinSpreadM"/> both across and along is a helper plane, not airframe.</summary>
+    public const int HelperMaxVertices = 36;
+    public const double HelperMinSpreadM = 40.0;
 
     /// <summary>Stations this far apart (metres) or less belong to one body; a part beyond it is dropped.</summary>
     public const double MaxBodyGapM = 2.0;
@@ -130,72 +142,137 @@ public static partial class GroundTrafficModelReader
     public const double MinLengthM = 2.0, MaxLengthM = 110.0, MinHalfSpanM = 0.5, MaxHalfSpanM = 50.0;
 
     /// <summary>
+    /// One part of a model: its levels of detail, most detailed first, and, for a part attached to
+    /// another (an MSFS 2024 modular aircraft: a fuselage, a wing, a stabiliser), the index of that part and
+    /// the name of the node of it that this one is placed at (none: its origin).
+    /// </summary>
+    public sealed record ModelPart(IReadOnlyList<string> Lods, int Parent = -1, string? AttachNode = null);
+
+    /// <summary>
+    /// A level of detail whose geometry is larger than this (bytes) is passed over for a lighter one when
+    /// there is one: an add-on's top level can be hundreds of megabytes, and the outline is the same.
+    /// </summary>
+    public const long PreferredMaxBufferBytes = 48L * 1024 * 1024;
+
+    /// <summary>A level of detail larger than this (bytes) is the last resort.</summary>
+    public const long MaxBufferBytes = 256L * 1024 * 1024;
+
+    /// <summary>The number of levels of detail, from the most detailed, that are fit to measure: the coarser ones drop or merge parts.</summary>
+    public const int DetailedLods = 3;
+
+    private static readonly double[] Identity = { 1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
+
+    /// <summary>
     /// The outline of a model given its levels of detail, most detailed first: measured from the first
     /// one with no skinned mesh, else from the first. Null when none can be read.
     /// </summary>
-    public static AircraftOutline? Measure(IReadOnlyList<string> lodPaths)
+    public static AircraftOutline? Measure(IReadOnlyList<string> lodPaths) => Measure(new[] { new ModelPart(lodPaths) });
+
+    /// <summary>The outline of one glTF file; null when it cannot be read or is not aircraft-sized.</summary>
+    public static AircraftOutline? Measure(string gltfPath) => Measure(new[] { gltfPath });
+
+    /// <summary>
+    /// The outline of a model assembled from <paramref name="parts"/>, parents before the parts attached to
+    /// them. A part that cannot be read is left out; null when nothing can be measured.
+    /// </summary>
+    public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts) => Measure(parts, out _);
+
+    /// <summary>As <see cref="Measure(IReadOnlyList{ModelPart})"/>, saying in <paramref name="why"/> why a model could not be measured (the audit and the log).</summary>
+    public static AircraftOutline? Measure(IReadOnlyList<ModelPart> parts, out string why)
     {
-        JsonDocument? fallback = null;
-        string? fallbackPath = null;
+        why = "";
         try
         {
-            foreach (string path in lodPaths)
+            var meshes = new List<Part>();
+            var roots = new double[parts.Count][];
+            var nodes = new Dictionary<string, double[]>?[parts.Count];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                var part = parts[i];
+                double[] root = Identity;
+                if (part.Parent >= 0 && part.Parent < i)
+                {
+                    root = roots[part.Parent];
+                    if (part.AttachNode is { Length: > 0 } name && nodes[part.Parent] is { } known
+                        && known.TryGetValue(name, out var at)) root = at;
+                }
+                roots[i] = root;
+                nodes[i] = Load(part.Lods, root, meshes);
+            }
+            if (meshes.Count == 0) { why = "no geometry could be read"; return null; }
+            return Silhouette(meshes, out why);
+        }
+        catch (Exception ex) { why = ex.Message; return null; }
+    }
+
+    // Adds one part's airframe meshes, from the level of detail that suits best. Only the first
+    // DetailedLods levels are fit to measure (the PMDG 777's sixth has no tail cone): among them one with
+    // no skinned mesh and not oversized first, then not oversized, then the rest in order; the coarse
+    // levels only when no detailed one can be read. Returns the world transform of every node of the
+    // level used, by name (where the parts attached to it go).
+    private static Dictionary<string, double[]>? Load(IReadOnlyList<string> lods, double[] root, List<Part> meshes)
+    {
+        var candidates = new List<(int Rank, int Order, JsonDocument Doc, string Path)>();
+        try
+        {
+            for (int i = 0; i < lods.Count; i++)
             {
                 JsonDocument doc;
-                try { doc = JsonDocument.Parse(WithoutBom(File.ReadAllBytes(path))); }
+                try { doc = JsonDocument.Parse(WithoutBom(File.ReadAllBytes(lods[i]))); }
                 catch (Exception) { continue; }
-                bool skinned = doc.RootElement.TryGetProperty("skins", out var skins)
+                var r = doc.RootElement;
+                bool skinned = r.TryGetProperty("skins", out var skins)
                                && skins.ValueKind == JsonValueKind.Array && skins.GetArrayLength() > 0;
-                if (!skinned)
-                {
-                    using (doc)
-                    {
-                        var outline = MeasureDocument(doc.RootElement, path);
-                        if (outline != null) return outline;
-                    }
-                    continue;
-                }
-                if (fallback == null) { fallback = doc; fallbackPath = path; }
-                else doc.Dispose();
+                long bytes = 0;
+                if (r.TryGetProperty("buffers", out var buffers) && buffers.ValueKind == JsonValueKind.Array)
+                    foreach (var b in buffers.EnumerateArray())
+                        if (b.TryGetProperty("byteLength", out var len) && len.TryGetInt64(out long n)) bytes += n;
+                int rank = (i >= DetailedLods ? 16 : 0) + (bytes > MaxBufferBytes ? 8 : 0)
+                           + (bytes > PreferredMaxBufferBytes ? 4 : 0) + (skinned ? 2 : 0);
+                candidates.Add((rank, i, doc, lods[i]));
             }
-            return fallback != null ? MeasureDocument(fallback.RootElement, fallbackPath!) : null;
+            foreach (var c in candidates.OrderBy(c => c.Rank).ThenBy(c => c.Order))
+            {
+                try
+                {
+                    var gltf = new Gltf(c.Doc.RootElement, Path.GetDirectoryName(c.Path) ?? "");
+                    var found = gltf.WorldParts(NotAirframe(), GearAnimation(), root, out var nodeWorlds);
+                    if (found.Count == 0) continue;
+                    meshes.AddRange(found);
+                    return nodeWorlds;
+                }
+                catch (Exception) { /* this level cannot be read: the next */ }
+            }
+            return null;
         }
-        catch (Exception) { return null; }
-        finally { fallback?.Dispose(); }
+        finally { foreach (var c in candidates) c.Doc.Dispose(); }
     }
 
     private static ReadOnlyMemory<byte> WithoutBom(byte[] bytes)
         => bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? bytes.AsMemory(3) : bytes;
 
-    /// <summary>The outline of one glTF file; null when it cannot be read or is not aircraft-sized.</summary>
-    public static AircraftOutline? Measure(string gltfPath) => Measure(new[] { gltfPath });
-
-    private static AircraftOutline? MeasureDocument(JsonElement root, string gltfPath)
-    {
-        try
-        {
-            var gltf = new Gltf(root, Path.GetDirectoryName(gltfPath) ?? "");
-            var parts = gltf.WorldParts(NotAirframe(), GearAnimation());
-            return parts.Count == 0 ? null : Silhouette(parts);
-        }
-        catch (Exception) { return null; }
-    }
-
     /// <summary>One mesh primitive in model space: its points as X, Z pairs and its triangles' corner indices.</summary>
     internal readonly record struct Part(double[] Xz, int[]? Triangles);
 
-    internal static AircraftOutline? Silhouette(IReadOnlyList<Part> parts)
+    internal static AircraftOutline? Silhouette(IReadOnlyList<Part> parts) => Silhouette(parts, out _);
+
+    internal static AircraftOutline? Silhouette(IReadOnlyList<Part> parts, out string why)
     {
+        why = "";
         double zMin = double.MaxValue, zMax = double.MinValue;
         foreach (var part in parts)
             for (int i = 1; i < part.Xz.Length; i += 2)
             {
                 double z = part.Xz[i];
-                if (!double.IsFinite(z) || !double.IsFinite(part.Xz[i - 1])) return null;
+                if (!double.IsFinite(z) || !double.IsFinite(part.Xz[i - 1])) { why = "a position is not a number"; return null; }
                 if (z < zMin) zMin = z;
                 if (z > zMax) zMax = z;
             }
-        if (zMin > zMax || zMax - zMin > 4.0 * MaxLengthM) return null;
+        if (zMin > zMax || zMax - zMin > 4.0 * MaxLengthM)
+        {
+            why = FormattableString.Invariant($"geometry spans {zMax - zMin:0} m along the fuselage");
+            return null;
+        }
 
         int n = (int)Math.Floor((zMax - zMin) / AircraftOutline.StationM) + 1;
         var cells = new Cells(n, zMin);
@@ -244,7 +321,7 @@ public static partial class GroundTrafficModelReader
                 start = -1;
             }
         }
-        if (bestStart < 0) return null;
+        if (bestStart < 0) { why = "no station has geometry on both sides"; return null; }
 
         var half = new float[bestEnd - bestStart + 1];
         for (int i = bestStart; i <= bestEnd; i++) half[i - bestStart] = Math.Max(0f, width[i]);
@@ -253,7 +330,11 @@ public static partial class GroundTrafficModelReader
         double tailM = -tailZ, noseM = noseZ;
         var outline = new AircraftOutline(tailM, noseM, Resample(half, zMin + bestStart * AircraftOutline.StationM, tailZ, noseZ));
         if (outline.LengthM < MinLengthM || outline.LengthM > MaxLengthM
-            || outline.HalfSpanM < MinHalfSpanM || outline.HalfSpanM > MaxHalfSpanM) return null;
+            || outline.HalfSpanM < MinHalfSpanM || outline.HalfSpanM > MaxHalfSpanM)
+        {
+            why = FormattableString.Invariant($"not aircraft-sized: {outline.LengthM:0.0} m long, {outline.HalfSpanM * 2:0.0} m wide");
+            return null;
+        }
         return outline;
     }
 
@@ -478,9 +559,10 @@ public static partial class GroundTrafficModelReader
         }
 
         /// <summary>Every airframe mesh primitive in model space.</summary>
-        public List<Part> WorldParts(Regex notAirframe, Regex gearAnimation)
+        public List<Part> WorldParts(Regex notAirframe, Regex gearAnimation, double[] root, out Dictionary<string, double[]> nodeWorlds)
         {
             var parts = new List<Part>();
+            nodeWorlds = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
             var gear = new HashSet<int>();
             foreach (var (animation, node) in _animated)
                 if (gearAnimation.IsMatch(animation)) gear.Add(node);
@@ -498,10 +580,9 @@ public static partial class GroundTrafficModelReader
             else
                 for (int i = 0; i < _nodes.Length; i++) if (!isChild[i]) roots.Add(i);
 
-            var identity = new[] { 1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0 };
             var visited = new bool[_nodes.Length];
             var stack = new Stack<(int Node, double[] Parent)>();
-            foreach (int r in roots) stack.Push((r, identity));
+            foreach (int r in roots) stack.Push((r, root));
             while (stack.Count > 0)
             {
                 var (index, parent) = stack.Pop();
@@ -509,14 +590,31 @@ public static partial class GroundTrafficModelReader
                 visited[index] = true;
                 var node = _nodes[index];
                 string name = node.TryGetProperty("name", out var nm) ? nm.GetString() ?? "" : "";
-                if (gear.Contains(index) || notAirframe.IsMatch(name)) continue;
                 double[] world = Multiply(parent, Local(index));
+                if (name.Length > 0) nodeWorlds.TryAdd(name, world);
+                if (gear.Contains(index) || notAirframe.IsMatch(name)) continue;
                 if (node.TryGetProperty("mesh", out var meshEl) && (uint)meshEl.GetInt32() < (uint)_meshes.Length)
-                    AddMesh(parts, _meshes[meshEl.GetInt32()], node.TryGetProperty("skin", out _) ? identity : world);
+                {
+                    int before = parts.Count;
+                    AddMesh(parts, _meshes[meshEl.GetInt32()], node.TryGetProperty("skin", out _) ? root : world);
+                    if (NodeTrace is { } trace) Trace(trace, name, parts, before);
+                }
                 if (node.TryGetProperty("children", out var children))
                     foreach (var child in children.EnumerateArray()) stack.Push((child.GetInt32(), world));
             }
             return parts;
+        }
+
+        private void Trace(Action<string, string, double, double, double, double> trace, string name, List<Part> parts, int from)
+        {
+            double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
+            for (int p = from; p < parts.Count; p++)
+                for (int i = 0; i + 1 < parts[p].Xz.Length; i += 2)
+                {
+                    x0 = Math.Min(x0, parts[p].Xz[i]); x1 = Math.Max(x1, parts[p].Xz[i]);
+                    z0 = Math.Min(z0, parts[p].Xz[i + 1]); z1 = Math.Max(z1, parts[p].Xz[i + 1]);
+                }
+            if (x0 <= x1) trace(_dir, name, x0, x1, z0, z1);
         }
 
         private void AddMesh(List<Part> parts, JsonElement mesh, double[] world)
@@ -529,11 +627,21 @@ public static partial class GroundTrafficModelReader
                 double[]? p = ReadAccessor(positionEl.GetInt32(), 3);
                 if (p == null || p.Length == 0) continue;
                 var xz = new double[p.Length / 3 * 2];
+                double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
                 for (int i = 0, o = 0; i + 2 < p.Length; i += 3, o += 2)
                 {
-                    xz[o] = world[0] * p[i] + world[1] * p[i + 1] + world[2] * p[i + 2] + world[3];
-                    xz[o + 1] = world[8] * p[i] + world[9] * p[i + 1] + world[10] * p[i + 2] + world[11];
+                    double x = xz[o] = world[0] * p[i] + world[1] * p[i + 1] + world[2] * p[i + 2] + world[3];
+                    double z = xz[o + 1] = world[8] * p[i] + world[9] * p[i + 1] + world[10] * p[i + 2] + world[11];
+                    if (x < x0) x0 = x;
+                    if (x > x1) x1 = x;
+                    if (z < z0) z0 = z;
+                    if (z > z1) z1 = z;
                 }
+                // A handful of vertices spread wide both ways is a helper, never airframe: the plane, box
+                // or single triangle an add-on hangs on a part to hold its level of detail (100 m across
+                // on the iniBuilds A350's wings and the PMDG 777F, under any name). No wing is 40 m both
+                // across and along.
+                if (xz.Length / 2 <= HelperMaxVertices && x1 - x0 > HelperMinSpreadM && z1 - z0 > HelperMinSpreadM) continue;
                 int mode = primitive.TryGetProperty("mode", out var modeEl) ? modeEl.GetInt32() : 4;
                 int[]? triangles = null;
                 if (mode == 4)
