@@ -14,8 +14,11 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>Writes small glTF models: boxes seen from above, on named nodes.</summary>
 internal static class TestModel
 {
+    /// <summary>What a box is drawn with: an ordinary material, the simulator's invisible one, or as an environment occluder.</summary>
+    public enum Material { Visible, Invisible, Occluder }
+
     /// <summary>A flat box: x from XShift - HalfWidth to XShift + HalfWidth, z from ZMin to ZMax.</summary>
-    public sealed record Box(double HalfWidth, double ZMin, double ZMax, double XShift = 0);
+    public sealed record Box(double HalfWidth, double ZMin, double ZMax, double XShift = 0, Material Material = Material.Visible);
 
     /// <summary>How a node's boxes share buffers: each its own, or one vertex and one index accessor the way MSFS packs materials.</summary>
     public enum Packing { Separate, StartIndex, BaseVertex }
@@ -79,7 +82,7 @@ internal static class TestModel
                     foreach (var box in boxes)
                     {
                         int position = AddVertices(new[] { box }), indices = AddIndices(quad);
-                        primitives.Add(Inv($"{{\"attributes\":{{\"POSITION\":{position}}},\"indices\":{indices}}}"));
+                        primitives.Add(Inv($"{{\"attributes\":{{\"POSITION\":{position}}},\"indices\":{indices},\"material\":{(int)box.Material}}}"));
                     }
                 }
                 else
@@ -92,7 +95,7 @@ internal static class TestModel
                     {
                         string slice = "\"PrimitiveCount\":2" + (b > 0 ? Inv($",\"StartIndex\":{b * 6}") : "")
                             + (relative ? Inv($",\"VertexCount\":4") + (b > 0 ? Inv($",\"BaseVertexIndex\":{b * 4}") : "") : "");
-                        primitives.Add(Inv($"{{\"attributes\":{{\"POSITION\":{position}}},\"indices\":{indices},\"extras\":{{\"ASOBO_primitive\":{{{slice}}}}}}}"));
+                        primitives.Add(Inv($"{{\"attributes\":{{\"POSITION\":{position}}},\"indices\":{indices},\"material\":{(int)boxes[b].Material},\"extras\":{{\"ASOBO_primitive\":{{{slice}}}}}}}"));
                     }
                 }
                 meshes.Add("{\"primitives\":[" + string.Join(",", primitives) + "]}");
@@ -110,7 +113,8 @@ internal static class TestModel
         var children = nodes.SelectMany(n => n.Children ?? Array.Empty<int>()).ToHashSet();
         string roots = string.Join(",", Enumerable.Range(0, nodes.Length).Where(i => !children.Contains(i)));
         string gltf = "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,\"scenes\":[{\"nodes\":[" + roots + "]}],\"nodes\":[" + string.Join(",", nodeJson)
-            + "],\"meshes\":[" + string.Join(",", meshes) + "],\"accessors\":[" + string.Join(",", accessors)
+            + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}}]"
+            + ",\"meshes\":[" + string.Join(",", meshes) + "],\"accessors\":[" + string.Join(",", accessors)
             + "],\"bufferViews\":[" + string.Join(",", views)
             + "],\"buffers\":[{\"uri\":\"" + name + ".bin\",\"byteLength\":" + (declaredBytes ?? bin.Count).ToString(CultureInfo.InvariantCulture) + "}]"
             + (animations.Count > 0 ? ",\"animations\":[" + string.Join(",", animations) + "]" : "")
@@ -244,18 +248,37 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     }
 
     [Theory]
-    [InlineData("LIGHT_left_strobe")]            // the PMDG 777's glow billboards, 40 m wide
-    [InlineData("light_landing")]
-    [InlineData("Wing_Lights")]
-    [InlineData("NavGlow_L")]
-    [InlineData("CastShadows_Gear")]
-    [InlineData("LOD_friend_wing")]
-    [InlineData("LODFriend")]
+    [InlineData("LIGHT_left_strobe", TestModel.Material.Invisible)]       // the PMDG 777's 31 m sphere round each lamp
+    [InlineData("A359_EXT_WING_LEFT", TestModel.Material.Invisible)]      // the iniBuilds A350's 35 m box on each wing
+    [InlineData("Skel_Fuselage_BoxLOD", TestModel.Material.Invisible)]    // the Fenix's box round its fuselage
+    [InlineData("DRONE_COLLISION_IN", TestModel.Material.Invisible)]
+    [InlineData("OCCLUDER_1000", TestModel.Material.Occluder)]
+    public void What_is_drawn_with_the_invisible_material_or_as_an_occluder_is_not_airframe(string name, object material)
+    {
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "unseen", Body("fuselage", Fuselage), Body("wing", Wing),
+            Body(name, new TestModel.Box(30, 10, 30, Material: (TestModel.Material)material))))!;
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    [Fact]
+    public void An_invisible_slice_of_the_wing_s_own_buffer_goes_and_the_wing_stays()
+    {
+        // The A350's wing: its paint and its invisible 35 m box are two materials of ONE mesh.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "unseen-packed", Body("fuselage", Fuselage),
+            new TestModel.Node("A359_EXT_WING_LEFT", new[] { Wing, new TestModel.Box(35, -20, 15, Material: TestModel.Material.Invisible) },
+                Packing: TestModel.Packing.BaseVertex)))!;
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        Assert.Equal(22.0, outline.TailM, 2);
+        Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    [Theory]
     [InlineData("GEAR_GSE")]
-    [InlineData("skel_wing_box")]
     [InlineData("Fuel_Truck")]
     [InlineData("TowBar")]
-    public void What_is_drawn_around_an_airframe_is_not_the_airframe(string name)
+    [InlineData("WheelChocks_L")]
+    public void Ground_equipment_is_named_and_is_not_the_airframe(string name)
     {
         var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "around", Body("fuselage", Fuselage), Body("wing", Wing),
             Body(name, new TestModel.Box(30, 10, 30))))!;
@@ -264,13 +287,17 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     }
 
     [Theory]
+    [InlineData("cabin_lights_VC")]              // an FSX-converted model's whole airframe (353 of AIG's)
+    [InlineData("LIGHT_Nav_green")]              // AIG's 787: the wingtip itself
+    [InlineData("custom_vis_LIGHT_LANDING_0_mcx_VC")]
+    [InlineData("Light_Landing_Wing_R")]         // the Fenix's lamp housings
+    [InlineData("LOD_friend_wing")]              // a name is no test: what is seen is airframe
+    [InlineData("CastShadows_Fuselage")]
+    [InlineData("skel_wing_box")]
     [InlineData("tail_cone")]                    // "cone" once dropped real tail cones
-    [InlineData("skel_wing")]                    // a skeleton's mesh, not its bounding box
-    [InlineData("Wing_Lighting_Fairing")]        // "light" inside a word
     [InlineData("Flight_Deck_Windows")]
-    [InlineData("Highlights")]
     [InlineData("stugeon")]                      // "tug" inside a word
-    public void A_real_part_whose_name_only_resembles_one_of_those_is_kept(string name)
+    public void A_visible_part_is_airframe_whatever_it_is_called(string name)
     {
         var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "kept", Body("fuselage", Fuselage), Body("wing", Wing),
             Body(name, new TestModel.Box(1, -27, -21))))!;

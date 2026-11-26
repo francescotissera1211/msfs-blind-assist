@@ -126,9 +126,17 @@ public sealed class AircraftOutline
 /// a node a gear, wheel or steering animation moves is left out, with everything under it
 /// (<see cref="GearAnimation"/>).</item>
 /// <item>Ground equipment drawn inside an aircraft model (IVAO's pushback tug, fuel truck and stairs,
-/// wheel chocks) is not airframe: <see cref="NotAirframe"/> names it, with the "LOD friend" an add-on
-/// hangs on a part: one invisible triangle 150 m across, there only to hold a level of detail on screen;
-/// and with a light's glow, a billboard that can be 40 m wide (the PMDG 777's <c>LIGHT_left_strobe</c>).</item>
+/// wheel chocks) is not airframe: <see cref="NotAirframe"/> names it. It is drawn with ordinary materials
+/// and shown or hidden by the simulator, so only its name tells it apart.</item>
+/// <item>What is drawn with the simulator's INVISIBLE material (<c>ASOBO_material_invisible</c>) or as an
+/// environment occluder is never seen, so it is never airframe: the 31 m sphere the PMDG 777 hangs on
+/// each light so the lamp is not culled, the 35 m boxes on the iniBuilds A350's wings, the Fenix's 200 m
+/// triangles and the box round its fuselage, collision shapes, FSLTL's gear helpers. Over the 1,021
+/// models installed on 2026-11-26 this one rule does what names once tried to ("LOD friend", "cast
+/// shadow", a skeleton's box, anything called a light), and a NAME is no test for those: an
+/// FSX-converted model keeps its whole airframe under a visibility condition called
+/// <c>cabin_lights_VC</c> (353 of AIG's models, the business jets entirely), and AIG's 787 keeps its
+/// wingtips under <c>LIGHT_</c> nodes.</item>
 /// <item>The silhouette is laterally SYMMETRIC: each station takes the narrower of its two sides, which
 /// drops a part parked on one side only, and only the one connected body is kept.</item>
 /// </list>
@@ -137,7 +145,7 @@ public sealed class AircraftOutline
 public static partial class GroundTrafficModelReader
 {
     /// <summary>A node whose name matches, and everything under it, is ground equipment, never airframe.</summary>
-    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|(^|_)gse(_|$)|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal|lod_?friend|^friend_|(^|_)lights?(_|$)|glow|halo|lens.?flare|cast.?shadow|^skel_.*_box$",
+    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|(^|_)gse(_|$)|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NotAirframe();
 
@@ -534,6 +542,8 @@ public static partial class GroundTrafficModelReader
         private readonly string _dir;
         private readonly JsonElement[] _nodes, _accessors, _bufferViews, _meshes;
         private readonly byte[]?[] _buffers;
+        // Per material: drawn with the simulator's invisible material, or only as an environment occluder.
+        private readonly bool[] _unseenMaterial;
         private readonly Dictionary<int, Dictionary<string, double[]>> _firstKeys = new();
         // Every node each animation moves, by the animation's name.
         private readonly List<(string Animation, int Node)> _animated = new();
@@ -549,6 +559,11 @@ public static partial class GroundTrafficModelReader
             var buffers = Items("buffers");
             _buffers = new byte[]?[buffers.Length];
             for (int i = 0; i < buffers.Length; i++) _buffers[i] = LoadBuffer(buffers[i]);
+            var materials = Items("materials");
+            _unseenMaterial = new bool[materials.Length];
+            for (int i = 0; i < materials.Length; i++)
+                _unseenMaterial[i] = materials[i].TryGetProperty("extensions", out var ext) && ext.ValueKind == JsonValueKind.Object
+                    && (ext.TryGetProperty("ASOBO_material_invisible", out _) || ext.TryGetProperty("ASOBO_material_environment_occluder", out _));
             ReadFirstKeys();
         }
 
@@ -752,6 +767,9 @@ public static partial class GroundTrafficModelReader
             {
                 if (!primitive.TryGetProperty("attributes", out var attributes)
                     || !attributes.TryGetProperty("POSITION", out var positionEl)) continue;
+                // Never seen, so never airframe: see the class remarks.
+                if (primitive.TryGetProperty("material", out var materialEl) && materialEl.TryGetInt32(out int material)
+                    && (uint)material < (uint)_unseenMaterial.Length && _unseenMaterial[material]) continue;
                 int positionIndex = positionEl.GetInt32();
                 if (!positions.TryGetValue(positionIndex, out double[]? xz))
                 {
@@ -811,8 +829,9 @@ public static partial class GroundTrafficModelReader
 
                 // A handful of vertices spread wide both ways is a helper, never airframe: the plane, box
                 // or single triangle an add-on hangs on a part to hold its level of detail (100 m across
-                // on the iniBuilds A350's wings and the PMDG 777F, under any name). No wing is 40 m both
-                // across and along. Counted over the vertices this primitive itself draws.
+                // on the iniBuilds A350's wings and the PMDG 777F). Those installed here all use the
+                // invisible material and are gone already; this is for one that does not. No wing is
+                // 40 m both across and along. Counted over the vertices this primitive itself draws.
                 double x0 = double.MaxValue, x1 = double.MinValue, z0 = double.MaxValue, z1 = double.MinValue;
                 int used = 0;
                 void Take(int v)
