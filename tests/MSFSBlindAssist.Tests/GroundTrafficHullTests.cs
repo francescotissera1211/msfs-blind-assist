@@ -409,3 +409,22 @@ public class AiTrafficTypeTests
     public void A_traffic_aircraft_s_type_is_the_one_its_title_names(string atcType, string atcModel, string title, string expected)
         => Assert.Equal(expected, SimConnect.SimConnectManager.ResolveAiAircraftType(atcType, atcModel, title));
 }
+
+public class MeasuredOutlineGuardTests
+{
+    private static AircraftOutline Outline(double tailM, double noseM, float halfSpanM)
+        => new(tailM, noseM, Enumerable.Repeat(halfSpanM, (int)((tailM + noseM) / AircraftOutline.StationM)).ToArray());
+
+    [Fact]
+    public void A_measured_outline_far_from_its_type_s_published_size_is_not_believed()
+    {
+        var a320 = GroundTrafficAircraftSizes.Resolve("A320", "", "", 0.0);
+        Assert.True(GroundTrafficAircraftSizes.Agrees(Outline(21.1, 16.5, 17.1f), a320));     // the FAIB A320, no sharklets
+        Assert.False(GroundTrafficAircraftSizes.Agrees(Outline(25.7, 13.5, 6.8f), a320));     // the Fenix with no wings placed
+        Assert.False(GroundTrafficAircraftSizes.Agrees(Outline(40.0, 30.0, 17.9f), a320));    // far too long
+    }
+
+    [Fact]
+    public void An_unknown_type_has_nothing_to_hold_a_measurement_against()
+        => Assert.True(GroundTrafficAircraftSizes.Agrees(Outline(5.0, 3.0, 6.0f), GroundTrafficAircraftSizes.Default));
+}

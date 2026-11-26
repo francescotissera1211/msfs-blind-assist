@@ -861,6 +861,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         if (SizeAllTrafficAsReference) return null;
         var outline = ModelOutlines?.TryGet(e.Title);
+        if (outline != null && !GroundTrafficAircraftSizes.Agrees(outline,
+                GroundTrafficAircraftSizes.Resolve(string.IsNullOrEmpty(e.AircraftType) ? ac.RawType : e.AircraftType, e.AtcModel, e.Title, 0.0)))
+            outline = null;
         if (outline != null)
         {
             if (ReferenceEquals(ac.Outline, outline)) return null;
@@ -889,6 +892,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         key = (key.Title ?? "", key.IcaoType ?? "", key.WingSpanFt);
         if (_ownHullResolved && key == _ownHullKey && _ownHull.Source == AircraftHullSource.Model) return _ownHull;
         var outline = key.Title.Length > 0 ? ModelOutlines?.TryGet(key.Title) : null;
+        if (outline != null && !GroundTrafficAircraftSizes.Agrees(outline,
+                GroundTrafficAircraftSizes.ResolveOwn(key.IcaoType, key.Title, key.WingSpanFt * 0.3048)))
+            outline = null;
         if (outline == null && _ownHullResolved && key == _ownHullKey) return _ownHull;
         var hull = outline != null
             ? AircraftHull.FromOutline(outline)

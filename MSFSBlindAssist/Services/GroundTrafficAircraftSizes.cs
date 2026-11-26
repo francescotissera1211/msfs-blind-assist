@@ -333,6 +333,23 @@ public static class GroundTrafficAircraftSizes
         return size.Source == AircraftSizeSource.Table && spanOk ? size with { WingspanM = simWingspanM } : size;
     }
 
+    /// <summary>A measured outline further than this from its type's published length or span is not believed.</summary>
+    public const double MaxMeasuredDeviation = 0.15;
+
+    /// <summary>
+    /// Does a measured outline fit the aircraft it is for? When the type is known (<paramref name="size"/>
+    /// from the table), its length and span must be within <see cref="MaxMeasuredDeviation"/> of the
+    /// published ones: a model whose parts could not all be placed (the Fenix's wings, 2026-11-26) measures
+    /// as something else, and the published size is then the safer answer. An unknown type has nothing to
+    /// hold the measurement against, so it stands.
+    /// </summary>
+    public static bool Agrees(AircraftOutline outline, AircraftSize size)
+    {
+        if (size.Source != AircraftSizeSource.Table) return true;
+        return Math.Abs(outline.LengthM - size.LengthM) <= MaxMeasuredDeviation * size.LengthM
+               && Math.Abs(outline.HalfSpanM * 2.0 - size.WingspanM) <= MaxMeasuredDeviation * size.WingspanM;
+    }
+
     // Upper-cased, without AIG's "$$:" marker or the sim's localisation key.
     private static string Clean(string s)
     {
