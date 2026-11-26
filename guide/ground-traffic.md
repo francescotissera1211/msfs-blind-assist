@@ -108,7 +108,9 @@ An aircraft is very close. **Stop now**, then find out what is happening: press 
 
 ### How the zones behave {#traffic-zones-rules}
 
-- **Only traffic in front of you can make you slow down or stop.** *"Slow down"* and *"Stop"* are given only for aircraft within about 120 degrees either side of your nose. An aircraft behind you gets at most an awareness callout. If you then turn to face a very close aircraft, you do hear *"Stop"*.
+- **Only traffic in the way you are moving can make you slow down or stop.** *"Slow down"* and *"Stop"* are given only for aircraft within about 120 degrees either side of your direction of travel: your nose when you taxi forward, your tail while you are being pushed back. So during a pushback you are told to slow down and to stop for an aircraft behind you, described as *"behind"*, and not for one off your nose that you are backing away from. An aircraft outside that arc gets at most an awareness callout. If you then turn to face a very close aircraft, you do hear *"Stop"*.
+- **Every *"Stop"* is answered.** When the aircraft you were told to stop for is out of your way, you hear *"Clear of Delta A320."* It has gone past, or it is moving off and the space to it is opening beyond the *"Slow down"* distance. For crossing traffic you gave way to, or an aircraft that taxied on behind you during a pushback, that is your cue that it has gone; you still follow ATC's instructions about when to move. You do not hear it for an aircraft that is still stopped in front of you, however far back you stopped. For the aircraft directly ahead of you in a line the answer is *"... ahead is moving"* instead.
+- ***"Stop"* comes early enough to stop in time.** It is given about seven seconds of travel before the clear space would be down to 50 feet (15 metres): at 5 knots with about 35 metres to go, at 10 knots with 50, at 15 knots with 70, at 20 knots with 85, at 30 knots with 120. The distance you hear is the clear space at that moment, which is why *"very close"* can come with 60 metres at taxi speed.
 - **Traffic moving away is not a threat.** If an aircraft is pulling away from you, for example the one ahead moving off in the queue, BA does not tell you to stop for it. If it stops again while still close, or you start closing on it, you hear *"Stop"* then. Whatever the speeds say, BA always warns you once the gap is down to about 200 feet.
 - **No nagging.** Each zone is announced when you enter it, not again and again. If you back off and then close in again, BA speaks again only for a more serious zone, or once 15 seconds have passed. There is one exception: after a *"Stop"*, if you creep another 50 feet or so closer, you hear *"Stop"* again.
 - **Parked aircraft beside your route.** When taxi guidance has a route, BA knows where you are actually going. An aircraft parked beside your route, which you will pass rather than hit, does not draw *"Slow down"*. It can still draw *"Stop"* if you get within about 250 feet of it. *"Slow down"* and *"Stop"* are kept for traffic on or near your route, traffic genuinely close, and moving traffic on a collision course.
@@ -145,13 +147,13 @@ On the way to the runway, the queue can be long. BA tells you where you are in i
 
 *"Number 3 in the departure queue."*
 
-When you are stopped or creeping along your route, BA counts the aircraft lined up ahead of you on the route: those stopped or slowly moving along it, pointing the same way. Aircraft parked beside the route, crossing it or coming the other way are not counted. BA only counts the line you are actually in. A big gap ends the line, so a second queue further on is not added to yours.
+When you are stopped or creeping along your route, BA counts the aircraft lined up ahead of you on the route: those stopped or slowly moving along it, pointing the same way. An aircraft that was in the line still counts while it moves up a place, so your number does not fall just because the line is shuffling forward; it falls when an aircraft leaves the line for the runway. Aircraft parked beside the route, crossing it or coming the other way are not counted. BA only counts the line you are actually in. A big gap ends the line, so a second queue further on is not added to yours.
 
 - *"Number 3 in the departure queue."* There are two aircraft ahead of you in the line.
 - *"Number 1 in the departure queue."* You have moved up to the front. You only hear this after you have been further back.
 - *"... More traffic holding further ahead."* Added when there are more aircraft beyond the end of your line.
 
-You hear *"departure queue"* only when your route ends at a runway and the front of your line is close to the runway hold. Elsewhere you hear just *"queue"*, for example *"Number 2 in the queue."* BA waits until the count is steady before saying it, and says it again only when it changes.
+You hear *"departure queue"* only when your route ends at a runway and the front of your line is close to the runway hold; once your line has been there it stays the departure queue until you reach the front. Elsewhere you hear just *"queue"*, for example *"Number 2 in the queue."* BA waits until the count is steady before saying it, and says it again only when it changes.
 
 ### The aircraft ahead is moving {#traffic-queue-moving}
 
@@ -238,13 +240,13 @@ Press Output Alt+G at any time on the ground to hear the nearest traffic. It wor
 
 ### What you will hear {#traffic-summary-hear}
 
-BA reads up to three aircraft on the ground within about 2,000 feet, nearest first, each with its name and callsign, direction, distance and what it is doing:
+BA reads up to three aircraft on the ground within about 2,000 feet, nearest first, each with its name and callsign, direction, distance and what it is doing. Nearest means the least clear space between you and it, so a large aircraft whose nose is 25 metres from your tail comes before a small one 45 metres clear, even though the small one's centre is nearer:
 
 *"2 aircraft nearby. Delta A320, DAL 1234, ahead and to the left, 800 feet, stopped. Lufthansa 747, DLH 400, behind and to the right, 1500 feet, crossing left to right."*
 
 Then, when they apply:
 
-- your place in the queue, for example *"Number 3 in the departure queue."*, if you are stopped or slow in one;
+- your place in the queue, for example *"Number 3 in the departure queue."*, if you are stopped or slow in one. With nobody ahead of you on the route there is no queue and none is mentioned;
 - the status of the runway you are watching, in the same words as the runway watch's first status.
 
 Other answers:
@@ -259,7 +261,7 @@ Taxiing is busy, and taxi guidance has a lot to say. To keep the important thing
 
 - Only three kinds of callout **interrupt** what is being said: *"Stop"*, *"Slow down"*, and runway news while you are on the runway.
 - A *"Stop"* is never cut off by a *"Slow down"* or by a second *"Stop"* a second later. A newer warning only cuts in straight away if it is more urgent, and otherwise is spoken a moment later.
-- Everything else (awareness, on your route, converging, the queue and runway news at a hold) **waits its turn** behind other speech. At most one of these alerts is spoken every three seconds.
+- Everything else (awareness, on your route, converging, clear of, the queue and runway news at a hold) **waits its turn** behind other speech. At most one of these alerts is spoken every three seconds.
 
 ## Callout Quick Reference {#traffic-quick-reference}
 
