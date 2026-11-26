@@ -14,6 +14,14 @@
 //   NO-TYPE     measured, its declared type is not in the size table (the measurement is still used)
 //   UNREADABLE  the model's geometry could not be measured: the app falls back to the published size
 //   NO-FILE     the title's model file is not on disk (streamed or encrypted package)
+//   NOTES       what was left out or placed by a fallback while this model was assembled and measured: an
+//               attach node or a scene's node that is nowhere, an unreadable part, an attachment with no
+//               model or left out by its name, a skinned mesh with no skeleton, one side wider than the
+//               other (and where along the body), geometry apart from the body, a rotor standing still.
+//               READ THESE: such a part usually sits inside the outline, where length and span cannot
+//               show it (the PMDG 737's tail unit sat in its wing, its wing skin along its fuselage)
+// --nodes lists the mesh nodes that reach beyond AUDIT_WIDE, AUDIT_AHEAD or AUDIT_BEHIND metres (at most
+// AUDIT_LINES of them, 25 unless set); --profile prints every AUDIT_EVERY-th station's half-width (8).
 // and how the title-only type resolver did on every installed title (what the app falls back on); then
 // what the callouts would CALL each installed aircraft: the types with no spoken name, to add to
 // GroundTrafficLogic.TypeNames.cs, and how many airline codes the installed liveries name.
@@ -37,13 +45,24 @@ Console.WriteLine($"Index: {index.Count} titles in {clock.ElapsedMilliseconds} m
 // One row per model FILE: liveries share it.
 var models = new Dictionary<string, (List<string> Titles, IReadOnlyList<GroundTrafficModelReader.ModelPart> Parts, string Dir, string Suffix)>(StringComparer.OrdinalIgnoreCase);
 var noFile = new List<string>();
+var notes = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+int noted = 0;
 foreach (var (title, model) in index)
 {
     if (only != null && model.AircraftDir.IndexOf(only, StringComparison.OrdinalIgnoreCase) < 0) continue;
+    // What the catalog and the reader leave out or place by a fallback, per model: such a part usually ends
+    // up inside the outline, where the published length and span cannot show it.
+    var assembling = new List<string>();
+    GroundTrafficModelReader.Notes = assembling.Add;
     var parts = GroundTrafficModelCatalog.Parts(model);
+    GroundTrafficModelReader.Notes = null;
     if (parts.Count == 0) { noFile.Add(title); continue; }
     string key = GroundTrafficModelCatalog.PartsKey(parts);
-    if (!models.TryGetValue(key, out var row)) models[key] = row = (new List<string>(), parts, model.AircraftDir, model.ModelSuffix);
+    if (!models.TryGetValue(key, out var row))
+    {
+        models[key] = row = (new List<string>(), parts, model.AircraftDir, model.ModelSuffix);
+        notes[key] = assembling;
+    }
     row.Titles.Add(title);
 }
 
@@ -58,7 +77,7 @@ var summary = new SortedDictionary<string, int[]>(StringComparer.OrdinalIgnoreCa
 int[] Count(string package) => summary.TryGetValue(package, out var c) ? c : summary[package] = new int[5];
 int measuredTitles = 0;
 clock.Restart();
-foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
+foreach (var (key, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnoreCase))
 {
     string file = row.Parts[^1].Lods[0];
     string package = Package(row.Dir);
@@ -78,12 +97,20 @@ foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnore
             double behind = double.TryParse(Environment.GetEnvironmentVariable("AUDIT_BEHIND"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out double bv) ? bv : double.MaxValue;
             if (z1 > ahead || -z0 > behind || Math.Max(Math.Abs(x0), Math.Abs(x1)) > wide
                 || Math.Max(Math.Max(Math.Abs(x0), Math.Abs(x1)), Math.Max(Math.Abs(z0), Math.Abs(z1))) > 40 || x1 - x0 > 66)
-                big.Add($"    node {Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar))}/{node} x[{x0:0},{x1:0}] z[{z0:0},{z1:0}]");
+                big.Add($"    node {Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar))}/{node} x[{x0:0.00},{x1:0.00}] z[{z0:0.00},{z1:0.00}]");
         };
+    var measuring = notes.TryGetValue(key, out var gathered) ? gathered : new List<string>();
+    GroundTrafficModelReader.Notes = measuring.Add;
     var outline = GroundTrafficModelReader.Measure(row.Parts, out string why);
+    GroundTrafficModelReader.Notes = null;
     GroundTrafficModelReader.NodeTrace = null;
+    if (measuring.Count > 0)
+    {
+        noted++;
+        Console.WriteLine($"NOTES      {package} {label}: " + string.Join("; ", measuring.Distinct()));
+    }
     if (args.Contains("--parts")) foreach (var part in row.Parts) Console.WriteLine($"    part parent={part.Parent} node={part.AttachNode} lods={part.Lods.Count} first={Path.GetFileName(part.Lods[0])}");
-    foreach (string line in big.Distinct().Take(25)) Console.WriteLine(line);
+    foreach (string line in big.Distinct().Take(int.TryParse(Environment.GetEnvironmentVariable("AUDIT_LINES"), out int most) ? most : 25)) Console.WriteLine(line);
     if (outline == null)
     {
         Count(package)[3]++;
@@ -92,7 +119,7 @@ foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnore
     }
     measuredTitles += row.Titles.Count;
     if (args.Contains("--profile"))
-        Console.WriteLine("    profile " + string.Join(" ", Enumerable.Range(0, outline.HalfWidths.Count).Where(i => i % 8 == 0)
+        Console.WriteLine("    profile " + string.Join(" ", Enumerable.Range(0, outline.HalfWidths.Count).Where(i => i % (int.TryParse(Environment.GetEnvironmentVariable("AUDIT_EVERY"), out int every) && every > 0 ? every : 8) == 0)
             .Select(i => $"{-outline.TailM + i * AircraftOutline.StationM:0}:{outline.HalfWidths[i]:0.0}")));
     double length = outline.LengthM, span = outline.HalfSpanM * 2.0;
     string measured = $"L {length:0.00} span {span:0.00} nose {outline.NoseM:0.0} tail {outline.TailM:0.0} corners {outline.Polygon.Count}";
@@ -113,6 +140,7 @@ foreach (var g in noFile.GroupBy(t => index[t].AircraftDir, StringComparer.Ordin
     Console.WriteLine($"NO-FILE    {Package(g.Key)} {Path.GetFileName(g.Key)} model='{index[g.First()].ModelSuffix}' titles={g.Count()} e.g. \"{g.First()}\"");
 Console.WriteLine();
 Console.WriteLine($"Measured {models.Count} model files ({measuredTitles} titles) in {clock.ElapsedMilliseconds} ms");
+Console.WriteLine($"Models with something left out or placed by a fallback (NOTES lines): {noted}");
 Console.WriteLine("package: OK / VARIANT / NO-TYPE / UNREADABLE models, NO-FILE titles");
 foreach (var (package, c) in summary) Console.WriteLine($"  {package}: {c[0]} / {c[1]} / {c[2]} / {c[3]}, {c[4]}");
 

@@ -214,7 +214,7 @@ public class GroundTrafficModelReaderTests : IDisposable
     }
 
     [Fact]
-    public void A_skinned_mesh_is_already_in_model_space_its_node_transform_is_not_applied()
+    public void A_skinned_mesh_s_own_node_transform_is_not_applied()
     {
         string plain = WriteModel("unskinned", Fuselage, new Part("wing", 17, -4, 2, Translation: new[] { 30.0, 0.0, 0.0 }));
         string skinned = WriteModel("skinned", Fuselage, new Part("wing", 17, -4, 2, Translation: new[] { 30.0, 0.0, 0.0 }, Skinned: true));

@@ -16,7 +16,8 @@ internal static class TestModel
 {
     /// <summary>What a box is drawn with: an ordinary material, the simulator's invisible one, or as an environment occluder.</summary>
     /// <remarks>Decal, Transparent and Glass are see-through (alphaMode BLEND): a picture on the surface, a material of alpha 0, and one that is drawn (glass, a rotor disc).</remarks>
-    public enum Material { Visible, Invisible, Occluder, InvisibleSwitchedOff, Decal, Transparent, Glass }
+    /// <remarks>Blur is see-through AND textured: the card a turning rotor or propeller is drawn on.</remarks>
+    public enum Material { Visible, Invisible, Occluder, InvisibleSwitchedOff, Decal, Transparent, Glass, Blur }
 
     /// <summary>A flat box: x from XShift - HalfWidth to XShift + HalfWidth, z from ZMin to ZMax.</summary>
     public sealed record Box(double HalfWidth, double ZMin, double ZMax, double XShift = 0, Material Material = Material.Visible);
@@ -26,8 +27,11 @@ internal static class TestModel
 
     /// <param name="UniqueId">Its <c>ASOBO_unique_id</c>, when it has one.</param>
     /// <param name="Scene">The scene a root node belongs to (0 is the default scene).</param>
+    /// <param name="Skeleton">For a skinned mesh, the node its skin names as its skeleton (else its skin names node 0 as its one joint).</param>
+    /// <param name="TurnedDeg">Turned this far about the vertical axis.</param>
     public sealed record Node(string Name, Box[]? Boxes = null, double[]? Translation = null, int[]? Children = null,
-        bool Skinned = false, string? AnimatedBy = null, Packing Packing = Packing.Separate, string? UniqueId = null, int Scene = 0);
+        bool Skinned = false, string? AnimatedBy = null, Packing Packing = Packing.Separate, string? UniqueId = null, int Scene = 0,
+        int? Skeleton = null, double TurnedDeg = 0);
 
     public static readonly Box Fuselage = new(2, -22, 18);
     public static readonly Box Wing = new(17, -4, 2);
@@ -47,6 +51,7 @@ internal static class TestModel
         var meshes = new List<string>();
         var nodeJson = new List<string>();
         var animations = new List<string>();
+        var skeletons = new List<int>();
 
         int AddVertices(IEnumerable<Box> boxes)
         {
@@ -109,7 +114,17 @@ internal static class TestModel
             }
             if (node.Translation is { } t) json.Append(Inv($",\"translation\":[{t[0]},{t[1]},{t[2]}]"));
             if (node.Children is { Length: > 0 } kids) json.Append(",\"children\":[" + string.Join(",", kids) + "]");
-            if (node.Skinned) json.Append(",\"skin\":0");
+            if (node.TurnedDeg != 0)
+            {
+                double half = node.TurnedDeg * Math.PI / 360.0;
+                json.Append(Inv($",\"rotation\":[0,{Math.Sin(half)},0,{Math.Cos(half)}]"));
+            }
+            if (node.Skeleton is { } bone)
+            {
+                if (!skeletons.Contains(bone)) skeletons.Add(bone);
+                json.Append(Inv($",\"skin\":{skeletons.IndexOf(bone) + 1}"));
+            }
+            else if (node.Skinned) json.Append(",\"skin\":0");
             if (node.UniqueId != null) json.Append(Inv($",\"extensions\":{{\"ASOBO_unique_id\":{{\"id\":\"{node.UniqueId}\"}}}}"));
             json.Append('}');
             nodeJson.Add(json.ToString());
@@ -131,12 +146,15 @@ internal static class TestModel
             + "],\"materials\":[{\"name\":\"Paint\"},{\"name\":\"Inv Col\",\"extensions\":{\"ASOBO_material_invisible\":{}}},{\"name\":\"Occluder\",\"extensions\":{\"ASOBO_material_environment_occluder\":{}}},{\"name\":\"Shown\",\"extensions\":{\"ASOBO_material_invisible\":{\"enabled\":false}}}"
             + ",{\"name\":\"Decal\",\"alphaMode\":\"BLEND\",\"extensions\":{\"ASOBO_material_geometry_decal\":{}}}"
             + ",{\"name\":\"Nothing\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,1.0,1.0,0.0]}}"
-            + ",{\"name\":\"Glass\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,1.0,1.0,0.3]},\"extensions\":{\"ASOBO_material_shadow_options\":{\"noCastShadow\":true}}}]"
+            + ",{\"name\":\"Glass\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[1.0,1.0,1.0,0.3]},\"extensions\":{\"ASOBO_material_shadow_options\":{\"noCastShadow\":true}}}"
+            + ",{\"name\":\"Blur\",\"alphaMode\":\"BLEND\",\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}]"
             + ",\"meshes\":[" + string.Join(",", meshes) + "],\"accessors\":[" + string.Join(",", accessors)
             + "],\"bufferViews\":[" + string.Join(",", views)
             + "],\"buffers\":[{\"uri\":\"" + name + ".bin\",\"byteLength\":" + (declaredBytes ?? bin.Count).ToString(CultureInfo.InvariantCulture) + "}]"
             + (animations.Count > 0 ? ",\"animations\":[" + string.Join(",", animations) + "]" : "")
-            + (nodes.Any(n => n.Skinned) ? ",\"skins\":[{\"joints\":[0]}]" : "") + "}";
+            + (nodes.Any(n => n.Skinned || n.Skeleton != null)
+                ? ",\"skins\":[{\"joints\":[0]}" + string.Concat(skeletons.Select(s => Inv($",{{\"joints\":[{s}],\"skeleton\":{s}}}"))) + "]"
+                : "") + "}";
         File.WriteAllBytes(Path.Combine(dir, name + ".bin"), bin.ToArray());
         string path = Path.Combine(dir, name + ".gltf");
         File.WriteAllText(path, gltf);
@@ -325,6 +343,7 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     [InlineData("Fuel_Truck")]
     [InlineData("TowBar")]
     [InlineData("WheelChocks_L")]
+    [InlineData("tail_drogue_line5")]
     public void Ground_equipment_is_named_and_is_not_the_airframe(string name)
     {
         var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "around", Body("fuselage", Fuselage), Body("wing", Wing),
@@ -458,6 +477,127 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
         Assert.Equal(18.0, unreadableParent.NoseM, 2);
     }
 
+    [Fact]
+    public void A_part_goes_on_an_attach_node_kept_in_a_model_merged_into_its_parent()
+    {
+        // The PMDG 737: its fuselage carries the tail unit on ATTACH_POINT_738_TAIL, and that node is not in
+        // the fuselage's own file but in a ROOT.gltf merged into it, read as a part of its own. Looked for in
+        // the fuselage alone it was not found: fin, tailplane and elevators were drawn at the origin, inside
+        // the wing, and every 737 measured 1.43 m short with no tailplane (38.04 m for a 737-800 of 39.47).
+        string fuselage = TestModel.Write(_dir, "fuselage738", Body("fuselage", Fuselage));
+        string points = TestModel.Write(_dir, "ROOT", new TestModel.Node("ATTACH_POINT_TAIL", Translation: new[] { 0.0, 0.0, -18.0 }));
+        string tail = TestModel.Write(_dir, "tail738", Body("h-stab", new TestModel.Box(7, -5.5, 0)));
+        var outline = GroundTrafficModelReader.Measure(new GroundTrafficModelReader.ModelPart[]
+        {
+            new(new[] { fuselage }), new(new[] { points }, Parent: 0), new(new[] { tail }, Parent: 0, AttachNode: "ATTACH_POINT_TAIL"),
+        })!;
+
+        Assert.Equal(23.5, outline.TailM, 2);            // the tailplane's tips, 1.5 m behind the tail cone at 22
+        Assert.Equal(7.0, outline.HalfSpanM, 2);
+        int atTheTail = (int)Math.Round((outline.TailM - 20.0) / AircraftOutline.StationM);
+        Assert.Equal(7.0, outline.HalfWidths[atTheTail], 1);       // and it is as wide as the tailplane there
+    }
+
+    // ── Skinned meshes ───────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_skinned_mesh_is_placed_in_the_frame_its_skeleton_stands_in()
+    {
+        // The PMDG 737: each wing's skin is stored from the wing root outwards, and its bones hang under a
+        // WING_LEFT node 2 m out from the centreline. The mesh's own node says something else and is not
+        // applied. Read as stored the wing reached 15 m; it reaches 17.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "skinned-wing", Body("fuselage", Fuselage),
+            new TestModel.Node("WING_LEFT", Translation: new[] { 2.0, 0.0, 0.0 }, Children: new[] { 2 }),
+            new TestModel.Node("wing_bone1_left"),
+            new TestModel.Node("WING_RIGHT", Translation: new[] { -2.0, 0.0, 0.0 }, Children: new[] { 4 }),
+            new TestModel.Node("wing_bone1_right"),
+            new TestModel.Node("WING_LEFT_1", new[] { new TestModel.Box(7.5, -4, 2, XShift: 7.5) }, Translation: new[] { 30.0, 0.0, 9.0 }, Skeleton: 2),
+            new TestModel.Node("WING_RIGHT_1", new[] { new TestModel.Box(7.5, -4, 2, XShift: -7.5) }, Translation: new[] { 30.0, 0.0, 9.0 }, Skeleton: 4)))!;
+
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        Assert.Equal(18.0, outline.NoseM, 2);            // and nothing was moved 9 m ahead by the mesh's own node
+    }
+
+    [Fact]
+    public void A_skinned_mesh_whose_skeleton_hangs_under_the_landing_gear_is_gear_too()
+    {
+        // A strut's cables and springs are skinned to bones under the gear: placed there they would stand
+        // ahead of the nose with the gear down, and gear never shapes the outline.
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "skinned-gear", Body("fuselage", Fuselage), Body("wing", Wing),
+            new TestModel.Node("nose_gear", Translation: new[] { 0.0, 0.0, 22.0 }, Children: new[] { 3 }, AnimatedBy: "c_gear"),
+            new TestModel.Node("scissor_bone"),
+            new TestModel.Node("NLG_scissor_cable", new[] { new TestModel.Box(3, -1, 1) }, Skeleton: 3)))!;
+
+        Assert.Equal(18.0, outline.NoseM, 2);
+    }
+
+    // ── Rotors ───────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(12.0)]      // IVAO's H160
+    [InlineData(45.0)]      // IVAO's EC175: read as a square, 7.1 m a side
+    public void A_blurred_rotor_is_the_disc_inside_its_card_however_the_card_is_turned(double turnedDeg)
+    {
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "blur" + turnedDeg.ToString(CultureInfo.InvariantCulture),
+            Body("fuselage", new TestModel.Box(1, -6, 4)),
+            new TestModel.Node("ENGINE_Propeller_Blurred_1_Blades", new[] { new TestModel.Box(5, -5, 5, Material: TestModel.Material.Blur) }, TurnedDeg: turnedDeg)))!;
+
+        Assert.Equal(5.0, outline.HalfSpanM, 1);
+        Assert.Equal(5.0, outline.NoseM, 1);
+        // A disc, not a square: 4.5 m ahead of the hub it is 2.2 m wide a side.
+        int nearTheRim = (int)Math.Round((outline.TailM + 4.5) / AircraftOutline.StationM);
+        Assert.InRange(outline.HalfWidths[nearTheRim], 1.5, 3.0);
+    }
+
+    [Fact]
+    public void A_see_through_picture_that_is_not_square_keeps_its_corners()
+    {
+        var outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "pane", Body("fuselage", new TestModel.Box(1, -6, 4)),
+            Body("canopy", new TestModel.Box(5, -2, 2, Material: TestModel.Material.Blur))))!;
+        int atItsEdge = (int)Math.Round((outline.TailM + 1.8) / AircraftOutline.StationM);
+        Assert.Equal(5.0, outline.HalfWidths[atItsEdge], 2);
+    }
+
+    [Fact]
+    public void A_rotor_standing_still_takes_the_wider_side()
+    {
+        // Simaddons' Sea King, parked: five blades wherever they stopped, 10 and 13 m out, never at the same
+        // station. The narrower side cut every one of them off and measured a 6.4 m helicopter.
+        var notes = new List<string>();
+        GroundTrafficModelReader.Notes = notes.Add;
+        AircraftOutline outline;
+        try
+        {
+            outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "stopped", Body("fuselage", new TestModel.Box(1, -6, 4)),
+                Body("blade_1", new TestModel.Box(3, 1, 1.5, XShift: 4)), Body("blade_2", new TestModel.Box(3, -3, -2.5, XShift: -4))))!;
+        }
+        finally { GroundTrafficModelReader.Notes = null; }
+
+        Assert.Equal(7.0, outline.HalfSpanM, 2);
+        Assert.Contains(notes, n => n.Contains("rotor standing still"));
+    }
+
+    [Fact]
+    public void Equipment_parked_on_one_side_is_still_dropped_and_said()
+    {
+        // A catering truck beside the nose: the wings reach as far on both sides, so this is no rotor.
+        var notes = new List<string>();
+        GroundTrafficModelReader.Notes = notes.Add;
+        AircraftOutline outline;
+        try
+        {
+            outline = GroundTrafficModelReader.Measure(TestModel.Write(_dir, "truck", Body("fuselage", Fuselage), Body("wing", Wing),
+                Body("x0_catertruck017", new TestModel.Box(4, 8, 12, XShift: 10))))!;
+        }
+        finally { GroundTrafficModelReader.Notes = null; }
+
+        Assert.Equal(17.0, outline.HalfSpanM, 2);
+        int besideTheNose = (int)Math.Round((outline.TailM + 10.0) / AircraftOutline.StationM);
+        Assert.Equal(2.0, outline.HalfWidths[besideTheNose], 2);
+        Assert.Contains(notes, n => n.Contains("one side is wider"));
+    }
+
     // ── A scene that names the node it hangs on ──────────────────────────────────────────────────────
 
     // The wings, with the two nodes a wingtip device hangs on: 16 m out each side, 6 m behind the origin.
@@ -476,6 +616,21 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
             new(new[] { TestModel.Write(_dir, "tipfuselage", Body("fuselage", Fuselage)) }),
             new(new[] { wings }, Parent: 0), new(new[] { tips }, Parent: 0),
         });
+
+    [Fact]
+    public void A_scene_that_names_a_node_of_a_part_read_after_it_is_placed_all_the_same()
+    {
+        // The PMDG 737's fuselage hangs a scene on a node of the ROOT.gltf that follows it: the model is
+        // assembled a second time, with every node the first time placed to look the name up in.
+        string tips = TestModel.Write(_dir, "early-tips", null, new[] { null, "Skel_Wing_Left_Wingtip", "Skel_Wing_Right_Wingtip" },
+            new TestModel.Node("Skel_SL_Box"), Tip("SL_L", 1, left: true), Tip("SL_R", 2, left: false));
+        var outline = GroundTrafficModelReader.Measure(new GroundTrafficModelReader.ModelPart[]
+        {
+            new(new[] { TestModel.Write(_dir, "early-fuselage", Body("fuselage", Fuselage)) }),
+            new(new[] { tips }, Parent: 0), new(new[] { WingsWithTipNodes("late-wings") }, Parent: 0),
+        })!;
+        Assert.Equal(18.0, outline.HalfSpanM, 2);
+    }
 
     [Fact]
     public void A_scene_tagged_with_a_node_of_another_part_hangs_on_that_node()

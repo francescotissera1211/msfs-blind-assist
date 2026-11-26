@@ -495,16 +495,20 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         void Close()
         {
             bool exterior = string.Equals(toModel, "exterior", StringComparison.OrdinalIgnoreCase);
-            if (section.StartsWith("SIM_ATTACHMENT.", StringComparison.Ordinal) && root != null && file != null && exterior
-                && !NotAirframeAttachment().IsMatch(Path.GetFileName(root.TrimEnd('/', '\\')))
-                && !NotAirframeAttachment().IsMatch(Path.GetFileName(file.Replace('\\', '/'))))
+            bool attachment = section.StartsWith("SIM_ATTACHMENT.", StringComparison.Ordinal) && root != null && file != null && exterior;
+            if (attachment && (NotAirframeAttachment().IsMatch(Path.GetFileName(root!.TrimEnd('/', '\\')))
+                               || NotAirframeAttachment().IsMatch(Path.GetFileName(file!.Replace('\\', '/')))))
+                GroundTrafficModelReader.Notes?.Invoke($"attachment left out by its name: {root}/{file}");
+            else if (attachment)
             {
-                string attachmentDir = Path.GetFullPath(Path.Combine(packageRoot, root.Replace('/', Path.DirectorySeparatorChar)));
-                var groups = ModelGroups(Vfs(Path.GetFullPath(Path.Combine(attachmentDir, file.Replace('/', Path.DirectorySeparatorChar)))), attachmentDir, 0);
+                string attachmentDir = Path.GetFullPath(Path.Combine(packageRoot, root!.Replace('/', Path.DirectorySeparatorChar)));
+                var groups = ModelGroups(Vfs(Path.GetFullPath(Path.Combine(attachmentDir, file!.Replace('/', Path.DirectorySeparatorChar)))), attachmentDir, 0);
                 // An attachment with no geometry of its own still carries the parts attached to it.
                 int self = AddGroups(parts, groups, parent, toNode);
                 string nested = Vfs(Path.Combine(attachmentDir, "config", "attached_objects.cfg"));
                 if (File.Exists(nested)) AddAttachments(parts, nested, packageRoot, self, depth + 1);
+                else if (groups.All(g => g.Count == 0))
+                    GroundTrafficModelReader.Notes?.Invoke($"attachment has no model on disk and attaches nothing: {root}/{file}");
             }
             else if (section.StartsWith("MERGE_MODEL.", StringComparison.Ordinal) && mergeFile != null && exterior
                      && !NotAirframeAttachment().IsMatch(mergeFile))
