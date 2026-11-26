@@ -16,20 +16,20 @@ public class RouteThreatTests
     {
         // The author's scenario: 170 m dead ahead, 90 m from a route that turns off after 80 m. The pilot's
         // own 15 kt puts the closest approach at 0 m in 22 s — a prediction the route never makes.
-        Assert.False(GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: 0.0, tcpaSec: 22.0,
+        Assert.False(GroundTrafficLogic.IsRouteThreat(inPath: false, dcpaM: 0.0, tcpaSec: 22.0,
             trafficGsKts: 0.0, veryClose: false));
     }
 
     [Fact]
     public void Moving_traffic_on_a_collision_course_is_a_threat()
-        => Assert.True(GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: 20.0, tcpaSec: 15.0,
+        => Assert.True(GroundTrafficLogic.IsRouteThreat(inPath: false, dcpaM: 20.0, tcpaSec: 15.0,
             trafficGsKts: 12.0, veryClose: false));
 
     [Theory]
     [InlineData(2.9, false)]   // creeping: still parked for this rule
     [InlineData(3.0, true)]    // MovingTrafficKts
     public void Moving_means_at_least_three_knots(double trafficGs, bool expected)
-        => Assert.Equal(expected, GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: 10.0, tcpaSec: 10.0,
+        => Assert.Equal(expected, GroundTrafficLogic.IsRouteThreat(inPath: false, dcpaM: 10.0, tcpaSec: 10.0,
             trafficGsKts: trafficGs, veryClose: false));
 
     [Theory]
@@ -37,16 +37,16 @@ public class RouteThreatTests
     [InlineData(30.0, 10.0, false)]   // the two outlines pass with 30 m between them
     [InlineData(10.0, 30.1, false)]   // too far off to be the next thing to act on
     public void The_closest_approach_limits_are_a_30_metre_gap_within_30_seconds(double dcpa, double tcpa, bool expected)
-        => Assert.Equal(expected, GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: dcpa, tcpaSec: tcpa,
+        => Assert.Equal(expected, GroundTrafficLogic.IsRouteThreat(inPath: false, dcpaM: dcpa, tcpaSec: tcpa,
             trafficGsKts: 10.0, veryClose: false));
 
     [Fact]
     public void A_parked_aircraft_near_the_route_ahead_is_still_a_threat()
-        => Assert.True(GroundTrafficLogic.IsRouteThreat(nearRoute: true, dcpaM: 200.0, tcpaSec: 0.0,
+        => Assert.True(GroundTrafficLogic.IsRouteThreat(inPath: true, dcpaM: 200.0, tcpaSec: 0.0,
             trafficGsKts: 0.0, veryClose: false));
 
     [Fact]
     public void A_parked_aircraft_very_close_is_still_a_threat()
-        => Assert.True(GroundTrafficLogic.IsRouteThreat(nearRoute: false, dcpaM: 200.0, tcpaSec: 0.0,
+        => Assert.True(GroundTrafficLogic.IsRouteThreat(inPath: false, dcpaM: 200.0, tcpaSec: 0.0,
             trafficGsKts: 0.0, veryClose: true));
 }

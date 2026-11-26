@@ -778,7 +778,10 @@ List<Finding> FlyTraffic(World w, TaxiPlan plan, string sc, bool trace)
         string AllText() => string.Join(" | ", said.Select(x => x.Text));
         foreach (var x in said)
         {
-            if (System.Text.RegularExpressions.Regex.IsMatch(x.Text, @"\bclear\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            // "Clear of Delta A320." answers a "Stop" ([TRF-14]): it says where one AIRCRAFT is, as a controller's
+            // "when clear of the 737" does. A runway, a route or the way ahead is never called clear ([TRF-3]).
+            if (!x.Text.StartsWith("Clear of ", StringComparison.Ordinal)
+                && System.Text.RegularExpressions.Regex.IsMatch(x.Text, @"\bclear\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
                 found.Add(new Finding(w.Icao, "TRAFFIC_SAID_CLEAR", where, x.Text));
             foreach (var a in tr)
                 if (x.Text.Contains(a.Callsign, StringComparison.OrdinalIgnoreCase) && !a.Spoken.Contains(a.Callsign, StringComparison.OrdinalIgnoreCase))

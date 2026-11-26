@@ -11,6 +11,6 @@ internal static partial class GroundTrafficLogic
 {
     private const double MetresPerDegLat = 110_540.0;
     private const double MetresPerDegLonEquator = 111_320.0;
-    private const double KtsToMps = 0.514444;
+    public const double KtsToMps = 0.514444;
     public const double MetresPerNm = 1852.0;
 }

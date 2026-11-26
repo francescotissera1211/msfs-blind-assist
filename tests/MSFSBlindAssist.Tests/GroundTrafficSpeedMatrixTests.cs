@@ -210,4 +210,75 @@ public class GroundTrafficSpeedMatrixTests
         Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Stop", StringComparison.Ordinal)
             || m.StartsWith("Slow down", StringComparison.Ordinal));
     }
+
+    // ── Following ("follow the 737 to the holding point") ────────────────────────────────────────
+
+    [Theory]
+    [MemberData(nameof(OwnSpeeds))]
+    public void Following_at_the_same_speed_is_Stop_only_inside_the_following_distance(double kts)
+    {
+        // Behind an aircraft taxiing at the pilot's own speed the room needed is 100 ft plus the three
+        // seconds it takes to react: if it brakes, it rolls as far braking as the pilot will. Until
+        // 2026-11-26 the lead was that for a PARKED aircraft, and following at 80 m and 15 kt was "Stop".
+        double followingM = 30.48 + GroundTrafficLogic.StopReactionSec * kts * Kt;
+        Assert.DoesNotContain(Follow(kts, followingM + 10, 60), m => m.StartsWith("Stop", StringComparison.Ordinal));
+        Assert.Contains(Follow(kts, followingM - 10, 60), m => m.StartsWith("Stop", StringComparison.Ordinal));
+    }
+
+    private static List<string> Follow(double kts, double gapM, int seconds)
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(8000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        double lead = gapM + 37.6, east = 0;
+        var ahead = Ac(1, lead, 0, kts, "Delta", "DAL1");
+        h.Sim.Traffic.Add(ahead);
+        for (int s = 0; s < seconds; s++)
+        {
+            east += kts * Kt; lead += kts * Kt;
+            ahead.Longitude = lead * M;
+            h.Sim.Position = Own(east, kts);
+            h.Tick();
+        }
+        return h.Said.All.ToList();
+    }
+
+    [Theory]
+    [MemberData(nameof(OwnSpeeds))]
+    public void The_aircraft_being_followed_brakes_to_a_stop_and_the_pilot_stops_short_of_it(double kts)
+    {
+        // The pilot follows just outside the following distance. The aircraft ahead brakes to a stop at
+        // 1 m/s2; the pilot hears "Stop", takes two seconds, and brakes as gently.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(8000), null, departure: false) };
+        h.UseRealSizes("A320", 117.5);
+        double followingM = 30.48 + GroundTrafficLogic.StopReactionSec * kts * Kt + 5;
+        double lead = followingM + 37.6, east = 0, its = kts * Kt, mps = kts * Kt;
+        var ahead = Ac(1, lead, 0, kts, "Delta", "DAL1");
+        h.Sim.Traffic.Add(ahead);
+        int reacting = -1;
+        for (int s = 0; s < 200 && (mps > 0 || its > 0); s++)
+        {
+            if (s >= 20) its = Math.Max(0.0, its - GroundTrafficLogic.GentleBrakingMps2);
+            if (reacting < 0 && h.Said.All.Any(m => m.StartsWith("Stop", StringComparison.Ordinal))) reacting = 0;
+            if (reacting >= 0 && ++reacting > 2) mps = Math.Max(0.0, mps - GroundTrafficLogic.GentleBrakingMps2);
+            east += mps; lead += its;
+            ahead.Longitude = lead * M; ahead.GroundSpeedKnots = its / Kt;
+            h.Sim.Position = Own(east, mps / Kt);
+            h.Tick();
+        }
+        double gapM = lead - east - 37.6;
+        _out.WriteLine(FormattableString.Invariant($"both {kts,2} kt, following at {followingM:0} m: stopped {gapM:0.0} m behind it"));
+        Assert.True(mps == 0, "never told to stop: " + string.Join(" | ", h.Transcript));
+        Assert.True(gapM >= 15.0, FormattableString.Invariant($"{gapM:0.0} m"));
+    }
+
+    [Theory]
+    [InlineData(15, 0, 54.0)]          // a parked aircraft: seven seconds of travel
+    [InlineData(15, 15, 23.1)]         // followed at its own speed: the reaction time alone
+    [InlineData(15, 12, 33.9)]         // catching it up slowly
+    [InlineData(15, 3, 51.7)]          // it has only just moved off: nearly a parked one
+    [InlineData(15, 25, 23.1)]         // it is faster: never less than the reaction time
+    [InlineData(30, 0, 165.4)] [InlineData(30, 30, 46.3)]
+    [InlineData(0, 10, 0.0)]
+    public void The_lead_against_traffic_moving_away_is_the_following_distance(double ownKts, double recedingKts, double metres)
+        => Assert.Equal(metres, GroundTrafficLogic.ZoneLeadFt(ownKts, 7.0, recedingKts) / GroundTrafficLogic.FeetPerMetre, 1);
 }

@@ -40,15 +40,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     // "Stop" for an aircraft IN THE WAY (on or near the route ahead, or within the queue cone of the
     // direction of travel) is given for 100 ft of clear space, 30 m: about the distance pilots keep
     // behind a jet at taxi thrust, where 50 ft left a widebody's nose in the idle exhaust of the one
-    // ahead (owner, 2026-11-26). An aircraft beside the path keeps WARNING_GAP_FT: taxilane wingtip
-    // clearances are under 30 m by design, and every parked aircraft would otherwise be a "Stop".
+    // ahead (owner, 2026-11-26). What is in the way, and what "very close" means beside the path, is
+    // GroundTrafficLogic.PassClearanceM ([TRF-17]).
     private const double STOP_BEHIND_GAP_FT = 100.0;
 
-    // Lead time (seconds) added to each zone boundary for reaction + braking + poll lag:
-    // effective boundary = fixed_ft + v × ktsToFps × ZONE_LEAD_SEC. Sized for the 3 s worst-case
-    // poll lag, which the slow cadence still has.
+    // Lead time (seconds) added to each zone boundary for reaction + braking + poll lag: sized for the
+    // 3 s worst-case poll lag, which the slow cadence still has. The boundary is the fixed gap plus
+    // GroundTrafficLogic.ZoneLeadFt, which is these seconds of travel or the braking distance, whichever
+    // is more.
     private const double ZONE_LEAD_SEC = 7.0;
-    private const double ZONE_LEAD_KTSFPS = 1.6878; // ft/s per knot
 
     /// <summary>The speed lead added to every zone boundary at <paramref name="ownGsKts"/>: the evaluation's and the fast poll's.</summary>
     private static double ZoneLeadFt(double ownGsKts) => GroundTrafficLogic.ZoneLeadFt(ownGsKts, ZONE_LEAD_SEC);
@@ -65,7 +65,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Route awareness
     private const double ON_ROUTE_LATERAL_M = 30.0;      // on the route
     private const double OFF_ROUTE_REARM_M = 50.0;       // clearly off it again → re-arm
-    private const double NEAR_ROUTE_M = 60.0;            // close enough to the route to be a proximity threat
+    private const double NEAR_ROUTE_SCAN_M = 150.0;      // nearer the route than this, an outline is measured against it
     private const double ROUTE_ALERT_MIN_AHEAD_M = 15.0;
     private const double ROUTE_ALERT_MAX_AHEAD_M = 600.0;
     private const double OWN_ROUTE_MAX_LATERAL_M = 40.0; // own aircraft must be on its route for route maths
@@ -1197,7 +1197,15 @@ public sealed class GroundTrafficMonitor : IDisposable
             double openingMps = GroundTrafficLogic.OpeningSpeedMps(rx, ry, tvx - ownVx, tvy - ownVy);
             var motion = GroundTrafficLogic.ClassifyMotion(ownHdg, direction, ac.GS, rel);
             bool onRouteAhead = proj is { } p2 && p2.LateralMetres <= ON_ROUTE_LATERAL_M && aheadM >= ROUTE_ALERT_MIN_AHEAD_M;
-            bool nearRoute = proj is { } p3 && p3.LateralMetres <= NEAR_ROUTE_M && aheadM >= -20.0;
+            // Near the route: its OUTLINE comes within the pass clearance of the strip the own wings sweep
+            // along it. Until 2026-11-26 its reported point within 60 m of the route line, whatever the two
+            // aircraft measured: an A320 on a parallel taxiway 44 m away was in an A320's way, and the
+            // nose of one holding 36 m from the line was not in an A350's.
+            double passClearanceM = GroundTrafficLogic.PassClearanceM(ownHull.HalfSpanM * 2.0, ac.Hull.HalfSpanM * 2.0);
+            double routeClearanceM = proj is { } p3 && p3.LateralMetres <= NEAR_ROUTE_SCAN_M
+                ? GroundTrafficLogic.RouteClearanceM(route, ac.Hull, ac.HeadingTrue, ac.Lat, ac.Lon, p3.RouteMetres, ownHull.HalfSpanM)
+                : double.MaxValue;
+            bool nearRoute = aheadM >= -20.0 && routeClearanceM < passClearanceM;
             RouteRelativeMotion? routeMotion = proj is { } p4
                 ? GroundTrafficLogic.ClassifyAlongRoute(direction, ac.GS, p4.SegmentBearingDeg)
                 : null;
@@ -1206,9 +1214,23 @@ public sealed class GroundTrafficMonitor : IDisposable
             // How fast the traffic itself is coming at the pilot (m/s along the line between them, never
             // negative): what its own motion takes off the gap, whatever the pilot does.
             double range = Math.Sqrt(rx * rx + ry * ry);
-            double itsClosingMps = range < 1.0 ? 0.0 : Math.Max(0.0, -(rx * tvx + ry * tvy) / range);
-            views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion,
-                openingMps, gapFt, relTravel, itsClosingMps));
+            double itsAlongMps = range < 1.0 ? 0.0 : (rx * tvx + ry * tvy) / range;      // + away from the pilot
+            double itsClosingMps = Math.Max(0.0, -itsAlongMps);
+            double itsRecedingKts = ac.GS >= GroundTrafficLogic.MovingTrafficKts ? Math.Max(0.0, itsAlongMps) / GroundTrafficLogic.KtsToMps : 0.0;
+            // With a route to follow the path is the route: what will be reached is what is near it, and
+            // traffic passes clear when it moves along the route's own line, clear of the swept strip.
+            // With none (pushed back, or off the route) the path is the straight line of travel, and the
+            // closest approach along it is the pass.
+            bool straight = reversing || !haveRoute;
+            bool inPath = straight ? tcpa > 0.0 && dcpa < passClearanceM : nearRoute;
+            bool passesClear = straight
+                ? GroundTrafficLogic.PassesClear(ac.GS, direction - ownDir, dcpa, passClearanceM)
+                : proj is { } p5 && GroundTrafficLogic.PassesClear(ac.GS, direction - p5.SegmentBearingDeg, routeClearanceM, passClearanceM);
+            // "Head-on" is traffic coming AT the pilot; one that passes clear on the parallel taxiway is
+            // "opposite direction", off to one side.
+            if (passesClear && motion == TrafficMotion.HeadOn) motion = TrafficMotion.OppositeDirection;
+            views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, routeMotion,
+                openingMps, gapFt, relTravel, itsClosingMps, inPath, passesClear, passClearanceM, itsRecedingKts));
         }
 
         // Speed-based zone boundaries, in feet of gap.
@@ -1238,7 +1260,7 @@ public sealed class GroundTrafficMonitor : IDisposable
 
             // ── Converging (closest point of approach) ──
             bool movingTraffic = ac.GS >= GroundTrafficLogic.MovingTrafficKts;
-            bool conflict = movingTraffic && v.Dcpa < CONFLICT_DCPA_M
+            bool conflict = movingTraffic && !v.PassesClear && v.Dcpa < CONFLICT_DCPA_M
                             && v.Tcpa >= CONFLICT_MIN_TCPA_S && v.Tcpa <= CONFLICT_MAX_TCPA_S;
             if (!conflict && (v.Dcpa > CONFLICT_REARM_DCPA_M || v.Tcpa <= 0.0))
                 ac.ConflictAlertArmed = true;
@@ -1336,23 +1358,27 @@ public sealed class GroundTrafficMonitor : IDisposable
                         () => { ac.StopSpokenUtc = null; ac.LastAlertTime = now; }));
             }
 
-            bool inTheWay = (v.NearRoute && !reversing)
-                            || v.RelTravel <= GroundTrafficLogic.QueueAheadConeDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.QueueAheadConeDeg;
-            // The lead is worked out from the pilot's own speed. Traffic that is itself coming at the pilot
-            // (head-on along the taxiway, or closing from the side) takes room off the gap as well: the
-            // seconds of lead are given for ITS closing speed too, or two aircraft meeting at 10 kt each had
-            // "Stop" with half the time one closing on a parked aircraft has. Only for traffic whose closest
-            // approach is a near one (ThreatDcpaM): an aircraft going the other way on the parallel taxiway
-            // closes fast too and never comes near.
+            bool deadAhead = v.RelTravel <= GroundTrafficLogic.QueueAheadConeDeg || v.RelTravel >= 360.0 - GroundTrafficLogic.QueueAheadConeDeg;
+            bool inTheWay = v.InPath || deadAhead;
+            // The lead is worked out from the pilot's own speed, as against a parked aircraft. The traffic's
+            // own motion changes the room needed ([TRF-15]):
+            // - coming at the pilot (head-on along the taxiway, or closing from the side) it takes room off
+            //   the gap as well, so the seconds of lead are given for ITS closing speed too: two aircraft
+            //   meeting at 10 kt each had "Stop" with half the time a parked aircraft leaves. Only for one
+            //   whose closest approach is a near one (ThreatDcpaM) and that does not simply pass beside;
+            // - moving away (the aircraft being followed) it needs less: the lead against it is the
+            //   following distance, so "follow the 737" at 80 m and 15 kt is not "Stop".
             bool comingAtThePilot = ac.GS >= GroundTrafficLogic.MovingTrafficKts && v.Tcpa > 0.0
-                && v.Dcpa <= GroundTrafficLogic.ThreatDcpaM;
-            double itsLeadFt = comingAtThePilot ? v.ItsClosingMps * ZONE_LEAD_SEC * FEET_PER_METRE : 0.0;
+                && !v.PassesClear && v.Dcpa <= GroundTrafficLogic.ThreatDcpaM;
+            double itsLeadFt = v.ItsRecedingKts > 0.0 ? GroundTrafficLogic.ZoneLeadFt(ownGS, ZONE_LEAD_SEC, v.ItsRecedingKts) - lead
+                             : comingAtThePilot ? v.ItsClosingMps * ZONE_LEAD_SEC * FEET_PER_METRE
+                             : 0.0;
             double warnGapHere = (inTheWay ? STOP_BEHIND_GAP_FT + lead : warnGapFt) + itsLeadFt;
             GroundZone newZone;
             if (v.GapFt > awareGapFt + itsLeadFt)        newZone = GroundZone.None;
             else if (v.GapFt <= warnGapHere)             newZone = GroundZone.Warning;
             else if (v.GapFt <= cautGapFt + itsLeadFt)   newZone = GroundZone.Caution;
-            else                             newZone = GroundZone.Awareness;
+            else                                         newZone = GroundZone.Awareness;
 
             if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; SetStopHeld(ac, false, "far"); continue; }
 
@@ -1373,15 +1399,19 @@ public sealed class GroundTrafficMonitor : IDisposable
                 continue;
             }
 
-            // With a route to judge by, "Slow down"/"Stop" need a real threat (GroundTrafficLogic.IsRouteThreat):
-            // traffic near the route ahead, genuinely close, or MOVING on a predicted collision course — a
-            // parked aircraft's straight-line closest approach assumes the pilot keeps going straight, which
-            // the route may not (PR #247 author's fix). Traffic merely beside the route drops to an awareness
-            // ping — it can still escalate later if it becomes a threat.
-            // Pushed back, the aircraft is not following its route, which lies ahead of the nose: there is no
-            // route to judge by, and what is in the way is in the way.
-            if (haveRoute && !reversing && newZone >= GroundZone.Caution
-                && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.GapFt <= WARNING_GAP_FT))
+            // "Slow down"/"Stop" need a real threat (GroundTrafficLogic.IsRouteThreat): traffic in the path,
+            // closer than aircraft are ever meant to pass (PassClearanceM), or MOVING on a predicted
+            // collision course. With a route the path is the route — a parked aircraft's straight-line
+            // closest approach assumes the pilot keeps going straight, which the route may not (PR #247
+            // author's fix). Pushed back or off the route, the aircraft follows no route and the path is the
+            // straight line it moves along. Traffic merely beside the path drops to an awareness ping — it
+            // can still escalate later if it becomes a threat.
+            // Very close: nearer than aircraft are meant to pass; or, straight in front of the way the
+            // aircraft moves, inside the fixed Warning gap whatever the route says (a pilot who misses a
+            // bend rolls at the aircraft parked beyond it, PR #247 integration review P5).
+            bool veryClose = v.GapFt < v.PassClearanceM * FEET_PER_METRE || (deadAhead && v.GapFt <= WARNING_GAP_FT);
+            if (newZone >= GroundZone.Caution
+                && !GroundTrafficLogic.IsRouteThreat(v.InPath || (reversing && deadAhead), v.Dcpa, v.Tcpa, ac.GS, veryClose, v.PassesClear))
                 newZone = GroundZone.Awareness;
 
             // Moving away: nothing is said, and the zone is recorded by the same rule as any other withheld
@@ -2142,8 +2172,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
-        TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
-        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt, double RelTravel, double ItsClosingMps);
+        TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead,
+        RouteRelativeMotion? RouteMotion, double OpeningMps, double GapFt, double RelTravel, double ItsClosingMps,
+        bool InPath, bool PassesClear, double PassClearanceM, double ItsRecedingKts);
 
     public void Dispose()
     {

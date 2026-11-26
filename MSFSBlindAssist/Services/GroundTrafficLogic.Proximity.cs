@@ -177,12 +177,19 @@ internal static partial class GroundTrafficLogic
     /// a pilot who brakes harder simply stops with more room. The braking term is that of
     /// <see cref="GentleBrakingMaxKts"/> at most: faster than a taxi (a landing exit at 45 kt) nobody is
     /// braking gently, and gentle braking from there would put "Stop" 370 m out.
+    /// <para>Against traffic that is itself MOVING AWAY at <paramref name="recedingKts"/> (the aircraft
+    /// being followed) the boundary is the following distance: the worst it can do is brake, and braking
+    /// as gently it still rolls its own braking distance on, so that much is not needed; and the seconds
+    /// of travel are those of the speed the gap closes at. Followed at its own speed that leaves the
+    /// reaction time alone (23 m at 15 kt), where the lead for a parked aircraft (54 m) said "Stop" to
+    /// every pilot following another at 80 m.</para>
     /// </summary>
-    public static double ZoneLeadFt(double ownGsKts, double linearSec)
+    public static double ZoneLeadFt(double ownGsKts, double linearSec, double recedingKts = 0.0)
     {
-        double v = Math.Max(0.0, ownGsKts) * 0.514444, braking = Math.Min(v, GentleBrakingMaxKts * 0.514444);
-        double stoppingM = braking * StopReactionSec + braking * braking / (2.0 * GentleBrakingMps2);
-        return Math.Max(v * linearSec, stoppingM) * FeetPerMetre;
+        double v = Math.Max(0.0, ownGsKts) * KtsToMps, braking = Math.Min(v, GentleBrakingMaxKts * KtsToMps);
+        double its = Math.Min(Math.Max(0.0, recedingKts) * KtsToMps, braking);
+        double stoppingM = braking * StopReactionSec + (braking * braking - its * its) / (2.0 * GentleBrakingMps2);
+        return Math.Max(Math.Max(0.0, v - its) * linearSec, stoppingM) * FeetPerMetre;
     }
 
     /// <summary>The fastest taxi the gentle-braking lead is worked out for (knots).</summary>
@@ -265,10 +272,13 @@ internal static partial class GroundTrafficLogic
     public const double ThreatMaxTcpaSec = 30.0;
 
     /// <summary>
-    /// With a taxi route to judge by, may this aircraft earn "Slow down"/"Stop"? Only as a real threat:
-    /// near the route ahead (<paramref name="nearRoute"/>), genuinely very close (<paramref name="veryClose"/>,
-    /// inside the fixed Warning distance), or MOVING (at least <see cref="MovingTrafficKts"/>) with a
-    /// predicted closest approach under <see cref="ThreatDcpaM"/> within <see cref="ThreatMaxTcpaSec"/>.
+    /// May this aircraft earn "Slow down"/"Stop"? Only as a real threat: in the pilot's path
+    /// (<paramref name="inPath"/>: within the pass clearance of the strip the own wings sweep along the
+    /// route, or of the straight line of travel when no route is followed, [TRF-17]), very close
+    /// (<paramref name="veryClose"/>: nearer than aircraft are meant to pass, or inside the fixed Warning
+    /// gap straight ahead), or MOVING (at least <see cref="MovingTrafficKts"/>) with a predicted closest
+    /// approach under <see cref="ThreatDcpaM"/> within <see cref="ThreatMaxTcpaSec"/>, unless it simply
+    /// passes beside (<paramref name="passesClear"/>, <see cref="PassesClear"/>).
     /// Anything else drops to an Awareness ping, which can still escalate later.
     /// <para>The closest approach is a threat test for moving traffic ONLY (PR #247 author's fix, 9190e869).
     /// For a parked aircraft it assumes the pilot keeps going straight, and where the route bends toward
@@ -277,10 +287,53 @@ internal static partial class GroundTrafficLogic
     /// simulated-traffic runs over 100 airports. A parked aircraft is a threat through the route or by
     /// being very close, as before.</para>
     /// </summary>
-    public static bool IsRouteThreat(bool nearRoute, double dcpaM, double tcpaSec, double trafficGsKts, bool veryClose)
-        => nearRoute
-           || (trafficGsKts >= MovingTrafficKts && dcpaM < ThreatDcpaM && tcpaSec <= ThreatMaxTcpaSec)
+    public static bool IsRouteThreat(bool inPath, double dcpaM, double tcpaSec, double trafficGsKts, bool veryClose,
+        bool passesClear = false)
+        => inPath
+           || (trafficGsKts >= MovingTrafficKts && !passesClear && dcpaM < ThreatDcpaM && tcpaSec <= ThreatMaxTcpaSec)
            || veryClose;
+
+    // ── Passing beside an aircraft: the clearance aerodromes are built to ─────────────────────────
+    // Aerodromes put aircraft closer together than any round "very close" distance: ICAO Annex 14
+    // (3.13.6, clearance distances on aircraft stands) asks for 7.5 m between an aircraft of code D, E or
+    // F and the next aircraft or object, 4.5 m for code C, 3 m for A and B, and parallel taxiways leave
+    // 8 to 11 m between the wingtips of the largest aircraft they take. With "very close" at a 50 ft gap
+    // and the path as a 60 m band round the route, an A350 passing a 777 on the parallel taxiway (76 m
+    // between centre lines, 11 m between wingtips) was "Stop", every aircraft going the other way there
+    // was "converging", "Slow down", "Stop", and an A320 stopped on a parallel 44 m away was "in the way".
+
+    /// <summary>Wing spans from which an aircraft is ICAO aerodrome code C, and code D (metres).</summary>
+    public const double CodeCMinSpanM = 24.0, CodeDMinSpanM = 36.0;
+
+    /// <summary>
+    /// The clear space two aircraft may pass with: under it, a stopped aircraft beside the path is "very
+    /// close", and one whose outline comes that near the strip the own wings sweep is IN THE WAY. Two
+    /// thirds of the ICAO stand clearance for the larger of the two (5 m from code D up, 3 m for code C,
+    /// 2 m below): at the full figure every stand built exactly to the standard, with an aircraft parked a
+    /// little off its mark, would be a coin toss between silence and "Stop".
+    /// </summary>
+    public static double PassClearanceM(double wingspanAM, double wingspanBM)
+    {
+        double span = Math.Max(wingspanAM, wingspanBM);
+        return span >= CodeDMinSpanM ? 5.0 : span >= CodeCMinSpanM ? 3.0 : 2.0;
+    }
+
+    /// <summary>Traffic within this of the path's direction, either way along it, moves PARALLEL to it.</summary>
+    public const double ParallelMaxDeg = 20.0;
+
+    /// <summary>
+    /// Moving traffic that will pass beside the pilot and never come nearer than aerodromes are built for:
+    /// it moves parallel to the pilot's path (<paramref name="offPathDeg"/>, the angle between its
+    /// direction of travel and the path, either way along it) and its outline stays
+    /// <paramref name="lateralClearanceM"/> clear of the strip the own wings sweep. Its closest approach is
+    /// a small number that means nothing: it is no threat, earns no "converging" and no lead.
+    /// </summary>
+    public static bool PassesClear(double trafficGsKts, double offPathDeg, double lateralClearanceM, double passClearanceM)
+    {
+        double off = Math.Abs(AngleDiff(offPathDeg, 0.0));
+        return trafficGsKts >= MovingTrafficKts && (off <= ParallelMaxDeg || off >= 180.0 - ParallelMaxDeg)
+               && lateralClearanceM >= passClearanceM;
+    }
 
     // ── Only the first aircraft on the route ahead is called (PR #247 author's fix, 9190e869) ─────────
     // The author's "shadowed" traffic: an aircraft queued beyond the FIRST one on the route ahead cannot
