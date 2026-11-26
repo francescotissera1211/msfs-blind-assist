@@ -896,6 +896,11 @@ public sealed class GroundTrafficMonitor : IDisposable
                 GroundTrafficAircraftSizes.ResolveOwn(key.IcaoType, key.Title, key.WingSpanFt * 0.3048)))
             outline = null;
         if (outline == null && _ownHullResolved && key == _ownHullKey) return _ownHull;
+        // Never narrower than the wing span the aircraft's own flight model reports: an add-on's is real.
+        double reportedHalfSpanM = key.WingSpanFt * 0.3048 / 2.0;
+        if (outline != null && reportedHalfSpanM * 2.0 >= GroundTrafficAircraftSizes.MinPlausibleWingspanM
+            && reportedHalfSpanM * 2.0 <= GroundTrafficAircraftSizes.MaxPlausibleWingspanM)
+            outline = outline.WidenedTo(reportedHalfSpanM);
         var hull = outline != null
             ? AircraftHull.FromOutline(outline)
             : key == default ? AircraftHull.Default

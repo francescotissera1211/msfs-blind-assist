@@ -428,3 +428,20 @@ public class MeasuredOutlineGuardTests
     public void An_unknown_type_has_nothing_to_hold_a_measurement_against()
         => Assert.True(GroundTrafficAircraftSizes.Agrees(Outline(5.0, 3.0, 6.0f), GroundTrafficAircraftSizes.Default));
 }
+
+public class OutlineWideningTests
+{
+    [Fact]
+    public void Widening_moves_the_wingtips_out_and_leaves_the_fuselage_and_the_length_alone()
+    {
+        // A 2 m half-width fuselage 40 m long with a 16 m half-span wing in the middle.
+        var widths = Enumerable.Range(0, 160).Select(i => i is >= 70 and < 90 ? 16f : 2f).ToArray();
+        var outline = new AircraftOutline(22, 18, widths);
+        var wider = outline.WidenedTo(17.9);
+        Assert.Equal(17.9, wider.HalfSpanM, 3);
+        Assert.Equal(2f, wider.HalfWidths[10]);
+        Assert.Equal(outline.NoseM, wider.NoseM);
+        Assert.Equal(outline.TailM, wider.TailM);
+        Assert.Same(outline, outline.WidenedTo(15.0));     // never narrowed
+    }
+}

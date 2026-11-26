@@ -67,17 +67,20 @@ foreach (var (_, row) in models.OrderBy(m => m.Key, StringComparer.OrdinalIgnore
         GroundTrafficModelReader.NodeTrace = (dir, node, x0, x1, z0, z1) =>
         {
             double ahead = double.TryParse(Environment.GetEnvironmentVariable("AUDIT_AHEAD"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : double.MaxValue;
-            if (z1 > ahead || Math.Max(Math.Max(Math.Abs(x0), Math.Abs(x1)), Math.Max(Math.Abs(z0), Math.Abs(z1))) > 40 || x1 - x0 > 66)
+            double wide = double.TryParse(Environment.GetEnvironmentVariable("AUDIT_WIDE"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out double wv) ? wv : double.MaxValue;
+            double behind = double.TryParse(Environment.GetEnvironmentVariable("AUDIT_BEHIND"), System.Globalization.NumberStyles.Float, CultureInfo.InvariantCulture, out double bv) ? bv : double.MaxValue;
+            if (z1 > ahead || -z0 > behind || Math.Max(Math.Abs(x0), Math.Abs(x1)) > wide
+                || Math.Max(Math.Max(Math.Abs(x0), Math.Abs(x1)), Math.Max(Math.Abs(z0), Math.Abs(z1))) > 40 || x1 - x0 > 66)
                 big.Add($"    node {Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar))}/{node} x[{x0:0},{x1:0}] z[{z0:0},{z1:0}]");
         };
     var outline = GroundTrafficModelReader.Measure(row.Parts, out string why);
     GroundTrafficModelReader.NodeTrace = null;
+    if (args.Contains("--parts")) foreach (var part in row.Parts) Console.WriteLine($"    part parent={part.Parent} node={part.AttachNode} lods={part.Lods.Count} first={Path.GetFileName(part.Lods[0])}");
     foreach (string line in big.Distinct().Take(25)) Console.WriteLine(line);
     if (outline == null)
     {
         Count(package)[3]++;
         Console.WriteLine($"UNREADABLE {package} {label} type={declared} titles={row.Titles.Count} file={Path.GetFileName(file)} why={why}");
-        if (args.Contains("--parts")) foreach (var part in row.Parts) Console.WriteLine($"    part parent={part.Parent} node={part.AttachNode} lods={part.Lods.Count} first={Path.GetFileName(part.Lods[0])}");
         continue;
     }
     measuredTitles += row.Titles.Count;

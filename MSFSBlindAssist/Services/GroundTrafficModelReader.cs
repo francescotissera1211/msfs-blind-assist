@@ -39,6 +39,26 @@ public sealed class AircraftOutline
         Polygon = BuildPolygon(tailM, noseM, halfWidths);
     }
 
+    /// <summary>
+    /// This outline with its wingtips moved out to <paramref name="halfSpanM"/>, when that is wider: the
+    /// stations in the outer half of the span are stretched, the tip all the way and the mid-span not at
+    /// all, so the fuselage and the tail keep their measure. For a pilot's own aircraft whose tip devices
+    /// the measurement could not place (the Fenix's fences and sharklets), against the wing span its own
+    /// flight model reports.
+    /// </summary>
+    public AircraftOutline WidenedTo(double halfSpanM)
+    {
+        double max = HalfSpanM;
+        if (!(halfSpanM > max) || max <= 0.0) return this;
+        var wider = new float[HalfWidths.Count];
+        for (int i = 0; i < wider.Length; i++)
+        {
+            double w = HalfWidths[i], outer = (w - 0.5 * max) / (0.5 * max);
+            wider[i] = (float)(outer > 0.0 ? w + outer * (halfSpanM - max) : w);
+        }
+        return new AircraftOutline(TailM, NoseM, wider);
+    }
+
     private static List<(double X, double Z)> BuildPolygon(double tailM, double noseM, IReadOnlyList<float> w)
     {
         // The right-hand side from the tail tip to the nose tip, then thinned.
@@ -117,7 +137,7 @@ public sealed class AircraftOutline
 public static partial class GroundTrafficModelReader
 {
     /// <summary>A node whose name matches, and everything under it, is ground equipment, never airframe.</summary>
-    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|(^|_)gse(_|$)|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal|lod_?friend|^friend_|^lights?_|glow|halo|lens.?flare|cast.?shadow",
+    [GeneratedRegex(@"ground.?serv|^aso_|pushback|fuel.?truck|(^|_)tug|(^|_)gpu|(^|_)gse(_|$)|chock|vis_blocks|stairs|catering|baggage|tow.?bar|^ramp_|marshal|lod_?friend|^friend_|(^|_)lights?(_|$)|glow|halo|lens.?flare|cast.?shadow|^skel_.*_box$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NotAirframe();
 
@@ -212,6 +232,16 @@ public static partial class GroundTrafficModelReader
     // level used, by name (where the parts attached to it go).
     private static Dictionary<string, double[]>? Load(IReadOnlyList<string> lods, double[] root, List<Part> meshes)
     {
+        // An FSX-era model (IVAO's 737-200, -400 and -500) is one binary file, not glTF.
+        foreach (string lod in lods)
+        {
+            if (!lod.EndsWith(".mdl", StringComparison.OrdinalIgnoreCase)) continue;
+            var legacy = ReadLegacyModel(lod, root);
+            if (legacy.Count == 0) continue;
+            meshes.AddRange(legacy);
+            return new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
+        }
+
         var candidates = new List<(int Rank, int Order, JsonDocument Doc, string Path)>();
         try
         {
@@ -246,6 +276,95 @@ public static partial class GroundTrafficModelReader
             return null;
         }
         finally { foreach (var c in candidates) c.Doc.Dispose(); }
+    }
+
+    /// <summary>A legacy model larger than this (bytes) is not read.</summary>
+    public const long MaxLegacyModelBytes = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// The geometry of an FSX-format <c>.MDL</c> (RIFF "MDLX"): the vertices of its <c>VERT</c> chunk, 32
+    /// bytes each with the position first, in metres, X to the right and Z ahead of the same origin a glTF
+    /// model has, and the triangle lists of its most detailed level (<c>INDE</c> indices, through the
+    /// <c>PART</c> records of the <c>LODE</c> with the largest level). Checked on IVAO's 737-400: 28.88 m by 36.57 m as stored,
+    /// against a published 28.88 by 36.45. A part an animation moves is stored about its own pivot, so
+    /// it lands near the origin, inside the airframe, and changes nothing seen from above.
+    /// </summary>
+    internal static List<Part> ReadLegacyModel(string path, double[] root)
+    {
+        var parts = new List<Part>();
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length > MaxLegacyModelBytes || info.Length < 16) return parts;
+            byte[] b = File.ReadAllBytes(path);
+            if (b[0] != 'R' || b[1] != 'I' || b[2] != 'F' || b[3] != 'F' || b[8] != 'M' || b[9] != 'D' || b[10] != 'L') return parts;
+
+            int vertAt = -1, vertSize = 0, indeAt = -1, indeSize = 0;
+            // Each LODE opens with its level's size on screen: the largest is the most detailed (the
+            // smallest, listed first, is three vertices).
+            var partRecords = new List<int>();
+            List<int>? current = null;
+            int bestLevel = int.MinValue;
+            void Walk(int from, int to, int depth)
+            {
+                for (int at = from; at + 8 <= to;)
+                {
+                    string id = System.Text.Encoding.ASCII.GetString(b, at, 4);
+                    int size = BitConverter.ToInt32(b, at + 4);
+                    int data = at + 8;
+                    if (size < 0 || (long)data + size > to) return;
+                    switch (id)
+                    {
+                        case "MDLD": case "VERB": case "LODT": Walk(data, data + size, depth + 1); break;
+                        case "LODE":
+                            if (size >= 4)
+                            {
+                                int level = BitConverter.ToInt32(b, data);
+                                current = new List<int>();
+                                Walk(data + 4, data + size, depth + 1);
+                                if (current.Count > 0 && level > bestLevel) { bestLevel = level; partRecords = current; }
+                                current = null;
+                            }
+                            break;
+                        case "VERT": if (vertAt < 0) { vertAt = data; vertSize = size; } break;
+                        case "INDE": if (indeAt < 0) { indeAt = data; indeSize = size; } break;
+                        case "PART": if (current != null && size >= 36) current.Add(data); break;
+                    }
+                    at = data + size + (size & 1);
+                }
+            }
+            Walk(12, b.Length, 0);
+            if (vertAt < 0) return parts;
+
+            int count = vertSize / 32;
+            var xz = new double[count * 2];
+            for (int i = 0; i < count; i++)
+            {
+                double x = BitConverter.ToSingle(b, vertAt + i * 32), y = BitConverter.ToSingle(b, vertAt + i * 32 + 4),
+                       z = BitConverter.ToSingle(b, vertAt + i * 32 + 8);
+                xz[i * 2] = root[0] * x + root[1] * y + root[2] * z + root[3];
+                xz[i * 2 + 1] = root[8] * x + root[9] * y + root[10] * z + root[11];
+            }
+            // The triangle lists of the first level: indices are relative to each part's first vertex.
+            var triangles = new List<int>();
+            int indices = indeSize / 2;
+            foreach (int at in partRecords)
+            {
+                int type = BitConverter.ToInt32(b, at), vertexOffset = BitConverter.ToInt32(b, at + 16),
+                    indexOffset = BitConverter.ToInt32(b, at + 24), indexCount = BitConverter.ToInt32(b, at + 28);
+                if (type != 1 || indeAt < 0 || indexOffset < 0 || indexCount <= 0 || indexOffset + indexCount > indices) continue;
+                for (int i = 0; i + 2 < indexCount; i += 3)
+                {
+                    int p = vertexOffset + BitConverter.ToUInt16(b, indeAt + (indexOffset + i) * 2),
+                        q = vertexOffset + BitConverter.ToUInt16(b, indeAt + (indexOffset + i + 1) * 2),
+                        r = vertexOffset + BitConverter.ToUInt16(b, indeAt + (indexOffset + i + 2) * 2);
+                    if ((uint)p < (uint)count && (uint)q < (uint)count && (uint)r < (uint)count) { triangles.Add(p); triangles.Add(q); triangles.Add(r); }
+                }
+            }
+            parts.Add(new Part(xz, triangles.Count > 0 ? triangles.ToArray() : null));
+        }
+        catch (Exception) { parts.Clear(); }
+        return parts;
     }
 
     private static ReadOnlyMemory<byte> WithoutBom(byte[] bytes)

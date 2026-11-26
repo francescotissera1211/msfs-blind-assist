@@ -300,12 +300,22 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     [GeneratedRegex(@"ModelFile\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex ModelFileAttribute();
 
+    [GeneratedRegex(@"<LODS[^>]*\bTemplate\s*=\s*""([^""]+)""", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LodsTemplateAttribute();
+
+    [GeneratedRegex(@"<MergeModel>\s*([^<]+?)\s*</MergeModel>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex MergeModelElement();
+
     /// <summary>
     /// The model's glTF files, most detailed first: the levels of detail its <c>model.cfg</c> names through
     /// its model XML, looked for in the aircraft's own model folder and then in its base container's.
     /// Empty when none is on disk.
     /// </summary>
     internal static IReadOnlyList<string> LodPaths(ModelRef model)
+        => ClassicGroups(model).FirstOrDefault(g => g.Count > 0) ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+    // An ordinary aircraft's model: its levels of detail, then anything its model XML merges into them.
+    private static List<List<string>> ClassicGroups(ModelRef model)
     {
         string folder = model.ModelSuffix.Length > 0 ? "model." + model.ModelSuffix : "model";
         foreach (string? root in new[] { model.AircraftDir, model.BaseDir })
@@ -315,50 +325,56 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             try { modelDir = Vfs(Path.GetFullPath(Path.Combine(root, folder.Replace('/', Path.DirectorySeparatorChar)))); }
             catch (Exception) { continue; }
             if (!Directory.Exists(modelDir)) continue;
-            var lods = LodsOf(modelDir);
-            if (lods.Count > 0) return lods;
+            var groups = GroupsOf(modelDir);
+            if (groups.Any(g => g.Count > 0)) return groups;
         }
-        return Array.Empty<string>();
+        return new List<List<string>>();
     }
 
     /// <summary>
-    /// The parts a title's model is made of: the one model for an ordinary aircraft; for an MSFS 2024
-    /// MODULAR aircraft (its <c>aircraft.cfg</c> sits beside an <c>attached_objects.cfg</c>, in
-    /// <c>presets/&lt;maker&gt;/&lt;preset&gt;/config</c>) the exterior it is assembled from: the common model,
-    /// then every <c>[SIM_ATTACHMENT.N]</c> whose <c>attach_to_model</c> is the exterior, and the attachments
-    /// of those in turn. Empty when nothing is on disk.
+    /// The parts a title's model is made of: the one model for an ordinary aircraft (and whatever its model
+    /// XML merges into it); for an MSFS 2024 MODULAR aircraft (its <c>aircraft.cfg</c> sits beside an
+    /// <c>attached_objects.cfg</c>, in <c>presets/&lt;maker&gt;/&lt;preset&gt;/config</c>) the exterior it is
+    /// assembled from: the common model, then every <c>[SIM_ATTACHMENT.N]</c> and <c>[MERGE_MODEL.N]</c> that
+    /// goes to the exterior, and the attachments of those in turn. Empty when nothing is on disk.
     /// </summary>
     internal static IReadOnlyList<GroundTrafficModelReader.ModelPart> Parts(ModelRef model)
     {
-        var lods = LodPaths(model);
-        if (lods.Count > 0) return new[] { new GroundTrafficModelReader.ModelPart(lods) };
-        string attached = Path.Combine(model.AircraftDir, "attached_objects.cfg");
-        if (!File.Exists(attached)) return Array.Empty<GroundTrafficModelReader.ModelPart>();
-
         var parts = new List<GroundTrafficModelReader.ModelPart>();
+        foreach (var group in ClassicGroups(model))
+            if (group.Count > 0) parts.Add(new GroundTrafficModelReader.ModelPart(group));
+        if (parts.Count > 0) return parts;
+
+        string attached = Path.Combine(model.AircraftDir, "attached_objects.cfg");
+        if (!File.Exists(attached)) return parts;
+        int attachedFrom = 0;
         try
         {
             string? packageRoot = PackageRootOf(model.AircraftDir);
             if (packageRoot == null) return parts;
             // presets/<maker>/<preset>/config → the aircraft's own folder, four levels up: its common model.
             string aircraftRoot = Path.GetFullPath(Path.Combine(model.AircraftDir, "..", "..", "..", ".."));
-            var common = LodsOf(Vfs(Path.Combine(aircraftRoot, "common", "model")));
-            int parent = -1;
-            if (common.Count > 0) { parts.Add(new GroundTrafficModelReader.ModelPart(common)); parent = 0; }
+            int parent = AddGroups(parts, GroupsOf(Vfs(Path.Combine(aircraftRoot, "common", "model"))), -1, null);
+            attachedFrom = parts.Count;
             AddAttachments(parts, attached, packageRoot, parent, depth: 0);
         }
         catch (Exception) { /* unreadable: whatever was gathered */ }
-        // The common model alone is a helper with no airframe: with no attachment there is nothing to measure.
-        return parts.Any(p => p.Parent >= 0 || parts.Count > 1 && p != parts[0]) || (parts.Count == 1 && parts[0].Parent == -1 && !IsCommonOnly(parts, model))
-            ? parts : Array.Empty<GroundTrafficModelReader.ModelPart>();
+        // The common model alone is a helper with no airframe: with nothing attached there is nothing to measure.
+        return parts.Count > attachedFrom ? parts : new List<GroundTrafficModelReader.ModelPart>();
     }
 
-    // True when the one part gathered is the aircraft's common model and nothing was attached to it.
-    private static bool IsCommonOnly(List<GroundTrafficModelReader.ModelPart> parts, ModelRef model)
+    // Adds a model's groups as parts sharing one parent and attach node (what is merged into a model
+    // shares its origin); returns the index of its main part, or the parent when it has no geometry.
+    private static int AddGroups(List<GroundTrafficModelReader.ModelPart> parts, List<List<string>> groups, int parent, string? node)
     {
-        string aircraftRoot = Path.GetFullPath(Path.Combine(model.AircraftDir, "..", "..", "..", ".."));
-        string common = Path.Combine(aircraftRoot, "common", "model") + Path.DirectorySeparatorChar;
-        return parts.Count == 1 && parts[0].Lods[0].StartsWith(common, StringComparison.OrdinalIgnoreCase);
+        int self = parent;
+        for (int i = 0; i < groups.Count; i++)
+        {
+            if (groups[i].Count == 0) continue;
+            parts.Add(new GroundTrafficModelReader.ModelPart(groups[i], parent, node));
+            if (i == 0) self = parts.Count - 1;
+        }
+        return self;
     }
 
     /// <summary>An attachment whose folder name matches is not airframe: evacuation slides, covers, ground equipment, people.</summary>
@@ -372,27 +388,28 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     {
         if (depth > MaxAttachmentDepth || parts.Count > 400) return;
         string section = "";
-        string? root = null, file = null, toModel = null, toNode = null;
+        string? root = null, file = null, toModel = null, toNode = null, mergeFile = null;
         void Close()
         {
-            if (section.StartsWith("SIM_ATTACHMENT.", StringComparison.Ordinal) && root != null && file != null
-                && string.Equals(toModel, "exterior", StringComparison.OrdinalIgnoreCase)
+            bool exterior = string.Equals(toModel, "exterior", StringComparison.OrdinalIgnoreCase);
+            if (section.StartsWith("SIM_ATTACHMENT.", StringComparison.Ordinal) && root != null && file != null && exterior
                 && !NotAirframeAttachment().IsMatch(Path.GetFileName(root.TrimEnd('/', '\\')))
                 && !NotAirframeAttachment().IsMatch(Path.GetFileName(file.Replace('\\', '/'))))
             {
                 string attachmentDir = Path.GetFullPath(Path.Combine(packageRoot, root.Replace('/', Path.DirectorySeparatorChar)));
-                var lods = LodsFromModelFile(Vfs(Path.GetFullPath(Path.Combine(attachmentDir, file.Replace('/', Path.DirectorySeparatorChar)))), attachmentDir);
+                var groups = ModelGroups(Vfs(Path.GetFullPath(Path.Combine(attachmentDir, file.Replace('/', Path.DirectorySeparatorChar)))), attachmentDir, 0);
                 // An attachment with no geometry of its own still carries the parts attached to it.
-                int self = parent;
-                if (lods.Count > 0)
-                {
-                    parts.Add(new GroundTrafficModelReader.ModelPart(lods, parent, toNode));
-                    self = parts.Count - 1;
-                }
+                int self = AddGroups(parts, groups, parent, toNode);
                 string nested = Vfs(Path.Combine(attachmentDir, "config", "attached_objects.cfg"));
                 if (File.Exists(nested)) AddAttachments(parts, nested, packageRoot, self, depth + 1);
             }
-            root = file = toModel = toNode = null;
+            else if (section.StartsWith("MERGE_MODEL.", StringComparison.Ordinal) && mergeFile != null && exterior
+                     && !NotAirframeAttachment().IsMatch(mergeFile))
+            {
+                string merged = Vfs(Path.GetFullPath(Path.Combine(packageRoot, mergeFile.Replace('/', Path.DirectorySeparatorChar))));
+                AddGroups(parts, ModelGroups(merged, Path.GetDirectoryName(merged) ?? packageRoot, 0), parent, null);
+            }
+            root = file = toModel = toNode = mergeFile = null;
         }
         foreach (string raw in File.ReadAllLines(attachedCfg))
         {
@@ -412,8 +429,9 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             {
                 case "attachment_root": root = value; break;
                 case "attachment_file": file = value; break;
-                case "attach_to_model": toModel = value; break;
+                case "attach_to_model": case "merge_to_model": toModel = value; break;
                 case "attach_to_node": toNode = value; break;
+                case "merge_file": mergeFile = value; break;
             }
         }
         Close();
@@ -427,9 +445,10 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         return null;
     }
 
-    private static List<string> LodsOf(string modelDir)
+    // A model folder's groups: what its model.cfg's exterior model names, else the glTF files in it.
+    private static List<List<string>> GroupsOf(string modelDir)
     {
-        var lods = new List<string>();
+        var groups = new List<List<string>>();
         try
         {
             string cfg = Path.Combine(modelDir, "model.cfg");
@@ -444,38 +463,67 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
                     if (!inModels || eq <= 0) continue;
                     string key = line[..eq].Trim().ToLowerInvariant();
                     if (key != "normal" && key != "exterior") continue;
-                    lods.AddRange(LodsFromModelFile(
-                        Vfs(Path.GetFullPath(Path.Combine(modelDir, Unquote(line[(eq + 1)..]).Replace('/', Path.DirectorySeparatorChar)))), modelDir));
-                    if (lods.Count > 0) break;
+                    groups = ModelGroups(
+                        Vfs(Path.GetFullPath(Path.Combine(modelDir, Unquote(line[(eq + 1)..]).Replace('/', Path.DirectorySeparatorChar)))), modelDir, 0);
+                    if (groups.Any(g => g.Count > 0)) break;
                 }
             }
-            if (lods.Count == 0 && Directory.Exists(modelDir)) lods.AddRange(GltfsIn(modelDir));
+            if (!groups.Any(g => g.Count > 0) && Directory.Exists(modelDir))
+                groups = new List<List<string>> { GltfsIn(modelDir).ToList() };
         }
         catch (Exception) { /* unreadable: no model */ }
-        return lods;
+        return groups;
     }
 
-    // The levels of detail a model file names: itself when it is a glTF, the files its model XML lists
-    // (relative to the XML), else the glTF files beside the XML.
-    private static List<string> LodsFromModelFile(string file, string fallbackDir)
+    /// <summary>
+    /// What a model file is made of. The FIRST group is its own levels of detail, most detailed first:
+    /// itself when it is a glTF; the files its model XML lists; those of the XML its
+    /// <c>&lt;LODS Template="…"&gt;</c> names when it lists none of its own (the Fenix's sharklet wings are the
+    /// plain wings' levels plus a merged model); else the glTF files beside the XML. Each further group is
+    /// a model merged into them (<c>&lt;MergeModel&gt;</c>, one file per level): it shares the model's origin.
+    /// </summary>
+    internal static List<List<string>> ModelGroups(string file, string fallbackDir, int depth)
     {
-        var lods = new List<string>();
+        var groups = new List<List<string>> { new() };
         try
         {
-            if (file.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase)) { if (File.Exists(file)) lods.Add(file); }
-            else if (File.Exists(file))
+            if (file.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".mdl", StringComparison.OrdinalIgnoreCase))
             {
-                string xmlDir = Path.GetDirectoryName(file) ?? fallbackDir;
-                foreach (Match m in ModelFileAttribute().Matches(File.ReadAllText(file)))
-                {
-                    string lod = Vfs(Path.GetFullPath(Path.Combine(xmlDir, m.Groups[1].Value.Replace('/', Path.DirectorySeparatorChar))));
-                    if (File.Exists(lod) && !lods.Contains(lod, StringComparer.OrdinalIgnoreCase)) lods.Add(lod);
-                }
-                if (lods.Count == 0) lods.AddRange(GltfsIn(xmlDir));
+                if (File.Exists(file)) groups[0].Add(file);
+                return groups;
             }
+            // An FSX-era model.cfg names its model with no extension: "normal = model" is model.mdl.
+            if (!File.Exists(file))
+            {
+                if (File.Exists(file + ".mdl")) groups[0].Add(file + ".mdl");
+                return groups;
+            }
+            string xmlDir = Path.GetDirectoryName(file) ?? fallbackDir;
+            string xml = File.ReadAllText(file);
+            string Resolve(string relative) => Vfs(Path.GetFullPath(Path.Combine(xmlDir, relative.Trim().Replace('/', Path.DirectorySeparatorChar))));
+
+            foreach (Match m in ModelFileAttribute().Matches(xml))
+            {
+                string lod = Resolve(m.Groups[1].Value);
+                if (File.Exists(lod) && !groups[0].Contains(lod, StringComparer.OrdinalIgnoreCase)) groups[0].Add(lod);
+            }
+            var merged = new List<string>();
+            foreach (Match m in MergeModelElement().Matches(xml))
+            {
+                string lod = Resolve(m.Groups[1].Value);
+                if (File.Exists(lod) && !merged.Contains(lod, StringComparer.OrdinalIgnoreCase)) merged.Add(lod);
+            }
+            if (groups[0].Count == 0 && depth < 4 && LodsTemplateAttribute().Match(xml) is { Success: true } template)
+            {
+                var inherited = ModelGroups(Resolve(template.Groups[1].Value), xmlDir, depth + 1);
+                groups[0] = inherited[0];
+                groups.AddRange(inherited.Skip(1));
+            }
+            if (merged.Count > 0) groups.Add(merged);
+            if (groups.All(g => g.Count == 0)) groups[0].AddRange(GltfsIn(xmlDir));
         }
         catch (Exception) { /* unreadable: no model */ }
-        return lods;
+        return groups;
     }
 
     private static IEnumerable<string> GltfsIn(string dir)
