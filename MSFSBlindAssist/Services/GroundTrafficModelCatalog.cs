@@ -304,12 +304,16 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     }
 
     // An MSFS 2024 preset's own aircraft.cfg holds its title and seldom its type: that is declared once for
-    // the aircraft, in its common config (the TFDi MD-11, the FlyByWire A380) or in the configs of the
-    // attachments its airframe is made of (PMDG: each fuselage part). A preset that declares none takes
-    // the common one, else the ONE designator every attachment config of that aircraft agrees on.
+    // the aircraft, in its common config (the TFDi MD-11, the FlyByWire A380), or in the configs of the parts
+    // it is assembled from (PMDG: each fuselage part; the Fenix: the fuselage its exterior part INHERITS,
+    // which lives in the package its A319, A320 and A321 share, each fuselage declaring its own). A preset
+    // that declares none takes the common one; else the ONE designator the parts its own attachment lists
+    // name agree on, wherever they live; else, when no part it names declares one, the one every attachment
+    // config of that aircraft agrees on.
     private static void InheritDeclaredTypes(Dictionary<string, ModelRef> index)
     {
         var byAircraft = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var byPreset = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string title in index.Where(e => e.Value.Icao.Length == 0).Select(e => e.Key).ToList())
         {
             var model = index[title];
@@ -320,30 +324,74 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
             if (presets == null || !string.Equals(Path.GetFileName(presets), "presets", StringComparison.OrdinalIgnoreCase)) continue;
             string? aircraftRoot = Path.GetDirectoryName(presets);
             if (aircraftRoot == null) continue;
-            if (!byAircraft.TryGetValue(aircraftRoot, out string? icao))
-                byAircraft[aircraftRoot] = icao = DeclaredTypeOf(aircraftRoot);
+            if (!byPreset.TryGetValue(dir, out string? icao))
+                byPreset[dir] = icao = DeclaredTypeOf(aircraftRoot, dir, byAircraft);
             if (icao.Length > 0) index[title] = model with { Icao = icao };
         }
     }
 
-    private static string DeclaredTypeOf(string aircraftRoot)
+    private static string DeclaredTypeOf(string aircraftRoot, string presetConfigDir, Dictionary<string, string> agreedByAircraft)
     {
         try
         {
-            string common = Designator(Path.Combine(aircraftRoot, "common", "config", "aircraft.cfg"));
+            string common = Designator(Vfs(Path.Combine(aircraftRoot, "common", "config", "aircraft.cfg")));
             if (common.Length > 0) return common;
-            string attachments = Path.Combine(aircraftRoot, "attachments");
-            if (!Directory.Exists(attachments)) return "";
+            var attached = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (PackageRootOf(presetConfigDir) is { } packageRoot)
+                AddAttachedTypes(attached, Path.Combine(presetConfigDir, "attached_objects.cfg"), packageRoot,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase), 0);
+            if (attached.Count > 0) return attached.Count == 1 ? attached.First() : "";
+            if (agreedByAircraft.TryGetValue(aircraftRoot, out string? agreed)) return agreed;
             var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (string cfg in AircraftCfgs(attachments, 0))
-                if (Designator(cfg) is { Length: > 0 } icao) found.Add(icao);
-            return found.Count == 1 ? found.First() : "";
+            string attachments = Path.Combine(aircraftRoot, "attachments");
+            if (Directory.Exists(attachments))
+                foreach (string cfg in AircraftCfgs(attachments, 0))
+                    if (Designator(cfg) is { Length: > 0 } icao) found.Add(icao);
+            return agreedByAircraft[aircraftRoot] = found.Count == 1 ? found.First() : "";
         }
         catch (Exception) { return ""; }
     }
 
+    // The designators the parts an attachment list names declare, and those of the parts attached to them in
+    // turn, each found as the simulator's file system would find it (another package).
+    private static void AddAttachedTypes(HashSet<string> found, string attachedCfg, string packageRoot, HashSet<string> seen, int depth)
+    {
+        if (depth > MaxAttachmentDepth || !seen.Add(attachedCfg) || !File.Exists(attachedCfg)) return;
+        foreach (string raw in File.ReadAllLines(attachedCfg))
+        {
+            string line = raw.Trim();
+            int eq = line.IndexOf('=');
+            if (eq <= 0 || !line[..eq].Trim().Equals("attachment_root", StringComparison.OrdinalIgnoreCase)) continue;
+            string part = PartFolder(packageRoot, Unquote(line[(eq + 1)..]));
+            if (PartType(part, packageRoot) is { Length: > 0 } icao) found.Add(icao);
+            AddAttachedTypes(found, Vfs(Path.Combine(part, "config", "attached_objects.cfg")), packageRoot, seen, depth + 1);
+        }
+    }
+
+    // The type a part declares: its own config's, else that of the part it inherits from (attachment.cfg,
+    // [Inherit] base), in turn. The Fenix's exterior declares none and inherits its fuselage, which does.
+    private static string PartType(string part, string packageRoot)
+    {
+        for (int depth = 0; depth <= MaxAttachmentDepth; depth++)
+        {
+            if (Designator(Vfs(Path.Combine(part, "config", "aircraft.cfg"))) is { Length: > 0 } icao) return icao;
+            string inherited = CfgValue(Vfs(Path.Combine(part, "attachment.cfg")), "INHERIT", "base");
+            if (inherited.Length == 0) return "";
+            part = PartFolder(packageRoot, inherited);
+        }
+        return "";
+    }
+
+    // A part's folder from the path a cfg names it by, which starts at the package ("SimObjects/…", either slash).
+    private static string PartFolder(string packageRoot, string named)
+        => Path.GetFullPath(Path.Combine(packageRoot, named.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar)));
+
     // The icao_type_designator an aircraft.cfg declares in [GENERAL], upper case; "" for none or no file.
-    private static string Designator(string cfgPath)
+    private static string Designator(string cfgPath) => CfgValue(cfgPath, "GENERAL", "icao_type_designator").ToUpperInvariant();
+
+    // One key's value in one section (named in upper case) of a cfg file, without its quotes or its
+    // trailing comment; "" for none or no file.
+    private static string CfgValue(string cfgPath, string sectionName, string key)
     {
         try
         {
@@ -360,12 +408,12 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
                     continue;
                 }
                 int eq = line.IndexOf('=');
-                if (eq <= 0 || section != "GENERAL") continue;
-                if (line[..eq].Trim().Equals("icao_type_designator", StringComparison.OrdinalIgnoreCase))
-                    return Unquote(line[(eq + 1)..]).ToUpperInvariant();
+                if (eq <= 0 || section != sectionName) continue;
+                if (line[..eq].Trim().Equals(key, StringComparison.OrdinalIgnoreCase))
+                    return Unquote(line[(eq + 1)..]);
             }
         }
-        catch (Exception) { /* unreadable: no type */ }
+        catch (Exception) { /* unreadable: none */ }
         return "";
     }
 
@@ -374,8 +422,29 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
     /// where <see cref="Vfs"/> looks. Per thread, since an index is built and used on one (the catalog's
     /// worker, the audit tool's): shared, two catalogs resolved each other's packages.
     /// </summary>
-    internal static IReadOnlyList<string> VfsRoots { get => _vfsRoots ?? Array.Empty<string>(); private set => _vfsRoots = value; }
+    internal static IReadOnlyList<string> VfsRoots
+    {
+        get => _vfsRoots ?? Array.Empty<string>();
+        private set { _vfsRoots = value; _vfsHomes = null; }
+    }
     [ThreadStatic] private static IReadOnlyList<string>? _vfsRoots;
+
+    // The packages that hold one SimObject's folder ("SimObjects\Airplanes\FNX_32X"), found once per folder
+    // and index: a file missing from its own package is then looked for in the two or three packages that
+    // can hold it, not in every one installed (365 on the owner's PC: about 700 probes for each file that is
+    // nowhere, which made following every preset's parts take a minute).
+    [ThreadStatic] private static Dictionary<string, string[]>? _vfsHomes;
+
+    private static IReadOnlyList<string> HomesOf(string relative)
+    {
+        string[] parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (parts.Length <= 3) return VfsRoots;
+        string folder = Path.Combine(parts[0], parts[1], parts[2]);
+        var homes = _vfsHomes ??= new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        if (!homes.TryGetValue(folder, out string[]? roots))
+            homes[folder] = roots = VfsRoots.Where(root => Directory.Exists(Path.Combine(root, folder))).ToArray();
+        return roots;
+    }
 
     /// <summary>
     /// A path as the simulator's virtual file system sees it: the packages overlay one another, so a file
@@ -389,9 +458,10 @@ public sealed partial class GroundTrafficModelCatalog : IDisposable
         try
         {
             if (File.Exists(path) || Directory.Exists(path)) return path;
-            if (PackageRootOf(path) is not { } own) return path;
-            string relative = Path.GetRelativePath(own, path);
-            foreach (string root in VfsRoots)
+            string full = Path.GetFullPath(path);
+            if (PackageRootOf(full) is not { } own) return path;
+            string relative = Path.GetRelativePath(own, full);
+            foreach (string root in HomesOf(relative))
             {
                 string candidate = Path.Combine(root, relative);
                 if (File.Exists(candidate) || Directory.Exists(candidate)) return candidate;

@@ -346,8 +346,17 @@ public static class GroundTrafficAircraftSizes
     /// <summary>A measured outline SMALLER than its type's published length or span by more than this share is not believed.</summary>
     public const double MaxMeasuredDeviation = 0.15;
 
-    /// <summary>A measured outline LARGER than its type's published length or span by more than this share is not believed either.</summary>
+    /// <summary>
+    /// A measured outline LARGER than its type's published length or span by more than this share is believed
+    /// only when it has the type's own shape (<see cref="MaxScaledShapeDeviation"/>).
+    /// </summary>
     public const double MaxMeasuredExcess = 0.50;
+
+    /// <summary>
+    /// The type's own shape at another scale: its length and its span are over the published ones by the
+    /// same factor, to within this share of each other.
+    /// </summary>
+    public const double MaxScaledShapeDeviation = 0.10;
 
     /// <summary>
     /// Does a measured outline fit the aircraft it is for? When the type is known (<paramref name="size"/>
@@ -358,14 +367,19 @@ public static class GroundTrafficAircraftSizes
     /// its family's designator, a helicopter drawn with a longer boom, every JBAI Learjet 45, drawn 22% over
     /// size), and a smaller hull in its place would speak every gap to it too large. Until 2026-11-27 the
     /// test was 15% either way, and 45 of the 63 measured models it threw away were larger than published.
+    /// Larger still it stands only as the whole aircraft drawn to another scale, length and span over by the
+    /// same factor: IVAO's Bell 407 and Cabri G2 are drawn at twice their size (height, cabin and rotor all
+    /// doubled in the model file), and that is the helicopter standing on the apron. Half as large again in
+    /// ONE direction is a part that does not belong (ground equipment, something misplaced), and is refused.
     /// An unknown type has nothing to hold the measurement against, so it stands.
     /// </summary>
     public static bool Agrees(AircraftOutline outline, AircraftSize size)
     {
         if (size.Source != AircraftSizeSource.Table) return true;
         double length = outline.LengthM / size.LengthM, span = outline.HalfSpanM * 2.0 / size.WingspanM;
-        return length >= 1.0 - MaxMeasuredDeviation && span >= 1.0 - MaxMeasuredDeviation
-               && length <= 1.0 + MaxMeasuredExcess && span <= 1.0 + MaxMeasuredExcess;
+        if (length < 1.0 - MaxMeasuredDeviation || span < 1.0 - MaxMeasuredDeviation) return false;
+        if (length <= 1.0 + MaxMeasuredExcess && span <= 1.0 + MaxMeasuredExcess) return true;
+        return Math.Abs(length / span - 1.0) <= MaxScaledShapeDeviation;
     }
 
     // Upper-cased, without AIG's "$$:" marker or the sim's localisation key.

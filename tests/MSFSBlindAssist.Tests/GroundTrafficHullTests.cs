@@ -488,9 +488,14 @@ public class MeasuredOutlineGuardTests
     [InlineData("CH47", 31.17, 19.22, true)]
     [InlineData("EC75", 18.40, 15.58, true)]      // the H175 (the row held the EC155's 12.11 by 12.60 m)
     [InlineData("BE12", 28.46, 26.96, true)]      // the Beriev flying boat (the row held a light twin's)
-    // Smaller than published by more than 15%, or half as large again: not believed.
+    // The whole aircraft drawn to another scale (length and span over by the same factor) is what stands on the apron.
+    [InlineData("B407", 25.37, 21.28, true)]      // IVAO's, drawn at twice its size: height, cabin and rotor all doubled
+    [InlineData("G2CA", 15.20, 14.11, true)]      // IVAO's Cabri G2, the same
+    // Smaller than published by more than 15%, or half as large again in ONE direction: not believed.
     [InlineData("B222", 12.13, 9.44, false)]      // IVAO's, its two blades stopped fore and aft
-    [InlineData("B407", 25.37, 21.28, false)]     // IVAO's, drawn at twice its size
+    [InlineData("B407", 25.37, 10.67, false)]     // twice as long and no wider: a part that does not belong
+    [InlineData("B407", 12.70, 21.28, false)]     // twice as wide and no longer
+    [InlineData("B407", 25.37, 17.50, false)]     // both over, but not the same aircraft's shape
     public void A_measurement_larger_than_the_published_size_stands_and_a_smaller_one_does_not(string icao, double length, double span, bool believed)
     {
         var size = GroundTrafficAircraftSizes.Resolve(icao, "", "", 0.0);

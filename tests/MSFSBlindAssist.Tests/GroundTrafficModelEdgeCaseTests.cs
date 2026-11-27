@@ -914,14 +914,27 @@ public class GroundTrafficModelEdgeCaseTests : IDisposable
     {
         InstallModularJet();
         Assert.Equal("", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
+        string Config(string package, string part) => Path.Combine(Airplanes(package, "Jet", "attachments", "maker", part, "config"), "aircraft.cfg");
 
-        // Declared in the configs of the parts the airframe is made of (PMDG), when they all say the same.
-        string fuselage = Path.Combine(Airplanes("jet", "Jet", "attachments", "maker", "Part_Fuselage", "config"), "aircraft.cfg");
-        string tail = Path.Combine(Airplanes("jet", "Jet", "attachments", "maker", "Part_Tail", "config"), "aircraft.cfg");
-        WriteText(fuselage, "[GENERAL]\nicao_type_designator=\"B739\"\n");
+        // No part the preset's attachment lists name declares one: the one every part of the aircraft agrees on
+        // (the tail is merged in, no list names it).
+        WriteText(Config("jet", "Part_Tail"), "[GENERAL]\nicao_type_designator = B737\n");
+        Assert.Equal("B737", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
+
+        // Declared by a part the preset is assembled from (PMDG: each fuselage part), wherever that part lives.
+        // The Fenix: the exterior part the preset attaches declares none and INHERITS the fuselage, which is in
+        // the package its A319, A320 and A321 share, each fuselage declaring its own; no list names a fuselage.
+        WriteText(Path.Combine(Airplanes("jet", "Jet", "attachments", "maker", "Function_Exterior"), "attachment.cfg"),
+            "[VERSION]\nmajor = 1\n[Inherit]\nbase = \"SimObjects\\Airplanes\\Jet\\attachments\\maker\\Part_Body_900\"\n");
+        WriteText(Path.Combine(Airplanes("jet-common", "Jet", "attachments", "maker", "Part_Body_900"), "attachment.cfg"),
+            "[Inherit]\nbase = \"SimObjects/Airplanes/Jet/attachments/maker/Part_Body\"\n[Tags]\ntag.0 = \"900\"\n");
+        WriteText(Config("jet-common", "Part_Body_900"), "[GENERAL]\nicao_type_designator=\"B739\"\n");
+        WriteText(Config("jet-common", "Part_Body_600"), "[GENERAL]\nicao_type_designator=\"B736\"\n");
         Assert.Equal("B739", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
-        WriteText(tail, "[GENERAL]\nicao_type_designator = B737\n");
-        Assert.Equal("", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);       // they disagree: none
+
+        // Two of its own parts that disagree (the wings hang on the fuselage, in the other package): none.
+        WriteText(Config("jet-common", "Part_Wings"), "[GENERAL]\nicao_type_designator = B738\n");
+        Assert.Equal("", GroundTrafficModelCatalog.BuildIndex(_dir)["Jet 900 House"].Icao);
 
         // Declared once for the aircraft, in its common config (the TFDi MD-11, the FlyByWire A380): that one.
         WriteText(Path.Combine(Airplanes("jet", "Jet", "common", "config"), "aircraft.cfg"),

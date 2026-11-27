@@ -22,8 +22,9 @@
 //               show it (the PMDG 737's tail unit sat in its wing, its wing skin along its fuselage)
 //   NOT USED    appended to a measured model's line when the APP would not use the measurement: it sizes the
 //               aircraft by the type its TITLE names (else the declared one), and an outline more than 15%
-//               smaller than that type's published size, or half as large again, is not believed
-//               (GroundTrafficAircraftSizes.Agrees). Always printed; the hull is then the published size
+//               smaller than that type's published size, or half as large again without being the whole
+//               aircraft to another scale, is not believed (GroundTrafficAircraftSizes.Agrees). Always
+//               printed; the hull is then the published size
 // --nodes lists the mesh nodes that reach beyond AUDIT_WIDE, AUDIT_AHEAD or AUDIT_BEHIND metres (at most
 // AUDIT_LINES of them, 25 unless set); --profile prints every AUDIT_EVERY-th station's half-width (8).
 // and how the title-only type resolver did on every installed title (what the app falls back on); then
